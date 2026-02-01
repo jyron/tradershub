@@ -16,12 +16,14 @@ type Bot struct {
 	CreatedAt    time.Time `json:"created_at"`
 	IsActive     bool      `json:"is_active"`
 	Claimed      bool      `json:"claimed"`
+	IsTest       bool      `json:"is_test,omitempty"`
 }
 
 type RegisterBotRequest struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	CreatorEmail string `json:"creator_email"`
+	IsTest       bool   `json:"is_test,omitempty"`
 }
 
 type RegisterBotResponse struct {

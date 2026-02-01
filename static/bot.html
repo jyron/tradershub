@@ -131,8 +131,7 @@
                 const data = await response.json();
                 displayBotProfile(data);
             } catch (error) {
-                console.error('Failed to load bot profile:', error);
-                document.getElementById('bot-name').textContent = 'Error loading bot';
+                document.getElementById('bot-name').textContent = 'Error Loading Bot';
                 document.getElementById('bot-description').textContent = error.message;
             }
         }
@@ -189,56 +188,66 @@
         }
 
         function createPortfolioChart(trades, currentValue) {
-            // Calculate portfolio value over time based on trades
-            const startingBalance = 100000;
-            let points = [{ time: new Date(trades[trades.length - 1]?.executed_at || Date.now()), value: startingBalance }];
-
-            if (trades.length === 0) {
-                points.push({ time: new Date(), value: currentValue });
-            } else {
-                // Reverse to go chronologically
-                const chronologicalTrades = [...trades].reverse();
-                let cashBalance = startingBalance;
-                let holdings = {}; // symbol -> {quantity, avgCost}
-
-                chronologicalTrades.forEach(trade => {
-                    if (trade.side === 'buy') {
-                        cashBalance -= trade.total_value;
-                        if (!holdings[trade.symbol]) {
-                            holdings[trade.symbol] = { quantity: 0, totalCost: 0 };
-                        }
-                        holdings[trade.symbol].quantity += trade.quantity;
-                        holdings[trade.symbol].totalCost += trade.total_value;
-                    } else {
-                        cashBalance += trade.total_value;
-                        if (holdings[trade.symbol]) {
-                            holdings[trade.symbol].quantity -= trade.quantity;
-                            if (holdings[trade.symbol].quantity <= 0) {
-                                delete holdings[trade.symbol];
-                            }
-                        }
-                    }
-
-                    // Estimate portfolio value (using trade price as market price at that time)
-                    let positionsValue = 0;
-                    for (let symbol in holdings) {
-                        positionsValue += holdings[symbol].quantity * trade.price;
-                    }
-
-                    points.push({
-                        time: new Date(trade.executed_at),
-                        value: cashBalance + positionsValue
-                    });
-                });
-
-                // Add current point
-                points.push({ time: new Date(), value: currentValue });
+            if (!trades || trades.length === 0) {
+                // No trades yet - just show starting balance to current value
+                const points = [
+                    { time: new Date(Date.now() - 3600000), value: 100000 },
+                    { time: new Date(), value: currentValue }
+                ];
+                renderChart(points, currentValue);
+                return;
             }
 
-            const ctx = document.getElementById('portfolio-chart').getContext('2d');
-            const isProfit = currentValue >= startingBalance;
+            // Calculate portfolio value over time based on trades
+            const startingBalance = 100000;
+            const chronologicalTrades = [...trades].reverse();
 
-            new Chart(ctx, {
+            let points = [];
+            let cashBalance = startingBalance;
+            let holdings = {}; // symbol -> quantity
+
+            // Add starting point (time of first trade)
+            points.push({
+                time: new Date(chronologicalTrades[0].executed_at),
+                value: startingBalance
+            });
+
+            chronologicalTrades.forEach(trade => {
+                // Update cash and holdings
+                if (trade.side === 'buy') {
+                    cashBalance -= trade.total;
+                    holdings[trade.symbol] = (holdings[trade.symbol] || 0) + trade.quantity;
+                } else {
+                    cashBalance += trade.total;
+                    holdings[trade.symbol] = (holdings[trade.symbol] || 0) - trade.quantity;
+                    if (holdings[trade.symbol] <= 0) {
+                        delete holdings[trade.symbol];
+                    }
+                }
+
+                // Calculate total cost basis of holdings
+                let holdingsCost = startingBalance - cashBalance;
+
+                points.push({
+                    time: new Date(trade.executed_at),
+                    value: cashBalance + holdingsCost
+                });
+            });
+
+            // Add current point
+            points.push({ time: new Date(), value: currentValue });
+
+            renderChart(points, currentValue);
+        }
+
+        function renderChart(points, currentValue) {
+
+            const ctx = document.getElementById('portfolio-chart');
+            if (!ctx) return;
+
+            const isProfit = currentValue >= 100000;
+
+            new Chart(ctx.getContext('2d'), {
                 type: 'line',
                 data: {
                     labels: points.map(p => p.time),
@@ -359,7 +368,7 @@
                         <td class="${sideClass}" style="text-transform: uppercase; font-weight: 600;">${trade.side}</td>
                         <td>${trade.quantity}</td>
                         <td>$${trade.price.toFixed(2)}</td>
-                        <td>$${trade.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td>$${trade.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                 `;
             }).join('');

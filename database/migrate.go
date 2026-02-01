@@ -11,6 +11,7 @@ func RunMigrations() error {
 	migrations := []string{
 		"database/migrations/001_initial.sql",
 		"database/migrations/002_add_claimed.sql",
+		"database/migrations/003_add_is_test.sql",
 	}
 
 	for _, migrationFile := range migrations {

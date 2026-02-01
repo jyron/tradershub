@@ -2,11 +2,19 @@
 """
 Generate test data for BotTrade platform.
 Creates multiple bots with realistic trading patterns to test charts, leaderboards, and dashboards.
+
+Requirements:
+    pip install requests psycopg2-binary
+
+Usage:
+    python3 generate_test_data.py          # Generate test data
+    python3 generate_test_data.py --clean  # Clean up test bots only
 """
 
 import requests
 import time
 import random
+import sys
 from datetime import datetime
 
 BASE_URL = "http://localhost:3000/api"
@@ -55,7 +63,8 @@ def register_bot(bot_config):
         json={
             "name": bot_config["name"],
             "description": bot_config["description"],
-            "creator_email": bot_config["email"]
+            "creator_email": bot_config["email"],
+            "is_test": True
         }
     )
 
@@ -198,11 +207,45 @@ def random_strategy(api_key, bot_name):
         execute_trade(api_key, symbol, side, qty, reason)
         time.sleep(0.5)
 
+def cleanup_test_bots():
+    """Delete all existing test bots and their data."""
+    import psycopg2
+    import os
+
+    try:
+        # Connect to database using same config as the app
+        conn = psycopg2.connect(
+            host="localhost",
+            database="bottrade",
+            user=os.environ.get("DB_USER", "postgres"),
+            password=os.environ.get("DB_PASSWORD", "")
+        )
+        cur = conn.cursor()
+
+        # Delete test bots (CASCADE will delete related trades and positions)
+        cur.execute("DELETE FROM bots WHERE is_test = true")
+        deleted = cur.fetchone()
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print("✓ Cleaned up existing test bots")
+        return True
+    except Exception as e:
+        print(f"⚠️  Could not clean up test bots (this is ok if none exist): {e}")
+        return False
+
 def main():
     """Generate test data for all bots."""
     print("=" * 60)
     print("BotTrade Test Data Generator")
     print("=" * 60)
+
+    # Clean up existing test bots
+    print("\n🧹 CLEANING UP OLD TEST DATA")
+    print("-" * 60)
+    cleanup_test_bots()
 
     bots_data = []
 
@@ -286,7 +329,15 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        # Check for --clean flag
+        if "--clean" in sys.argv:
+            print("=" * 60)
+            print("BotTrade Test Data Cleanup")
+            print("=" * 60)
+            cleanup_test_bots()
+            print("\n✅ Cleanup complete!")
+        else:
+            main()
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
     except Exception as e:

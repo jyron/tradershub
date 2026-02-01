@@ -6,7 +6,9 @@
       "Bash(go mod tidy:*)",
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(psql:*)",
+      "Bash(go build:*)"
     ]
   }
 }

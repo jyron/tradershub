@@ -37,10 +37,10 @@ func RegisterBot(c *fiber.Ctx) error {
 	var botID uuid.UUID
 	err = database.DB.QueryRow(
 		context.Background(),
-		`INSERT INTO bots (name, api_key, description, creator_email)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO bots (name, api_key, description, creator_email, is_test)
+		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id`,
-		req.Name, apiKey, req.Description, req.CreatorEmail,
+		req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
 	).Scan(&botID)
 
 	if err != nil {
@@ -77,10 +77,10 @@ func GetBotDetails(c *fiber.Ctx) error {
 	var bot models.Bot
 	err = database.DB.QueryRow(
 		context.Background(),
-		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed
+		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots WHERE id = $1`,
 		botID,
-	).Scan(&bot.ID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed)
+	).Scan(&bot.ID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

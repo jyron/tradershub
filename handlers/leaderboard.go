@@ -36,29 +36,33 @@ func GetLeaderboard(c *fiber.Ctx) error {
 	}
 
 	// Calculate portfolio values for all bots
+	// Use separate subqueries to avoid JOIN multiplication
 	query := `
-		WITH bot_portfolios AS (
+		WITH bot_positions AS (
 			SELECT
-				b.id,
-				b.name,
-				b.cash_balance,
-				COALESCE(SUM(p.quantity * p.avg_cost), 0) as positions_value,
-				COUNT(t.id) as trade_count
-			FROM bots b
-			LEFT JOIN positions p ON b.id = p.bot_id
-			LEFT JOIN trades t ON b.id = t.bot_id
-			WHERE b.is_active = true
-			GROUP BY b.id, b.name, b.cash_balance
+				bot_id,
+				COALESCE(SUM(quantity * avg_cost), 0) as positions_cost_basis
+			FROM positions
+			GROUP BY bot_id
+		),
+		bot_trades AS (
+			SELECT
+				bot_id,
+				COUNT(*) as trade_count
+			FROM trades
+			GROUP BY bot_id
 		)
 		SELECT
-			id,
-			name,
-			cash_balance + positions_value as total_value,
-			(cash_balance + positions_value - 100000) as pnl,
-			((cash_balance + positions_value - 100000) / 100000.0 * 100) as pnl_percent,
-			trade_count
-		FROM bot_portfolios
-		ORDER BY total_value DESC
+			b.id,
+			b.name,
+			b.cash_balance,
+			COALESCE(bp.positions_cost_basis, 0) as positions_value,
+			COALESCE(bt.trade_count, 0) as trade_count
+		FROM bots b
+		LEFT JOIN bot_positions bp ON b.id = bp.bot_id
+		LEFT JOIN bot_trades bt ON b.id = bt.bot_id
+		WHERE b.is_active = true
+		ORDER BY (b.cash_balance + COALESCE(bp.positions_cost_basis, 0)) DESC
 		LIMIT $1
 	`
 
@@ -76,18 +80,24 @@ func GetLeaderboard(c *fiber.Ctx) error {
 	for rows.Next() {
 		var entry LeaderboardEntry
 		var botID string
+		var cashBalance float64
+		var positionsValue float64
+
 		err := rows.Scan(
 			&botID,
 			&entry.BotName,
-			&entry.TotalValue,
-			&entry.PnL,
-			&entry.PnLPercent,
+			&cashBalance,
+			&positionsValue,
 			&entry.TradeCount,
 		)
 		if err != nil {
 			continue
 		}
 
+		// Calculate totals from cash + positions cost basis
+		entry.TotalValue = cashBalance + positionsValue
+		entry.PnL = entry.TotalValue - 100000.0
+		entry.PnLPercent = (entry.PnL / 100000.0) * 100.0
 		entry.Rank = rank
 		entry.BotID = botID
 		rankings = append(rankings, entry)

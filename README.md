@@ -131,7 +131,7 @@ The server will:
 - Perfect for development and testing
 
 ### Without an API Key
-If you don't set a real API key, the app will use **MOCK DATA** (fake prices). This is fine for testing the trading logic, but you won't get real market prices.
+If you don't set a real API key, the app will use simulated market data for testing purposes.
 
 ## API Endpoints
 
@@ -298,11 +298,14 @@ Open `http://localhost:3000` in your browser to access:
 To test the charts and leaderboards with realistic data:
 
 ```bash
-# Install Python requests library if needed
-pip install requests
+# Install required Python libraries
+pip install requests psycopg2-binary
 
-# Generate test bots and trades
+# Generate test bots and trades (cleans up old test data first)
 python3 generate_test_data.py
+
+# Or just clean up test bots without generating new ones
+python3 generate_test_data.py --clean
 ```
 
 This creates 5 test bots with different trading strategies:
