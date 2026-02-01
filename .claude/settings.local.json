@@ -3,7 +3,10 @@
     "allow": [
       "Bash(go mod init:*)",
       "Bash(go get:*)",
-      "Bash(go mod tidy:*)"
+      "Bash(go mod tidy:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)"
     ]
   }
 }

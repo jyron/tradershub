@@ -7,10 +7,13 @@ import (
 	"bottrade/middleware"
 	"bottrade/services"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/websocket/v2"
 )
 
 func main() {
@@ -40,9 +43,39 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
+	// Rate limiter for bot registration - 5 registrations per hour per IP
+	registrationLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Too many registration attempts. Please try again later.",
+			})
+		},
+	})
+
+	// Rate limiter for bot claiming - 10 claims per hour per IP
+	claimLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Too many claim attempts. Please try again later.",
+			})
+		},
+	})
+
 	api := app.Group("/api")
 
-	api.Post("/bots/register", handlers.RegisterBot)
+	api.Post("/bots/register", registrationLimiter, handlers.RegisterBot)
+	api.Get("/bots/:bot_id", handlers.GetBotDetails)
+	api.Post("/claim/:bot_id", claimLimiter, handlers.ClaimBot)
 
 	api.Get("/market/quote/:symbol", handlers.GetQuote)
 	api.Get("/market/quotes", handlers.GetQuotes)
@@ -50,6 +83,12 @@ func main() {
 	api.Post("/trade/stock", middleware.RequireAPIKey, handlers.TradeStock)
 
 	api.Get("/portfolio", middleware.RequireAPIKey, handlers.GetPortfolio)
+
+	api.Get("/leaderboard", handlers.GetLeaderboard)
+
+	// WebSocket endpoint
+	app.Use("/ws", handlers.WebSocketUpgrade)
+	app.Get("/ws", websocket.New(handlers.WebSocketHandler))
 
 	app.Static("/", "./static")
 

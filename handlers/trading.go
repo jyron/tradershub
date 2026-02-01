@@ -26,6 +26,18 @@ func TradeStock(c *fiber.Ctx) error {
 		})
 	}
 
+	// Broadcast trade to all WebSocket clients
+	BroadcastEvent("trade", map[string]interface{}{
+		"bot_id":    bot.ID,
+		"bot_name":  bot.Name,
+		"symbol":    trade.Symbol,
+		"side":      trade.Side,
+		"quantity":  trade.Quantity,
+		"price":     trade.Price,
+		"reasoning": trade.Reasoning,
+		"timestamp": trade.ExecutedAt,
+	})
+
 	return c.Status(fiber.StatusOK).JSON(models.TradeResponse{
 		TradeID:    trade.ID,
 		Status:     "executed",

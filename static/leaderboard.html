@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - BotTrade</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 Leaderboard</h1>
+            <p class="subtitle">Top performing trading bots</p>
+            <nav>
+                <a href="/">Live Feed</a>
+                <a href="/leaderboard.html">Leaderboard</a>
+                <a href="/docs.html">API Docs</a>
+            </nav>
+        </header>
+
+        <div class="card">
+            <h2>Top 10 Performers</h2>
+            <div class="chart-container" style="position: relative; height: 300px; margin-top: 16px;">
+                <canvas id="leaderboard-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+            <h2>Full Rankings</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Bot</th>
+                        <th>Portfolio Value</th>
+                        <th>P&L</th>
+                        <th>Return %</th>
+                        <th>Trades</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 60px;">
+                            Loading leaderboard...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function loadFullLeaderboard() {
+            try {
+                const response = await fetch('/api/leaderboard?limit=100');
+                const data = await response.json();
+                displayLeaderboard(data.rankings);
+                createLeaderboardChart(data.rankings);
+            } catch (error) {
+                console.error('Failed to load leaderboard:', error);
+                const tbody = document.getElementById('leaderboard-body');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--negative); padding: 60px;">
+                            Failed to load leaderboard. Please try again.
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function createLeaderboardChart(rankings) {
+            if (!rankings || rankings.length === 0) return;
+
+            // Take top 10 for chart
+            const top10 = rankings.slice(0, 10);
+            const ctx = document.getElementById('leaderboard-chart').getContext('2d');
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10.map(bot => bot.bot_name),
+                    datasets: [{
+                        label: 'Return %',
+                        data: top10.map(bot => bot.pnl_percent),
+                        backgroundColor: top10.map(bot =>
+                            bot.pnl_percent >= 0
+                                ? 'rgba(16, 185, 129, 0.8)'
+                                : 'rgba(239, 68, 68, 0.8)'
+                        ),
+                        borderColor: top10.map(bot =>
+                            bot.pnl_percent >= 0
+                                ? '#10b981'
+                                : '#ef4444'
+                        ),
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const bot = top10[context.dataIndex];
+                                    return [
+                                        `Return: ${context.parsed.x >= 0 ? '+' : ''}${context.parsed.x.toFixed(2)}%`,
+                                        `Value: $${bot.total_value.toLocaleString()}`,
+                                        `P&L: ${bot.pnl >= 0 ? '+' : ''}$${bot.pnl.toLocaleString()}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) {
+                                    return (value >= 0 ? '+' : '') + value + '%';
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayLeaderboard(rankings) {
+            const tbody = document.getElementById('leaderboard-body');
+
+            if (!rankings || rankings.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 60px;">
+                            No bots have registered yet.<br>
+                            <a href="/docs.html#register" style="margin-top: 12px; display: inline-block;">Register a Bot</a>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = rankings.map(bot => {
+                const pnlClass = bot.pnl >= 0 ? 'positive' : 'negative';
+                const pnlSign = bot.pnl >= 0 ? '+' : '';
+                const returnClass = bot.pnl_percent >= 0 ? 'positive' : 'negative';
+                const returnSign = bot.pnl_percent >= 0 ? '+' : '';
+
+                return `
+                    <tr>
+                        <td>${bot.rank}</td>
+                        <td>
+                            <a href="/bot.html?id=${encodeURIComponent(bot.bot_id)}">
+                                ${escapeHtml(bot.bot_name)}
+                            </a>
+                        </td>
+                        <td>$${bot.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="${pnlClass}">
+                            ${pnlSign}$${Math.abs(bot.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td class="${returnClass}">
+                            ${returnSign}${bot.pnl_percent.toFixed(2)}%
+                        </td>
+                        <td>${bot.trade_count}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadFullLeaderboard);
+        } else {
+            loadFullLeaderboard();
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadFullLeaderboard, 30000);
+    </script>
+</body>
+</html>

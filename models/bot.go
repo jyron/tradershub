@@ -15,6 +15,7 @@ type Bot struct {
 	CashBalance  float64   `json:"cash_balance"`
 	CreatedAt    time.Time `json:"created_at"`
 	IsActive     bool      `json:"is_active"`
+	Claimed      bool      `json:"claimed"`
 }
 
 type RegisterBotRequest struct {
@@ -26,5 +27,6 @@ type RegisterBotRequest struct {
 type RegisterBotResponse struct {
 	BotID           uuid.UUID `json:"bot_id"`
 	APIKey          string    `json:"api_key"`
+	ClaimURL        string    `json:"claim_url"`
 	StartingBalance float64   `json:"starting_balance"`
 }

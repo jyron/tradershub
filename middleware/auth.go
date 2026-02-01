@@ -20,18 +20,24 @@ func RequireAPIKey(c *fiber.Ctx) error {
 	var bot models.Bot
 	err := database.DB.QueryRow(
 		context.Background(),
-		`SELECT id, name, api_key, description, creator_email, cash_balance, created_at, is_active
+		`SELECT id, name, api_key, description, creator_email, cash_balance, created_at, is_active, claimed
 		 FROM bots
 		 WHERE api_key = $1 AND is_active = true`,
 		apiKey,
 	).Scan(
 		&bot.ID, &bot.Name, &bot.APIKey, &bot.Description,
-		&bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive,
+		&bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed,
 	)
 
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid API key",
+		})
+	}
+
+	if !bot.Claimed {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Bot must be claimed before trading. Visit your claim URL to activate your bot.",
 		})
 	}
 

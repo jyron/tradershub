@@ -8,18 +8,25 @@ import (
 )
 
 func RunMigrations() error {
-	migrationFile := "database/migrations/001_initial.sql"
-
-	sqlBytes, err := os.ReadFile(migrationFile)
-	if err != nil {
-		return fmt.Errorf("failed to read migration file: %w", err)
+	migrations := []string{
+		"database/migrations/001_initial.sql",
+		"database/migrations/002_add_claimed.sql",
 	}
 
-	_, err = DB.Exec(context.Background(), string(sqlBytes))
-	if err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
+	for _, migrationFile := range migrations {
+		sqlBytes, err := os.ReadFile(migrationFile)
+		if err != nil {
+			return fmt.Errorf("failed to read migration file %s: %w", migrationFile, err)
+		}
+
+		_, err = DB.Exec(context.Background(), string(sqlBytes))
+		if err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", migrationFile, err)
+		}
+
+		log.Printf("Executed migration: %s", migrationFile)
 	}
 
-	log.Println("Migrations executed successfully")
+	log.Println("All migrations executed successfully")
 	return nil
 }

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Profile - BotTrade</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 id="bot-name">Loading...</h1>
+            <p class="subtitle" id="bot-description">Bot profile and trading history</p>
+            <nav>
+                <a href="/">Live Feed</a>
+                <a href="/leaderboard.html">Leaderboard</a>
+                <a href="/docs.html">API Docs</a>
+            </nav>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Portfolio Value</div>
+                <div class="stat-value" id="total-value">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">P&L</div>
+                <div class="stat-value" id="pnl">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Return</div>
+                <div class="stat-value" id="return">0.00%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Trades</div>
+                <div class="stat-value" id="trade-count">0</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+            <h3>Bot Info</h3>
+            <div style="display: grid; gap: 12px; margin-top: 16px;">
+                <div>
+                    <span style="color: var(--muted); font-size: 14px;">Status:</span>
+                    <span id="claimed-status" style="margin-left: 8px; font-weight: 600;"></span>
+                </div>
+                <div>
+                    <span style="color: var(--muted); font-size: 14px;">Created by:</span>
+                    <span id="creator-email" style="margin-left: 8px;"></span>
+                </div>
+                <div>
+                    <span style="color: var(--muted); font-size: 14px;">Joined:</span>
+                    <span id="created-at" style="margin-left: 8px;"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+            <h2>Portfolio Value Over Time</h2>
+            <div class="chart-container" style="position: relative; height: 300px; margin-top: 16px;">
+                <canvas id="portfolio-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+            <h2>Current Positions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Quantity</th>
+                        <th>Avg Cost</th>
+                        <th>Current Price</th>
+                        <th>Market Value</th>
+                        <th>P&L</th>
+                    </tr>
+                </thead>
+                <tbody id="positions-body">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                            No positions
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card" style="margin-top: 24px;">
+            <h2>Recent Trades</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="trades-body">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                            No trades yet
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const botId = urlParams.get('id');
+
+        if (!botId) {
+            document.getElementById('bot-name').textContent = 'Error: No bot ID provided';
+            throw new Error('No bot ID in URL');
+        }
+
+        async function loadBotProfile() {
+            try {
+                // Load bot info and portfolio
+                const response = await fetch(`/api/bots/${botId}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to load bot: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayBotProfile(data);
+            } catch (error) {
+                console.error('Failed to load bot profile:', error);
+                document.getElementById('bot-name').textContent = 'Error loading bot';
+                document.getElementById('bot-description').textContent = error.message;
+            }
+        }
+
+        function displayBotProfile(data) {
+            // Update header
+            document.getElementById('bot-name').textContent = `🤖 ${data.name}`;
+            document.getElementById('bot-description').textContent = data.description || 'No description';
+
+            // Update stats
+            const totalValue = data.portfolio?.total_value || 0;
+            const pnl = data.portfolio?.total_pnl || 0;
+            const pnlPercent = data.portfolio?.total_pnl_percent || 0;
+
+            document.getElementById('total-value').textContent = `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+            const pnlEl = document.getElementById('pnl');
+            pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            pnlEl.className = `stat-value ${pnl >= 0 ? 'positive' : 'negative'}`;
+
+            const returnEl = document.getElementById('return');
+            returnEl.textContent = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`;
+            returnEl.className = `stat-value ${pnlPercent >= 0 ? 'positive' : 'negative'}`;
+
+            document.getElementById('trade-count').textContent = data.trade_count || 0;
+
+            // Update bot info
+            const claimedStatusEl = document.getElementById('claimed-status');
+            if (data.claimed) {
+                claimedStatusEl.textContent = 'Claimed ✓';
+                claimedStatusEl.style.color = 'var(--positive)';
+            } else {
+                claimedStatusEl.textContent = 'Unclaimed';
+                claimedStatusEl.style.color = 'var(--muted)';
+            }
+
+            document.getElementById('creator-email').textContent = data.creator_email || 'Unknown';
+
+            const createdDate = new Date(data.created_at);
+            document.getElementById('created-at').textContent = createdDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            // Display positions
+            displayPositions(data.portfolio?.positions || []);
+
+            // Display trades
+            displayTrades(data.recent_trades || []);
+
+            // Create portfolio chart
+            createPortfolioChart(data.recent_trades || [], data.portfolio?.total_value || 100000);
+        }
+
+        function createPortfolioChart(trades, currentValue) {
+            // Calculate portfolio value over time based on trades
+            const startingBalance = 100000;
+            let points = [{ time: new Date(trades[trades.length - 1]?.executed_at || Date.now()), value: startingBalance }];
+
+            if (trades.length === 0) {
+                points.push({ time: new Date(), value: currentValue });
+            } else {
+                // Reverse to go chronologically
+                const chronologicalTrades = [...trades].reverse();
+                let cashBalance = startingBalance;
+                let holdings = {}; // symbol -> {quantity, avgCost}
+
+                chronologicalTrades.forEach(trade => {
+                    if (trade.side === 'buy') {
+                        cashBalance -= trade.total_value;
+                        if (!holdings[trade.symbol]) {
+                            holdings[trade.symbol] = { quantity: 0, totalCost: 0 };
+                        }
+                        holdings[trade.symbol].quantity += trade.quantity;
+                        holdings[trade.symbol].totalCost += trade.total_value;
+                    } else {
+                        cashBalance += trade.total_value;
+                        if (holdings[trade.symbol]) {
+                            holdings[trade.symbol].quantity -= trade.quantity;
+                            if (holdings[trade.symbol].quantity <= 0) {
+                                delete holdings[trade.symbol];
+                            }
+                        }
+                    }
+
+                    // Estimate portfolio value (using trade price as market price at that time)
+                    let positionsValue = 0;
+                    for (let symbol in holdings) {
+                        positionsValue += holdings[symbol].quantity * trade.price;
+                    }
+
+                    points.push({
+                        time: new Date(trade.executed_at),
+                        value: cashBalance + positionsValue
+                    });
+                });
+
+                // Add current point
+                points.push({ time: new Date(), value: currentValue });
+            }
+
+            const ctx = document.getElementById('portfolio-chart').getContext('2d');
+            const isProfit = currentValue >= startingBalance;
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: points.map(p => p.time),
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: points.map(p => p.value),
+                        borderColor: isProfit ? '#10b981' : '#ef4444',
+                        backgroundColor: isProfit ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return '$' + context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                displayFormats: {
+                                    minute: 'MMM d, HH:mm'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            },
+                            ticks: {
+                                color: '#9ca3af'
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayPositions(positions) {
+            const tbody = document.getElementById('positions-body');
+
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                            No open positions
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = positions.map(pos => {
+                const pnlClass = pos.unrealized_pnl >= 0 ? 'positive' : 'negative';
+                const pnlSign = pos.unrealized_pnl >= 0 ? '+' : '';
+
+                return `
+                    <tr>
+                        <td>${escapeHtml(pos.symbol)}</td>
+                        <td>${pos.quantity}</td>
+                        <td>$${pos.avg_cost.toFixed(2)}</td>
+                        <td>$${pos.current_price.toFixed(2)}</td>
+                        <td>$${pos.market_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td class="${pnlClass}">
+                            ${pnlSign}$${Math.abs(pos.unrealized_pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function displayTrades(trades) {
+            const tbody = document.getElementById('trades-body');
+
+            if (!trades || trades.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                            No trades yet
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = trades.map(trade => {
+                const sideClass = trade.side === 'buy' ? 'positive' : 'negative';
+                const date = new Date(trade.executed_at);
+                const timeStr = date.toLocaleString();
+
+                return `
+                    <tr>
+                        <td>${timeStr}</td>
+                        <td>${escapeHtml(trade.symbol)}</td>
+                        <td class="${sideClass}" style="text-transform: uppercase; font-weight: 600;">${trade.side}</td>
+                        <td>${trade.quantity}</td>
+                        <td>$${trade.price.toFixed(2)}</td>
+                        <td>$${trade.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadBotProfile);
+        } else {
+            loadBotProfile();
+        }
+    </script>
+</body>
+</html>
