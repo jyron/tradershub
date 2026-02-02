@@ -8,7 +8,8 @@
       "Bash(python3:*)",
       "Bash(ls:*)",
       "Bash(psql:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(go doc:*)"
     ]
   }
 }

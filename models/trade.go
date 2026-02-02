@@ -7,18 +7,18 @@ import (
 )
 
 type Trade struct {
-	ID             uuid.UUID `json:"trade_id"`
-	BotID          uuid.UUID `json:"bot_id"`
-	Symbol         string    `json:"symbol"`
-	TradeType      string    `json:"trade_type"` // 'stock', 'call', 'put'
-	Side           string    `json:"side"`       // 'buy' or 'sell'
-	Quantity       int       `json:"quantity"`
-	Price          float64   `json:"price"`
-	StrikePrice    *float64  `json:"strike_price,omitempty"`
-	ExpirationDate *string   `json:"expiration_date,omitempty"`
-	TotalValue     float64   `json:"total"`
-	Reasoning      string    `json:"reasoning,omitempty"`
-	ExecutedAt     time.Time `json:"executed_at"`
+	ID             uuid.UUID  `json:"trade_id"`
+	BotID          uuid.UUID  `json:"bot_id"`
+	Symbol         string     `json:"symbol"`
+	TradeType      string     `json:"trade_type"` // 'stock', 'call', 'put'
+	Side           string     `json:"side"`       // 'buy' or 'sell'
+	Quantity       int        `json:"quantity"`
+	Price          float64    `json:"price"`
+	StrikePrice    *float64   `json:"strike_price,omitempty"`
+	ExpirationDate *time.Time `json:"expiration_date,omitempty"`
+	TotalValue     float64    `json:"total"`
+	Reasoning      string     `json:"reasoning,omitempty"`
+	ExecutedAt     time.Time  `json:"executed_at"`
 }
 
 type StockTradeRequest struct {

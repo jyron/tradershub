@@ -7,16 +7,16 @@ import (
 )
 
 type Position struct {
-	ID             uuid.UUID `json:"id"`
-	BotID          uuid.UUID `json:"bot_id"`
-	Symbol         string    `json:"symbol"`
-	PositionType   string    `json:"type"`
-	Quantity       int       `json:"quantity"`
-	AvgCost        float64   `json:"avg_cost"`
-	StrikePrice    *float64  `json:"strike_price,omitempty"`
-	ExpirationDate *string   `json:"expiration_date,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	BotID          uuid.UUID  `json:"bot_id"`
+	Symbol         string     `json:"symbol"`
+	PositionType   string     `json:"type"`
+	Quantity       int        `json:"quantity"`
+	AvgCost        float64    `json:"avg_cost"`
+	StrikePrice    *float64   `json:"strike_price,omitempty"`
+	ExpirationDate *time.Time `json:"expiration_date,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type PositionWithValue struct {

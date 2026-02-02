@@ -9,12 +9,14 @@ import (
 )
 
 type PortfolioService struct {
-	marketService *MarketDataService
+	marketService  *MarketDataService
+	optionsService *OptionsService
 }
 
 func NewPortfolioService() *PortfolioService {
 	return &PortfolioService{
-		marketService: GetMarketService(),
+		marketService:  GetMarketService(),
+		optionsService: NewOptionsService(),
 	}
 }
 
@@ -67,20 +69,42 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 			return nil, err
 		}
 
-		// Get current price
-		quote, err := ps.marketService.GetQuote(pos.Symbol)
-		if err != nil {
-			// If we can't get a quote, skip this position
+		var currentPrice float64
+		var marketValue float64
+		var costBasis float64
+
+		// Determine if this is a stock or option position
+		if pos.PositionType == "stock" {
+			// Stock position - get quote from market data service
+			quote, err := ps.marketService.GetQuote(pos.Symbol)
+			if err != nil {
+				// Skip position if we can't get a price
+				continue
+			}
+			currentPrice = quote.Price
+			marketValue = currentPrice * float64(pos.Quantity)
+			costBasis = pos.AvgCost * float64(pos.Quantity)
+		} else if pos.PositionType == "call" || pos.PositionType == "put" {
+			// Option position - get quote from options service
+			price, err := ps.optionsService.GetCurrentOptionPrice(pos.Symbol)
+			if err != nil {
+				// Skip position if we can't get a price
+				continue
+			}
+			currentPrice = price
+			// Options: price is per share, but each contract = 100 shares
+			marketValue = currentPrice * float64(pos.Quantity) * 100
+			costBasis = pos.AvgCost * float64(pos.Quantity) * 100
+		} else {
+			// Unknown position type, skip
 			continue
 		}
 
-		marketValue := quote.Price * float64(pos.Quantity)
-		costBasis := pos.AvgCost * float64(pos.Quantity)
 		unrealizedPnL := marketValue - costBasis
 
 		posWithValue := models.PositionWithValue{
 			Position:      pos,
-			CurrentPrice:  quote.Price,
+			CurrentPrice:  currentPrice,
 			MarketValue:   marketValue,
 			UnrealizedPnL: unrealizedPnL,
 		}

@@ -8,9 +8,12 @@ import (
 )
 
 type Config struct {
-	DatabaseURL string
-	Port        string
-	MarketAPIKey string
+	DatabaseURL      string
+	Port             string
+	MarketAPIKey     string
+	AlpacaAPIKey     string
+	AlpacaSecretKey  string
+	AlpacaPaperMode  bool
 }
 
 func Load() *Config {
@@ -28,9 +31,12 @@ func Load() *Config {
 	}
 
 	return &Config{
-		DatabaseURL:  dbURL,
-		Port:         getEnv("PORT", "3000"),
-		MarketAPIKey: getEnv("MARKET_API_KEY", ""),
+		DatabaseURL:     dbURL,
+		Port:            getEnv("PORT", "3000"),
+		MarketAPIKey:    getEnv("MARKET_API_KEY", ""),
+		AlpacaAPIKey:    getEnv("ALPACA_API_KEY", ""),
+		AlpacaSecretKey: getEnv("ALPACA_SECRET_KEY", ""),
+		AlpacaPaperMode: getEnv("ALPACA_PAPER", "true") == "true",
 	}
 }
 

@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"bottrade/database"
+	"bottrade/services"
 	"context"
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 type LeaderboardEntry struct {
@@ -35,38 +37,22 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		limit = 100
 	}
 
-	// Calculate portfolio values for all bots
-	// Use separate subqueries to avoid JOIN multiplication
+	ctx := context.Background()
+
+	// Get all active bots with their basic info and trade counts
 	query := `
-		WITH bot_positions AS (
-			SELECT
-				bot_id,
-				COALESCE(SUM(quantity * avg_cost), 0) as positions_cost_basis
-			FROM positions
-			GROUP BY bot_id
-		),
-		bot_trades AS (
-			SELECT
-				bot_id,
-				COUNT(*) as trade_count
-			FROM trades
-			GROUP BY bot_id
-		)
 		SELECT
 			b.id,
 			b.name,
 			b.cash_balance,
-			COALESCE(bp.positions_cost_basis, 0) as positions_value,
-			COALESCE(bt.trade_count, 0) as trade_count
+			COALESCE(COUNT(t.id), 0) as trade_count
 		FROM bots b
-		LEFT JOIN bot_positions bp ON b.id = bp.bot_id
-		LEFT JOIN bot_trades bt ON b.id = bt.bot_id
+		LEFT JOIN trades t ON b.id = t.bot_id
 		WHERE b.is_active = true
-		ORDER BY (b.cash_balance + COALESCE(bp.positions_cost_basis, 0)) DESC
-		LIMIT $1
+		GROUP BY b.id, b.name, b.cash_balance
 	`
 
-	rows, err := database.DB.Query(context.Background(), query, limit)
+	rows, err := database.DB.Query(ctx, query)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch leaderboard",
@@ -74,38 +60,59 @@ func GetLeaderboard(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	rankings := []LeaderboardEntry{}
-	rank := 1
+	portfolioService := services.NewPortfolioService()
+	var entries []LeaderboardEntry
 
 	for rows.Next() {
-		var entry LeaderboardEntry
-		var botID string
+		var botID uuid.UUID
+		var botName string
 		var cashBalance float64
-		var positionsValue float64
+		var tradeCount int
 
-		err := rows.Scan(
-			&botID,
-			&entry.BotName,
-			&cashBalance,
-			&positionsValue,
-			&entry.TradeCount,
-		)
+		err := rows.Scan(&botID, &botName, &cashBalance, &tradeCount)
 		if err != nil {
 			continue
 		}
 
-		// Calculate totals from cash + positions cost basis
-		entry.TotalValue = cashBalance + positionsValue
-		entry.PnL = entry.TotalValue - 100000.0
-		entry.PnLPercent = (entry.PnL / 100000.0) * 100.0
-		entry.Rank = rank
-		entry.BotID = botID
-		rankings = append(rankings, entry)
-		rank++
+		// Calculate actual portfolio value using market prices
+		portfolio, err := portfolioService.GetPortfolio(botID)
+		if err != nil {
+			// If we can't calculate portfolio value, skip this bot
+			continue
+		}
+
+		entry := LeaderboardEntry{
+			BotID:      botID.String(),
+			BotName:    botName,
+			TotalValue: portfolio.TotalValue,
+			PnL:        portfolio.TotalPnL,
+			PnLPercent: portfolio.TotalPnLPct,
+			TradeCount: tradeCount,
+		}
+
+		entries = append(entries, entry)
+	}
+
+	// Sort by total value descending
+	for i := 0; i < len(entries)-1; i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].TotalValue > entries[i].TotalValue {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	// Apply limit and assign ranks
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	for i := range entries {
+		entries[i].Rank = i + 1
 	}
 
 	return c.JSON(LeaderboardResponse{
 		Period:   period,
-		Rankings: rankings,
+		Rankings: entries,
 	})
 }

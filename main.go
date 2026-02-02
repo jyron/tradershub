@@ -4,6 +4,7 @@ import (
 	"bottrade/config"
 	"bottrade/database"
 	"bottrade/handlers"
+	"bottrade/jobs"
 	"bottrade/middleware"
 	"bottrade/services"
 	"log"
@@ -34,6 +35,19 @@ func main() {
 		log.Println("   Get free Finnhub key: https://finnhub.io/register")
 	} else {
 		log.Println("✓ Market data: Finnhub.io (real-time stock quotes)")
+	}
+
+	if cfg.AlpacaAPIKey != "" && cfg.AlpacaSecretKey != "" {
+		if err := services.InitAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaSecretKey, cfg.AlpacaPaperMode); err != nil {
+			log.Printf("⚠️  Alpaca: Failed to initialize - %v", err)
+		} else {
+			scheduler := jobs.NewScheduler()
+			scheduler.AddJob(jobs.NewAssetSyncJob())
+			scheduler.Start()
+		}
+	} else {
+		log.Println("⚠️  Alpaca: API keys not configured (options trading disabled)")
+		log.Println("   Set ALPACA_API_KEY and ALPACA_SECRET_KEY in .env for options trading")
 	}
 
 	app := fiber.New(fiber.Config{
@@ -81,6 +95,11 @@ func main() {
 	api.Get("/market/quotes", handlers.GetQuotes)
 
 	api.Post("/trade/stock", middleware.RequireAPIKey, handlers.TradeStock)
+	api.Post("/trade/option", middleware.RequireAPIKey, handlers.TradeOption)
+
+	api.Get("/options/chain/:symbol", handlers.GetOptionChain)
+
+	api.Get("/assets", handlers.GetAssets)
 
 	api.Get("/portfolio", middleware.RequireAPIKey, handlers.GetPortfolio)
 
