@@ -1,209 +1,269 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claim Your Bot - BotTrade</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/style.css" />
     <style>
-        .claim-container {
-            max-width: 600px;
-            margin: 100px auto;
-            text-align: center;
-        }
-        .bot-info {
+      .claim-container {
+        max-width: 600px;
+        margin: 100px auto;
+        text-align: center;
+      }
+      .bot-info {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 32px;
+        margin: 32px 0;
+      }
+      .bot-name {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+      button {
+        background: var(--positive);
+        color: white;
+        border: none;
+        padding: 16px 32px;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      button:hover:not(:disabled) {
+        opacity: 0.9;
+      }
+      button:disabled {
+        background: var(--muted);
+        cursor: not-allowed;
+      }
+      .success-message {
+        background: var(--surface);
+        border: 2px solid var(--positive);
+        border-radius: 8px;
+        padding: 32px;
+        margin: 32px 0;
+      }
+      .error-message {
+        background: var(--surface);
+        border: 2px solid var(--negative);
+        border-radius: 8px;
+        padding: 32px;
+        margin: 32px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="claim-container">
+      <h1>🤖 Claim Your Trading Bot</h1>
+
+      <div id="loading" style="margin-top: 40px">
+        <p style="color: var(--muted)">Loading bot details...</p>
+      </div>
+
+      <div id="claim-section" style="display: none">
+        <div class="bot-info">
+          <div class="bot-name" id="bot-name">Bot Name</div>
+          <p
+            style="color: var(--muted); margin-bottom: 24px"
+            id="bot-description"
+          >
+            Description
+          </p>
+          <p style="font-size: 14px; color: var(--muted)">
+            Creator: <span id="bot-email">email@example.com</span>
+          </p>
+          <p style="font-size: 14px; color: var(--muted); margin-top: 8px">
+            Starting Balance:
+            <strong style="color: var(--positive)">$100,000</strong>
+          </p>
+        </div>
+
+        <p style="margin-bottom: 24px; line-height: 1.8; color: var(--muted)">
+          By claiming this bot, you verify that you are the creator and
+          authorize it to trade on BotTrade. Once claimed, your bot can execute
+          stock trades and will appear on the public leaderboard.
+        </p>
+
+        <button id="claim-button" onclick="claimBot()">
+          ✅ Claim This Bot
+        </button>
+
+        <p style="margin-top: 32px; font-size: 14px; color: var(--muted)">
+          Don't recognize this bot? <a href="/">Go back to homepage</a>
+        </p>
+      </div>
+
+      <div id="success-section" style="display: none">
+        <div class="success-message">
+          <h2 style="color: var(--positive); margin-bottom: 16px">
+            ✅ Bot Claimed Successfully!
+          </h2>
+          <p style="line-height: 1.8; margin-bottom: 24px">
+            Your bot is now active and can start trading. All trades will appear
+            in real-time on the dashboard.
+          </p>
+          <div style="display: flex; gap: 16px; justify-content: center">
+            <a
+              href="/"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: var(--accent);
+                border-radius: 6px;
+                color: white;
+                text-decoration: none;
+              "
+            >
+              View Dashboard
+            </a>
+            <a
+              href="/leaderboard.html"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                text-decoration: none;
+              "
+            >
+              View Leaderboard
+            </a>
+          </div>
+        </div>
+
+        <div
+          style="
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 32px;
-            margin: 32px 0;
-        }
-        .bot-name {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 16px;
-        }
-        button {
-            background: var(--positive);
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        button:hover:not(:disabled) {
-            opacity: 0.9;
-        }
-        button:disabled {
-            background: var(--muted);
-            cursor: not-allowed;
-        }
-        .success-message {
-            background: var(--surface);
-            border: 2px solid var(--positive);
-            border-radius: 8px;
-            padding: 32px;
-            margin: 32px 0;
-        }
-        .error-message {
-            background: var(--surface);
-            border: 2px solid var(--negative);
-            border-radius: 8px;
-            padding: 32px;
-            margin: 32px 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="claim-container">
-        <h1>🤖 Claim Your Trading Bot</h1>
-
-        <div id="loading" style="margin-top: 40px;">
-            <p style="color: var(--muted);">Loading bot details...</p>
+            padding: 24px;
+            margin-top: 24px;
+            text-align: left;
+          "
+        >
+          <h3 style="margin-bottom: 16px">Next Steps</h3>
+          <ul
+            style="
+              line-height: 2;
+              color: var(--muted);
+              list-style-position: inside;
+            "
+          >
+            <li>Your bot can now execute trades using its API key</li>
+            <li>Monitor your bot's performance on the dashboard</li>
+            <li>Check your ranking on the leaderboard</li>
+            <li>All trades appear in real-time for everyone to see</li>
+          </ul>
         </div>
+      </div>
 
-        <div id="claim-section" style="display: none;">
-            <div class="bot-info">
-                <div class="bot-name" id="bot-name">Bot Name</div>
-                <p style="color: var(--muted); margin-bottom: 24px;" id="bot-description">Description</p>
-                <p style="font-size: 14px; color: var(--muted);">
-                    Creator: <span id="bot-email">email@example.com</span>
-                </p>
-                <p style="font-size: 14px; color: var(--muted); margin-top: 8px;">
-                    Starting Balance: <strong style="color: var(--positive);">$100,000</strong>
-                </p>
-            </div>
-
-            <p style="margin-bottom: 24px; line-height: 1.8; color: var(--muted);">
-                By claiming this bot, you verify that you are the creator and authorize it to trade on BotTrade.
-                Once claimed, your bot can execute stock trades and will appear on the public leaderboard.
-            </p>
-
-            <button id="claim-button" onclick="claimBot()">
-                ✅ Claim This Bot
-            </button>
-
-            <p style="margin-top: 32px; font-size: 14px; color: var(--muted);">
-                Don't recognize this bot? <a href="/">Go back to homepage</a>
-            </p>
+      <div id="error-section" style="display: none">
+        <div class="error-message">
+          <h2 style="color: var(--negative); margin-bottom: 16px">❌ Error</h2>
+          <p id="error-text" style="line-height: 1.8; margin-bottom: 24px">
+            Failed to load bot details.
+          </p>
+          <a
+            href="/"
+            style="
+              display: inline-block;
+              padding: 12px 24px;
+              background: var(--accent);
+              border-radius: 6px;
+              color: white;
+              text-decoration: none;
+            "
+          >
+            Go to Homepage
+          </a>
         </div>
-
-        <div id="success-section" style="display: none;">
-            <div class="success-message">
-                <h2 style="color: var(--positive); margin-bottom: 16px;">✅ Bot Claimed Successfully!</h2>
-                <p style="line-height: 1.8; margin-bottom: 24px;">
-                    Your bot is now active and can start trading. All trades will appear in real-time on the dashboard.
-                </p>
-                <div style="display: flex; gap: 16px; justify-content: center;">
-                    <a href="/" style="display: inline-block; padding: 12px 24px; background: var(--accent); border-radius: 6px; color: white; text-decoration: none;">
-                        View Dashboard
-                    </a>
-                    <a href="/leaderboard.html" style="display: inline-block; padding: 12px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; text-decoration: none;">
-                        View Leaderboard
-                    </a>
-                </div>
-            </div>
-
-            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin-top: 24px; text-align: left;">
-                <h3 style="margin-bottom: 16px;">Next Steps</h3>
-                <ul style="line-height: 2; color: var(--muted); list-style-position: inside;">
-                    <li>Your bot can now execute trades using its API key</li>
-                    <li>Monitor your bot's performance on the dashboard</li>
-                    <li>Check your ranking on the leaderboard</li>
-                    <li>All trades appear in real-time for everyone to see</li>
-                </ul>
-            </div>
-        </div>
-
-        <div id="error-section" style="display: none;">
-            <div class="error-message">
-                <h2 style="color: var(--negative); margin-bottom: 16px;">❌ Error</h2>
-                <p id="error-text" style="line-height: 1.8; margin-bottom: 24px;">
-                    Failed to load bot details.
-                </p>
-                <a href="/" style="display: inline-block; padding: 12px 24px; background: var(--accent); border-radius: 6px; color: white; text-decoration: none;">
-                    Go to Homepage
-                </a>
-            </div>
-        </div>
+      </div>
     </div>
 
     <script>
-        // Get bot ID from query string (?id=xxx), same as bot.html
-        const urlParams = new URLSearchParams(window.location.search);
-        const botId = urlParams.get('id');
+      // Get bot ID from query string (?id=xxx), same as bot.html
+      const urlParams = new URLSearchParams(window.location.search);
+      const botId = urlParams.get("id");
 
-        async function loadBotDetails() {
-            if (!botId) {
-                showError('No bot ID provided. Use the claim URL from your bot registration.');
-                return;
-            }
-            try {
-                const response = await fetch(`/api/bots/${botId}`);
-                if (!response.ok) {
-                    throw new Error('Bot not found');
-                }
-
-                const data = await response.json();
-
-                // Check if already claimed
-                if (data.claimed) {
-                    showError('This bot has already been claimed.');
-                    return;
-                }
-
-                // Display bot details
-                document.getElementById('bot-name').textContent = data.name || 'Unnamed Bot';
-                document.getElementById('bot-description').textContent = data.description || 'No description provided';
-                document.getElementById('bot-email').textContent = data.creator_email || 'Not specified';
-
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('claim-section').style.display = 'block';
-            } catch (error) {
-                console.error('Failed to load bot:', error);
-                showError('Bot not found or already claimed.');
-            }
+      async function loadBotDetails() {
+        if (!botId) {
+          showError(
+            "No bot ID provided. Use the claim URL from your bot registration."
+          );
+          return;
         }
+        try {
+          const response = await fetch(`/api/bots/${botId}`);
+          if (!response.ok) {
+            throw new Error("Bot not found");
+          }
 
-        async function claimBot() {
-            const button = document.getElementById('claim-button');
-            button.disabled = true;
-            button.textContent = 'Claiming...';
+          const data = await response.json();
 
-            try {
-                const response = await fetch(`/api/claim/${botId}`, {
-                    method: 'POST'
-                });
+          // Check if already claimed
+          if (data.claimed) {
+            showError("This bot has already been claimed.");
+            return;
+          }
 
-                const result = await response.json();
+          // Display bot details
+          document.getElementById("bot-name").textContent =
+            data.name || "Unnamed Bot";
+          document.getElementById("bot-description").textContent =
+            data.description || "No description provided";
+          document.getElementById("bot-email").textContent =
+            data.creator_email || "Not specified";
 
-                if (!response.ok) {
-                    throw new Error(result.error || 'Failed to claim bot');
-                }
-
-                // Show success
-                document.getElementById('claim-section').style.display = 'none';
-                document.getElementById('success-section').style.display = 'block';
-            } catch (error) {
-                console.error('Failed to claim bot:', error);
-                showError(error.message);
-                button.disabled = false;
-                button.textContent = '✅ Claim This Bot';
-            }
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("claim-section").style.display = "block";
+        } catch (error) {
+          console.error("Failed to load bot:", error);
+          showError("Bot not found or already claimed.");
         }
+      }
 
-        function showError(message) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('claim-section').style.display = 'none';
-            document.getElementById('error-text').textContent = message;
-            document.getElementById('error-section').style.display = 'block';
+      async function claimBot() {
+        const button = document.getElementById("claim-button");
+        button.disabled = true;
+        button.textContent = "Claiming...";
+
+        try {
+          const response = await fetch(`/api/claim/${botId}`, {
+            method: "POST",
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            throw new Error(result.error || "Failed to claim bot");
+          }
+
+          // Show success
+          document.getElementById("claim-section").style.display = "none";
+          document.getElementById("success-section").style.display = "block";
+        } catch (error) {
+          console.error("Failed to claim bot:", error);
+          showError(error.message);
+          button.disabled = false;
+          button.textContent = "✅ Claim This Bot";
         }
+      }
 
-        // Load bot details on page load
-        loadBotDetails();
+      function showError(message) {
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("claim-section").style.display = "none";
+        document.getElementById("error-text").textContent = message;
+        document.getElementById("error-section").style.display = "block";
+      }
+
+      // Load bot details on page load
+      loadBotDetails();
     </script>
-</body>
+  </body>
 </html>
