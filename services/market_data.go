@@ -60,9 +60,9 @@ func (s *MarketDataService) GetQuote(symbol string) (*models.Quote, error) {
 	}
 	s.mu.RUnlock()
 
-	// If no API key, return mock data for testing
+	// Require a valid API key - never return fake data
 	if s.apiKey == "" || s.apiKey == "your_api_key_here" {
-		return s.getMockQuote(symbol), nil
+		return nil, fmt.Errorf("FINNHUB_API_KEY is not set; get a key at https://finnhub.io/register")
 	}
 
 	// Fetch from Finnhub API
@@ -128,24 +128,5 @@ func (s *MarketDataService) parseFinnhubQuote(symbol string, fh finnhubQuote) *m
 		Change:        fh.Change,
 		ChangePercent: fh.PercentChange,
 		Timestamp:     time.Unix(fh.Timestamp, 0),
-	}
-}
-
-// Mock data for testing when API key is not set
-// This returns fake prices - DO NOT USE IN PRODUCTION
-func (s *MarketDataService) getMockQuote(symbol string) *models.Quote {
-	// Simple mock prices based on symbol hash
-	basePrice := 100.0 + float64(len(symbol)*10)
-	spread := basePrice * 0.001
-
-	return &models.Quote{
-		Symbol:        symbol,
-		Price:         basePrice,
-		Bid:           basePrice - spread/2,
-		Ask:           basePrice + spread/2,
-		Volume:        1000000,
-		Change:        2.30,
-		ChangePercent: 1.31,
-		Timestamp:     time.Now(),
 	}
 }
