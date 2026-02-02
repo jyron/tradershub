@@ -39,32 +39,51 @@
             </div>
         </div>
 
-        <div class="card" style="margin-top: 24px;">
+        <div class="card mt-24">
             <h3>Bot Info</h3>
-            <div style="display: grid; gap: 12px; margin-top: 16px;">
-                <div>
-                    <span style="color: var(--muted); font-size: 14px;">Status:</span>
-                    <span id="claimed-status" style="margin-left: 8px; font-weight: 600;"></span>
+            <div class="bot-info-grid">
+                <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span id="claimed-status" class="info-value"></span>
                 </div>
-                <div>
-                    <span style="color: var(--muted); font-size: 14px;">Created by:</span>
-                    <span id="creator-email" style="margin-left: 8px;"></span>
+                <div class="info-row">
+                    <span class="info-label">Created by:</span>
+                    <span id="creator-email" class="info-value"></span>
                 </div>
-                <div>
-                    <span style="color: var(--muted); font-size: 14px;">Joined:</span>
-                    <span id="created-at" style="margin-left: 8px;"></span>
+                <div class="info-row">
+                    <span class="info-label">Joined:</span>
+                    <span id="created-at" class="info-value"></span>
                 </div>
             </div>
         </div>
 
-        <div class="card" style="margin-top: 24px;">
-            <h2>Portfolio Value Over Time</h2>
-            <div class="chart-container" style="position: relative; height: 300px; margin-top: 16px;">
+        <div class="card card-chart mt-24">
+            <div class="chart-header">
+                <h2>Portfolio Value Over Time</h2>
+                <div class="chart-controls">
+                    <div class="time-scale-selector">
+                        <button class="time-scale-btn active" data-scale="1D">1D</button>
+                        <button class="time-scale-btn" data-scale="1W">1W</button>
+                        <button class="time-scale-btn" data-scale="ALL">All</button>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-wrapper">
                 <canvas id="portfolio-chart"></canvas>
             </div>
         </div>
 
-        <div class="card" style="margin-top: 24px;">
+        <div class="card card-chart mt-24">
+            <div class="chart-header">
+                <h2>Trading Activity</h2>
+                <p class="text-muted">Buy & sell volume over time</p>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="activity-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="card mt-24">
             <h2>Current Positions</h2>
             <table>
                 <thead>
@@ -79,7 +98,7 @@
                 </thead>
                 <tbody id="positions-body">
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             No positions
                         </td>
                     </tr>
@@ -87,7 +106,7 @@
             </table>
         </div>
 
-        <div class="card" style="margin-top: 24px;">
+        <div class="card mt-24">
             <h2>Recent Trades</h2>
             <table>
                 <thead>
@@ -102,7 +121,7 @@
                 </thead>
                 <tbody id="trades-body">
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             No trades yet
                         </td>
                     </tr>
@@ -120,9 +139,15 @@
             throw new Error('No bot ID in URL');
         }
 
+        // Global state for charts
+        let currentTimeScale = '1D';
+        let allTradesData = [];
+        let currentPortfolioValue = 0;
+        let portfolioChartInstance = null;
+        let activityChartInstance = null;
+
         async function loadBotProfile() {
             try {
-                // Load bot info and portfolio
                 const response = await fetch(`/api/bots/${botId}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load bot: ${response.status}`);
@@ -177,43 +202,111 @@
                 day: 'numeric'
             });
 
+            // Store data globally
+            allTradesData = data.recent_trades || [];
+            currentPortfolioValue = totalValue;
+
             // Display positions
             displayPositions(data.portfolio?.positions || []);
 
             // Display trades
-            displayTrades(data.recent_trades || []);
+            displayTrades(allTradesData);
 
-            // Create portfolio chart
-            createPortfolioChart(data.recent_trades || [], data.portfolio?.total_value || 100000);
+            // Create charts
+            createPortfolioChart();
+            createActivityChart();
         }
 
-        function createPortfolioChart(trades, currentValue) {
-            if (!trades || trades.length === 0) {
-                // No trades yet - just show starting balance to current value
+        // Time filtering functions
+        function filterTradesByTimeScale(trades, timeScale) {
+            if (timeScale === 'ALL' || !trades || trades.length === 0) {
+                return trades;
+            }
+
+            const now = new Date();
+            let cutoffTime;
+
+            switch(timeScale) {
+                case '1D':
+                    cutoffTime = new Date(now - 24 * 60 * 60 * 1000);
+                    break;
+                case '1W':
+                    cutoffTime = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    return trades;
+            }
+
+            return trades.filter(trade =>
+                new Date(trade.executed_at) >= cutoffTime
+            );
+        }
+
+        function getChartGranularity(timeScale) {
+            switch(timeScale) {
+                case '1D': return 'minute';
+                case '1W': return 'hour';
+                case 'ALL': return 'day';
+                default: return 'minute';
+            }
+        }
+
+        function getTimeRangeStart() {
+            const now = new Date();
+            switch(currentTimeScale) {
+                case '1D':
+                    return new Date(now - 24 * 60 * 60 * 1000);
+                case '1W':
+                    return new Date(now - 7 * 24 * 60 * 60 * 1000);
+                default:
+                    return new Date(now - 3600000); // 1 hour default
+            }
+        }
+
+        // Create gradient for chart
+        function createGradient(ctx, isProfit) {
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+
+            if (isProfit) {
+                gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+                gradient.addColorStop(0.5, 'rgba(16, 185, 129, 0.15)');
+                gradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+            } else {
+                gradient.addColorStop(0, 'rgba(239, 68, 68, 0.4)');
+                gradient.addColorStop(0.5, 'rgba(239, 68, 68, 0.15)');
+                gradient.addColorStop(1, 'rgba(239, 68, 68, 0.01)');
+            }
+
+            return gradient;
+        }
+
+        function createPortfolioChart() {
+            const filteredTrades = filterTradesByTimeScale(allTradesData, currentTimeScale);
+
+            if (!filteredTrades || filteredTrades.length === 0) {
                 const points = [
-                    { time: new Date(Date.now() - 3600000), value: 100000 },
-                    { time: new Date(), value: currentValue }
+                    { time: getTimeRangeStart(), value: 100000 },
+                    { time: new Date(), value: currentPortfolioValue }
                 ];
-                renderChart(points, currentValue);
+                renderPortfolioChart(points, currentPortfolioValue);
                 return;
             }
 
-            // Calculate portfolio value over time based on trades
+            // Calculate portfolio value over time
             const startingBalance = 100000;
-            const chronologicalTrades = [...trades].reverse();
+            const chronologicalTrades = [...filteredTrades].reverse();
 
             let points = [];
             let cashBalance = startingBalance;
-            let holdings = {}; // symbol -> quantity
+            let holdings = {};
 
-            // Add starting point (time of first trade)
+            // Add starting point
             points.push({
                 time: new Date(chronologicalTrades[0].executed_at),
                 value: startingBalance
             });
 
             chronologicalTrades.forEach(trade => {
-                // Update cash and holdings
                 if (trade.side === 'buy') {
                     cashBalance -= trade.total;
                     holdings[trade.symbol] = (holdings[trade.symbol] || 0) + trade.quantity;
@@ -225,7 +318,6 @@
                     }
                 }
 
-                // Calculate total cost basis of holdings
                 let holdingsCost = startingBalance - cashBalance;
 
                 points.push({
@@ -235,19 +327,26 @@
             });
 
             // Add current point
-            points.push({ time: new Date(), value: currentValue });
+            points.push({ time: new Date(), value: currentPortfolioValue });
 
-            renderChart(points, currentValue);
+            renderPortfolioChart(points, currentPortfolioValue);
         }
 
-        function renderChart(points, currentValue) {
+        function renderPortfolioChart(points, currentValue) {
+            const canvas = document.getElementById('portfolio-chart');
+            if (!canvas) return;
 
-            const ctx = document.getElementById('portfolio-chart');
-            if (!ctx) return;
-
+            const ctx = canvas.getContext('2d');
             const isProfit = currentValue >= 100000;
+            const gradient = createGradient(ctx, isProfit);
+            const granularity = getChartGranularity(currentTimeScale);
 
-            new Chart(ctx.getContext('2d'), {
+            // Destroy existing chart
+            if (portfolioChartInstance) {
+                portfolioChartInstance.destroy();
+            }
+
+            portfolioChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: points.map(p => p.time),
@@ -255,23 +354,37 @@
                         label: 'Portfolio Value',
                         data: points.map(p => p.value),
                         borderColor: isProfit ? '#10b981' : '#ef4444',
-                        backgroundColor: isProfit ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        borderWidth: 2,
+                        backgroundColor: gradient,
+                        borderWidth: 2.5,
                         fill: true,
-                        tension: 0.4
+                        tension: 0.4,
+                        pointRadius: points.length < 50 ? 3 : 0,
+                        pointHoverRadius: 6,
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
                     plugins: {
-                        legend: {
-                            display: false
-                        },
+                        legend: { display: false },
                         tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#e5e5e5',
+                            bodyColor: '#e5e5e5',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: false,
                             callbacks: {
                                 label: function(context) {
-                                    return '$' + context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    return '$' + context.parsed.y.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
                                 }
                             }
                         }
@@ -280,32 +393,207 @@
                         x: {
                             type: 'time',
                             time: {
-                                unit: 'minute',
+                                unit: granularity,
                                 displayFormats: {
-                                    minute: 'MMM d, HH:mm'
+                                    minute: 'HH:mm',
+                                    hour: 'MMM d, HH:mm',
+                                    day: 'MMM d'
                                 }
                             },
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)'
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false,
                             },
                             ticks: {
-                                color: '#9ca3af'
+                                color: '#9ca3af',
+                                maxRotation: 0,
+                                autoSkipPadding: 20,
                             }
                         },
                         y: {
                             beginAtZero: false,
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)'
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false,
                             },
                             ticks: {
                                 color: '#9ca3af',
                                 callback: function(value) {
-                                    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                                    return '$' + value.toLocaleString('en-US', {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    });
                                 }
                             }
                         }
                     }
                 }
+            });
+        }
+
+        function createActivityChart() {
+            const filteredTrades = filterTradesByTimeScale(allTradesData, currentTimeScale);
+
+            if (!filteredTrades || filteredTrades.length === 0) {
+                // Don't render chart if no data
+                return;
+            }
+
+            const granularity = getChartGranularity(currentTimeScale);
+            const buckets = aggregateTradesByTime(filteredTrades, granularity);
+
+            const canvas = document.getElementById('activity-chart');
+            if (!canvas) return;
+
+            // Destroy existing chart
+            if (activityChartInstance) {
+                activityChartInstance.destroy();
+            }
+
+            activityChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: buckets.map(b => b.time),
+                    datasets: [
+                        {
+                            label: 'Buy Volume',
+                            data: buckets.map(b => b.buyVolume),
+                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                            borderColor: '#10b981',
+                            borderWidth: 1,
+                        },
+                        {
+                            label: 'Sell Volume',
+                            data: buckets.map(b => b.sellVolume),
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                            borderColor: '#ef4444',
+                            borderWidth: 1,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#9ca3af',
+                                usePointStyle: true,
+                                padding: 15,
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#e5e5e5',
+                            bodyColor: '#e5e5e5',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: $${context.parsed.y.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: granularity,
+                                displayFormats: {
+                                    minute: 'HH:mm',
+                                    hour: 'MMM d, HH:mm',
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false,
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false,
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function aggregateTradesByTime(trades, granularity) {
+            const buckets = new Map();
+
+            trades.forEach(trade => {
+                const tradeTime = new Date(trade.executed_at);
+                const bucketKey = getBucketKey(tradeTime, granularity);
+
+                if (!buckets.has(bucketKey)) {
+                    buckets.set(bucketKey, {
+                        time: tradeTime,
+                        buyVolume: 0,
+                        sellVolume: 0,
+                    });
+                }
+
+                const bucket = buckets.get(bucketKey);
+                if (trade.side === 'buy') {
+                    bucket.buyVolume += trade.total;
+                } else {
+                    bucket.sellVolume += trade.total;
+                }
+            });
+
+            return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+        }
+
+        function getBucketKey(date, granularity) {
+            const d = new Date(date);
+
+            switch(granularity) {
+                case 'minute':
+                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+                case 'hour':
+                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
+                case 'day':
+                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                default:
+                    return date.toISOString();
+            }
+        }
+
+        // Time scale selector event listeners
+        function attachTimeScaleListeners() {
+            const buttons = document.querySelectorAll('.time-scale-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // Update active state
+                    buttons.forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+
+                    // Update current time scale
+                    currentTimeScale = e.target.dataset.scale;
+
+                    // Re-render charts
+                    createPortfolioChart();
+                    createActivityChart();
+                });
             });
         }
 
@@ -315,7 +603,7 @@
             if (!positions || positions.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             No open positions
                         </td>
                     </tr>
@@ -348,7 +636,7 @@
             if (!trades || trades.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 40px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             No trades yet
                         </td>
                     </tr>
@@ -365,7 +653,7 @@
                     <tr>
                         <td>${timeStr}</td>
                         <td>${escapeHtml(trade.symbol)}</td>
-                        <td class="${sideClass}" style="text-transform: uppercase; font-weight: 600;">${trade.side}</td>
+                        <td class="${sideClass} font-semibold" style="text-transform: uppercase;">${trade.side}</td>
                         <td>${trade.quantity}</td>
                         <td>$${trade.price.toFixed(2)}</td>
                         <td>$${trade.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -383,9 +671,13 @@
 
         // Load on page load
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadBotProfile);
+            document.addEventListener('DOMContentLoaded', () => {
+                loadBotProfile();
+                attachTimeScaleListeners();
+            });
         } else {
             loadBotProfile();
+            attachTimeScaleListeners();
         }
     </script>
 </body>

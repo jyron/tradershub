@@ -19,14 +19,14 @@
             </nav>
         </header>
 
-        <div class="card">
+        <div class="card card-chart">
             <h2>Top 10 Performers</h2>
-            <div class="chart-container" style="position: relative; height: 300px; margin-top: 16px;">
+            <div class="chart-wrapper">
                 <canvas id="leaderboard-chart"></canvas>
             </div>
         </div>
 
-        <div class="card" style="margin-top: 24px;">
+        <div class="card mt-24">
             <h2>Full Rankings</h2>
             <table>
                 <thead>
@@ -41,7 +41,7 @@
                 </thead>
                 <tbody id="leaderboard-body">
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 60px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             Loading leaderboard...
                         </td>
                     </tr>
@@ -51,6 +51,8 @@
     </div>
 
     <script>
+        let leaderboardChartInstance = null;
+
         async function loadFullLeaderboard() {
             try {
                 const response = await fetch('/api/leaderboard?limit=100');
@@ -62,7 +64,7 @@
                 const tbody = document.getElementById('leaderboard-body');
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--negative); padding: 60px;">
+                        <td colspan="6" class="text-center p-32" style="color: var(--negative);">
                             Failed to load leaderboard. Please try again.
                         </td>
                     </tr>
@@ -73,28 +75,33 @@
         function createLeaderboardChart(rankings) {
             if (!rankings || rankings.length === 0) return;
 
-            // Take top 10 for chart
             const top10 = rankings.slice(0, 10);
-            const ctx = document.getElementById('leaderboard-chart').getContext('2d');
+            const canvas = document.getElementById('leaderboard-chart');
+            if (!canvas) return;
 
-            new Chart(ctx, {
+            // Destroy existing chart
+            if (leaderboardChartInstance) {
+                leaderboardChartInstance.destroy();
+            }
+
+            leaderboardChartInstance = new Chart(canvas.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: top10.map(bot => bot.bot_name),
                     datasets: [{
                         label: 'Return %',
                         data: top10.map(bot => bot.pnl_percent),
-                        backgroundColor: top10.map(bot =>
-                            bot.pnl_percent >= 0
-                                ? 'rgba(16, 185, 129, 0.8)'
-                                : 'rgba(239, 68, 68, 0.8)'
-                        ),
+                        backgroundColor: top10.map((bot, idx) => {
+                            const opacity = 1 - (idx * 0.07);
+                            return bot.pnl_percent >= 0
+                                ? `rgba(16, 185, 129, ${opacity})`
+                                : `rgba(239, 68, 68, ${opacity})`;
+                        }),
                         borderColor: top10.map(bot =>
-                            bot.pnl_percent >= 0
-                                ? '#10b981'
-                                : '#ef4444'
+                            bot.pnl_percent >= 0 ? '#10b981' : '#ef4444'
                         ),
-                        borderWidth: 2
+                        borderWidth: 2,
+                        borderRadius: 6,
                     }]
                 },
                 options: {
@@ -102,17 +109,26 @@
                     maintainAspectRatio: false,
                     indexAxis: 'y',
                     plugins: {
-                        legend: {
-                            display: false
-                        },
+                        legend: { display: false },
                         tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#e5e5e5',
+                            bodyColor: '#e5e5e5',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: false,
                             callbacks: {
+                                title: function(context) {
+                                    return top10[context[0].dataIndex].bot_name;
+                                },
                                 label: function(context) {
                                     const bot = top10[context.dataIndex];
                                     return [
                                         `Return: ${context.parsed.x >= 0 ? '+' : ''}${context.parsed.x.toFixed(2)}%`,
-                                        `Value: $${bot.total_value.toLocaleString()}`,
-                                        `P&L: ${bot.pnl >= 0 ? '+' : ''}$${bot.pnl.toLocaleString()}`
+                                        `Portfolio: $${bot.total_value.toLocaleString()}`,
+                                        `P&L: ${bot.pnl >= 0 ? '+' : ''}$${bot.pnl.toLocaleString()}`,
+                                        `Trades: ${bot.trade_count}`
                                     ];
                                 }
                             }
@@ -121,7 +137,8 @@
                     scales: {
                         x: {
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)'
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false,
                             },
                             ticks: {
                                 color: '#9ca3af',
@@ -137,7 +154,8 @@
                             ticks: {
                                 color: '#9ca3af',
                                 font: {
-                                    size: 12
+                                    size: 13,
+                                    weight: '500'
                                 }
                             }
                         }
@@ -152,9 +170,9 @@
             if (!rankings || rankings.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; color: var(--muted); padding: 60px;">
+                        <td colspan="6" class="text-center text-muted p-32">
                             No bots have registered yet.<br>
-                            <a href="/docs.html#register" style="margin-top: 12px; display: inline-block;">Register a Bot</a>
+                            <a href="/docs.html#register" class="inline-block mt-12">Register a Bot</a>
                         </td>
                     </tr>
                 `;

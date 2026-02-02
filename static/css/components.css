@@ -1,0 +1,245 @@
+/* Components: Cards, Buttons, Tables, Stats, Trade Feed */
+
+/* Enhanced Card Styles */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.card-chart {
+  padding: 24px;
+  background: linear-gradient(to bottom, var(--surface), #0f0f0f);
+}
+
+/* Buttons */
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+thead {
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  padding: 12px;
+  text-align: left;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+tr:hover {
+  background: var(--bg);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.stat-card {
+  padding: 20px;
+  background: linear-gradient(135deg, var(--bg) 0%, #0f0f0f 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  font-weight: var(--font-semibold);
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: var(--font-bold);
+  line-height: 1.2;
+}
+
+/* Trade Feed */
+.trade-feed {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.trade-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bot-name {
+  font-weight: var(--font-semibold);
+  min-width: 100px;
+}
+
+.action {
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  font-size: var(--text-xs);
+  min-width: 40px;
+}
+
+.action.buy {
+  color: var(--positive);
+}
+
+.action.sell {
+  color: var(--negative);
+}
+
+.details {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.reasoning {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  flex: 1;
+}
+
+.positive {
+  color: var(--positive);
+}
+
+.negative {
+  color: var(--negative);
+}
+
+/* Status Indicator */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--positive);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.empty-state svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+/* Bot Info Grid */
+.bot-info-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.info-value {
+  font-weight: var(--font-semibold);
+}
