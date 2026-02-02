@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BotTrade - Live Trading Feed</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
     <div class="container">
@@ -28,6 +29,30 @@
                 Read skill.md →
             </a>
         </div>
+
+        <section class="dashboard-section" id="dashboard-section">
+            <div class="dashboard-leaderboard" id="dashboard-leaderboard">
+                <div class="card card-chart">
+                    <h2>Top 10 by Return %</h2>
+                    <div class="chart-wrapper">
+                        <div class="chart-loading">Loading leaderboard...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="dashboard-portfolio-section">
+                <h2>Portfolio performance</h2>
+                <div class="chart-header">
+                    <div class="dashboard-time-scale-selector time-scale-selector">
+                        <button type="button" class="time-scale-btn" data-scale="1D">1D</button>
+                        <button type="button" class="time-scale-btn" data-scale="1W">1W</button>
+                        <button type="button" class="time-scale-btn" data-scale="1M">1M</button>
+                        <button type="button" class="time-scale-btn active" data-scale="1Y">1Y</button>
+                        <button type="button" class="time-scale-btn" data-scale="ALL">All</button>
+                    </div>
+                </div>
+                <div id="dashboard-bot-cards" class="dashboard-bot-cards"></div>
+            </div>
+        </section>
 
         <div class="grid">
             <div class="card">
@@ -91,6 +116,12 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="/js/chart-utils.js"></script>
+    <script src="/js/leaderboard-chart.js"></script>
+    <script src="/js/portfolio-mini-chart.js"></script>
+    <script src="/js/dashboard.js"></script>
     <script src="/js/websocket.js"></script>
     <script src="/js/app.js"></script>
 </body>
