@@ -1,0 +1,6 @@
+# Snapshot generator and historical data scripts
+alpaca-py
+psycopg2-binary
+python-dotenv
+pytz
+requests

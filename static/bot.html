@@ -64,6 +64,8 @@
                     <div class="time-scale-selector">
                         <button class="time-scale-btn active" data-scale="1D">1D</button>
                         <button class="time-scale-btn" data-scale="1W">1W</button>
+                        <button class="time-scale-btn" data-scale="1M">1M</button>
+                        <button class="time-scale-btn" data-scale="1Y">1Y</button>
                         <button class="time-scale-btn" data-scale="ALL">All</button>
                     </div>
                 </div>
@@ -107,7 +109,8 @@
         </div>
 
         <div class="card mt-24">
-            <h2>Recent Trades</h2>
+            <h2>Trades in selected range</h2>
+            <p class="text-muted" id="trades-range-label">1D</p>
             <table>
                 <thead>
                     <tr>
@@ -142,13 +145,15 @@
         // Global state for charts
         let currentTimeScale = '1D';
         let allTradesData = [];
+        let allPortfolioSnapshots = [];
         let currentPortfolioValue = 0;
         let portfolioChartInstance = null;
         let activityChartInstance = null;
+        let tradesDisplayLimit = 50;
 
         async function loadBotProfile() {
             try {
-                const response = await fetch(`/api/bots/${botId}`);
+                const response = await fetch(`/api/bots/${botId}?limit=200`);
                 if (!response.ok) {
                     throw new Error(`Failed to load bot: ${response.status}`);
                 }
@@ -204,17 +209,18 @@
 
             // Store data globally
             allTradesData = data.recent_trades || [];
+            allPortfolioSnapshots = data.portfolio_snapshots || [];
             currentPortfolioValue = totalValue;
 
             // Display positions
             displayPositions(data.portfolio?.positions || []);
 
-            // Display trades
-            displayTrades(allTradesData);
-
-            // Create charts
+            // Create charts and trades table
+            tradesDisplayLimit = 50;
             createPortfolioChart();
             createActivityChart();
+            updateTradesRangeLabel();
+            displayTradesFiltered();
         }
 
         // Time filtering functions
@@ -233,6 +239,12 @@
                 case '1W':
                     cutoffTime = new Date(now - 7 * 24 * 60 * 60 * 1000);
                     break;
+                case '1M':
+                    cutoffTime = new Date(now - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case '1Y':
+                    cutoffTime = new Date(now - 365 * 24 * 60 * 60 * 1000);
+                    break;
                 default:
                     return trades;
             }
@@ -246,6 +258,8 @@
             switch(timeScale) {
                 case '1D': return 'minute';
                 case '1W': return 'hour';
+                case '1M':
+                case '1Y':
                 case 'ALL': return 'day';
                 default: return 'minute';
             }
@@ -258,9 +272,18 @@
                     return new Date(now - 24 * 60 * 60 * 1000);
                 case '1W':
                     return new Date(now - 7 * 24 * 60 * 60 * 1000);
+                case '1M':
+                    return new Date(now - 30 * 24 * 60 * 60 * 1000);
+                case '1Y':
+                    return new Date(now - 365 * 24 * 60 * 60 * 1000);
                 default:
-                    return new Date(now - 3600000); // 1 hour default
+                    return new Date(now - 3600000);
             }
+        }
+
+        function updateTradesRangeLabel() {
+            const el = document.getElementById('trades-range-label');
+            if (el) el.textContent = currentTimeScale === 'ALL' ? 'All time' : currentTimeScale;
         }
 
         // Create gradient for chart
@@ -280,9 +303,38 @@
             return gradient;
         }
 
-        function createPortfolioChart() {
-            const filteredTrades = filterTradesByTimeScale(allTradesData, currentTimeScale);
+        function filterSnapshotsByTimeScale(snapshots, timeScale) {
+            if (!snapshots || snapshots.length === 0) return [];
+            if (timeScale === 'ALL') return snapshots;
+            const now = new Date();
+            let cutoffTime;
+            if (timeScale === '1D') cutoffTime = new Date(now - 24 * 60 * 60 * 1000);
+            else if (timeScale === '1W') cutoffTime = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            else if (timeScale === '1M') cutoffTime = new Date(now - 30 * 24 * 60 * 60 * 1000);
+            else if (timeScale === '1Y') cutoffTime = new Date(now - 365 * 24 * 60 * 60 * 1000);
+            else return snapshots;
+            return snapshots.filter(s => new Date(s.snapshot_at) >= cutoffTime);
+        }
 
+        function createPortfolioChart() {
+            // Prefer real daily snapshots (from generate_snapshots.py / Alpaca) so the chart shows actual market moves
+            const filteredSnapshots = filterSnapshotsByTimeScale(allPortfolioSnapshots, currentTimeScale);
+            if (filteredSnapshots && filteredSnapshots.length > 0) {
+                const points = filteredSnapshots.map(s => ({
+                    time: new Date(s.snapshot_at),
+                    value: Number(s.total_value)
+                }));
+                // Extend to "now" with current portfolio value so the line doesn't stop at last snapshot
+                const lastSnapshot = filteredSnapshots[filteredSnapshots.length - 1];
+                if (new Date(lastSnapshot.snapshot_at).getTime() < Date.now() - 60 * 60 * 1000) {
+                    points.push({ time: new Date(), value: currentPortfolioValue });
+                }
+                renderPortfolioChart(points, currentPortfolioValue);
+                return;
+            }
+
+            // Fallback: build from trades (cost basis only; flat between trades)
+            const filteredTrades = filterTradesByTimeScale(allTradesData, currentTimeScale);
             if (!filteredTrades || filteredTrades.length === 0) {
                 const points = [
                     { time: getTimeRangeStart(), value: 100000 },
@@ -292,15 +344,12 @@
                 return;
             }
 
-            // Calculate portfolio value over time
             const startingBalance = 100000;
             const chronologicalTrades = [...filteredTrades].reverse();
-
             let points = [];
             let cashBalance = startingBalance;
             let holdings = {};
 
-            // Add starting point
             points.push({
                 time: new Date(chronologicalTrades[0].executed_at),
                 value: startingBalance
@@ -313,22 +362,14 @@
                 } else {
                     cashBalance += trade.total;
                     holdings[trade.symbol] = (holdings[trade.symbol] || 0) - trade.quantity;
-                    if (holdings[trade.symbol] <= 0) {
-                        delete holdings[trade.symbol];
-                    }
+                    if (holdings[trade.symbol] <= 0) delete holdings[trade.symbol];
                 }
-
-                let holdingsCost = startingBalance - cashBalance;
-
                 points.push({
                     time: new Date(trade.executed_at),
-                    value: cashBalance + holdingsCost
+                    value: cashBalance + (startingBalance - cashBalance)
                 });
             });
-
-            // Add current point
             points.push({ time: new Date(), value: currentPortfolioValue });
-
             renderPortfolioChart(points, currentPortfolioValue);
         }
 
@@ -589,8 +630,11 @@
 
                     // Update current time scale
                     currentTimeScale = e.target.dataset.scale;
+                    tradesDisplayLimit = 50;
 
-                    // Re-render charts
+                    // Re-render charts and trades table
+                    updateTradesRangeLabel();
+                    displayTradesFiltered();
                     createPortfolioChart();
                     createActivityChart();
                 });
@@ -630,21 +674,26 @@
             }).join('');
         }
 
-        function displayTrades(trades) {
+        function displayTradesFiltered() {
+            const filtered = filterTradesByTimeScale(allTradesData, currentTimeScale);
+            const toShow = filtered.slice(0, tradesDisplayLimit);
             const tbody = document.getElementById('trades-body');
+            const card = tbody.closest('.card');
+            let showMoreBtn = card ? card.querySelector('.show-more-trades') : null;
 
-            if (!trades || trades.length === 0) {
+            if (!filtered || filtered.length === 0) {
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="6" class="text-center text-muted p-32">
-                            No trades yet
+                            No trades in selected range
                         </td>
                     </tr>
                 `;
+                if (showMoreBtn) showMoreBtn.style.display = 'none';
                 return;
             }
 
-            tbody.innerHTML = trades.map(trade => {
+            tbody.innerHTML = toShow.map(trade => {
                 const sideClass = trade.side === 'buy' ? 'positive' : 'negative';
                 const date = new Date(trade.executed_at);
                 const timeStr = date.toLocaleString();
@@ -660,6 +709,25 @@
                     </tr>
                 `;
             }).join('');
+
+            if (showMoreBtn) {
+                showMoreBtn.style.display = filtered.length > tradesDisplayLimit ? 'block' : 'none';
+                showMoreBtn.onclick = function() {
+                    tradesDisplayLimit += 50;
+                    displayTradesFiltered();
+                };
+            } else if (card && filtered.length > 50) {
+                const btn = document.createElement('button');
+                btn.className = 'show-more-trades mt-16';
+                btn.type = 'button';
+                btn.textContent = 'Show more';
+                btn.style.cssText = 'padding: 8px 16px; cursor: pointer; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);';
+                btn.onclick = function() {
+                    tradesDisplayLimit += 50;
+                    displayTradesFiltered();
+                };
+                card.querySelector('table').insertAdjacentElement('afterend', btn);
+            }
         }
 
         function escapeHtml(text) {

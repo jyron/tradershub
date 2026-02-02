@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -97,13 +98,39 @@ func GetBotDetails(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get recent trades
-	rows, err := database.DB.Query(
-		context.Background(),
-		`SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		 FROM trades WHERE bot_id = $1 ORDER BY executed_at DESC LIMIT 20`,
-		botID,
-	)
+	// Get trades with optional limit and date range (for 1D/1W/1M/1Y filtering)
+	limitStr := c.Query("limit", "50")
+	var limit int
+	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil || limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+	if toStr != "" && len(toStr) == 10 {
+		toStr = toStr + " 23:59:59"
+	}
+
+	query := `SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
+		  FROM trades WHERE bot_id = $1`
+	args := []interface{}{botID}
+	argNum := 2
+	if fromStr != "" {
+		query += fmt.Sprintf(" AND executed_at >= $%d", argNum)
+		args = append(args, fromStr)
+		argNum++
+	}
+	if toStr != "" {
+		query += fmt.Sprintf(" AND executed_at <= $%d", argNum)
+		args = append(args, toStr)
+		argNum++
+	}
+	query += fmt.Sprintf(" ORDER BY executed_at DESC LIMIT $%d", argNum)
+	args = append(args, limit)
+
+	rows, err := database.DB.Query(context.Background(), query, args...)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch trades",
@@ -132,16 +159,39 @@ func GetBotDetails(c *fiber.Ctx) error {
 		botID,
 	).Scan(&tradeCount)
 
+	// Get portfolio snapshots for historical chart (daily mark-to-market from generate_snapshots.py)
+	snapshotRows, errSnap := database.DB.Query(
+		context.Background(),
+		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = $1 ORDER BY snapshot_at ASC`,
+		botID,
+	)
+	portfolioSnapshots := []fiber.Map{}
+	if errSnap == nil && snapshotRows != nil {
+		defer snapshotRows.Close()
+		for snapshotRows.Next() {
+			var snapshotAt time.Time
+			var totalValue float64
+			if err := snapshotRows.Scan(&snapshotAt, &totalValue); err != nil {
+				continue
+			}
+			portfolioSnapshots = append(portfolioSnapshots, fiber.Map{
+				"snapshot_at": snapshotAt,
+				"total_value": totalValue,
+			})
+		}
+	}
+
 	return c.JSON(fiber.Map{
-		"id":            bot.ID,
-		"name":          bot.Name,
-		"description":   bot.Description,
-		"creator_email": bot.CreatorEmail,
-		"created_at":    bot.CreatedAt,
-		"claimed":       bot.Claimed,
-		"portfolio":     portfolio,
-		"recent_trades": trades,
-		"trade_count":   tradeCount,
+		"id":                  bot.ID,
+		"name":                bot.Name,
+		"description":         bot.Description,
+		"creator_email":       bot.CreatorEmail,
+		"created_at":          bot.CreatedAt,
+		"claimed":             bot.Claimed,
+		"portfolio":           portfolio,
+		"recent_trades":       trades,
+		"trade_count":         tradeCount,
+		"portfolio_snapshots": portfolioSnapshots,
 	})
 }
 
