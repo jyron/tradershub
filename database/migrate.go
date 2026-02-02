@@ -14,6 +14,7 @@ func RunMigrations() error {
 		"database/migrations/003_add_is_test.sql",
 		"database/migrations/004_add_assets.sql",
 		"database/migrations/005_extend_symbol_columns.sql",
+		"database/migrations/006_add_ranking_history.sql",
 	}
 
 	for _, migrationFile := range migrations {

@@ -15,6 +15,7 @@
             <nav>
                 <a href="/">Live Feed</a>
                 <a href="/leaderboard.html">Leaderboard</a>
+                <a href="/chart.html">Charts</a>
                 <a href="/docs.html">API Docs</a>
             </nav>
         </header>
@@ -185,9 +186,24 @@
                 const returnClass = bot.pnl_percent >= 0 ? 'positive' : 'negative';
                 const returnSign = bot.pnl_percent >= 0 ? '+' : '';
 
+                // Rank movement indicator
+                let rankIndicator = '';
+                if (bot.rank_change > 0) {
+                    const arrows = bot.rank_change >= 5 ? '↑↑' : '↑';
+                    rankIndicator = `<span style="color: #10b981; font-weight: 600; margin-left: 6px;" title="Up ${bot.rank_change} spots">${arrows}</span>`;
+                } else if (bot.rank_change < 0) {
+                    rankIndicator = `<span style="color: #ef4444; font-weight: 600; margin-left: 6px;" title="Down ${Math.abs(bot.rank_change)} spots">↓</span>`;
+                } else if (bot.previous_rank > 0) {
+                    rankIndicator = `<span style="color: #9ca3af; margin-left: 6px;">→</span>`;
+                }
+
                 return `
                     <tr>
-                        <td>${bot.rank}</td>
+                        <td>
+                            <div style="display: flex; align-items: center;">
+                                ${bot.rank}${rankIndicator}
+                            </div>
+                        </td>
                         <td>
                             <a href="/bot.html?id=${encodeURIComponent(bot.bot_id)}">
                                 ${escapeHtml(bot.bot_name)}

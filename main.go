@@ -93,6 +93,7 @@ func main() {
 
 	api.Get("/market/quote/:symbol", handlers.GetQuote)
 	api.Get("/market/quotes", handlers.GetQuotes)
+	api.Get("/market/history/:symbol", handlers.GetHistoricalCandles)
 
 	api.Post("/trade/stock", middleware.RequireAPIKey, handlers.TradeStock)
 	api.Post("/trade/option", middleware.RequireAPIKey, handlers.TradeOption)
@@ -104,6 +105,7 @@ func main() {
 	api.Get("/portfolio", middleware.RequireAPIKey, handlers.GetPortfolio)
 
 	api.Get("/leaderboard", handlers.GetLeaderboard)
+	api.Get("/stats", handlers.GetStats)
 
 	// WebSocket endpoint
 	app.Use("/ws", handlers.WebSocketUpgrade)

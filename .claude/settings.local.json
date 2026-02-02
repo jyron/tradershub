@@ -9,7 +9,10 @@
       "Bash(ls:*)",
       "Bash(psql:*)",
       "Bash(go build:*)",
-      "Bash(go doc:*)"
+      "Bash(go doc:*)",
+      "Bash(open http://localhost:3000/heatmap.html)",
+      "Bash(open http://localhost:3000/compare.html)",
+      "Bash(go run:*)"
     ]
   }
 }

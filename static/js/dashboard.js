@@ -61,6 +61,39 @@
       var pnlClass = pnlPercent >= 0 ? 'positive' : 'negative';
       var pnlSign = pnlPercent >= 0 ? '+' : '';
 
+      // Get top positions
+      var positions = (data.portfolio && data.portfolio.positions) ? data.portfolio.positions : [];
+      var sortedPositions = positions.slice().sort(function(a, b) { return b.market_value - a.market_value; });
+      var topPositions = sortedPositions.slice(0, 3);
+
+      var positionsHtml = '';
+      if (topPositions.length > 0) {
+        positionsHtml = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">' +
+          '<div style="font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 600;">TOP HOLDINGS</div>';
+
+        topPositions.forEach(function(pos) {
+          var percent = totalValue > 0 ? (pos.market_value / totalValue * 100) : 0;
+          var pnl = pos.unrealized_pnl || 0;
+          var posClass = pnl >= 0 ? 'positive' : 'negative';
+          var posSign = pnl >= 0 ? '+' : '';
+
+          positionsHtml +=
+            '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px;">' +
+              '<div style="display: flex; align-items: center; gap: 8px;">' +
+                '<a href="/chart.html?symbol=' + encodeURIComponent(pos.symbol) + '" style="font-weight: 600; text-decoration: none; color: inherit;">' +
+                  escapeHtml(pos.symbol) +
+                '</a>' +
+                '<span style="color: var(--muted); font-size: 11px;">' + percent.toFixed(1) + '%</span>' +
+              '</div>' +
+              '<div class="' + posClass + '" style="font-size: 12px; font-weight: 600;">' +
+                posSign + '$' + Math.abs(pnl).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) +
+              '</div>' +
+            '</div>';
+        });
+
+        positionsHtml += '</div>';
+      }
+
       card.innerHTML =
         '<h3 class="dashboard-bot-card-title">' +
           '<a href="/bot.html?id=' + encodeURIComponent(entry.bot_id) + '">' + escapeHtml(data.name || entry.bot_name) + '</a>' +
@@ -69,7 +102,8 @@
           '$' + totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
           ' <span class="text-muted">(' + pnlSign + pnlPercent.toFixed(2) + '%)</span>' +
         '</p>' +
-        '<div class="dashboard-bot-chart-wrapper chart-wrapper"></div>';
+        '<div class="dashboard-bot-chart-wrapper chart-wrapper"></div>' +
+        positionsHtml;
 
       container.appendChild(card);
 

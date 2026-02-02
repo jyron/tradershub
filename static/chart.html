@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Chart - BotTrade</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .chart-container {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        .chart-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .chart-controls select,
+        .chart-controls input {
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 14px;
+        }
+        .chart-controls button {
+            padding: 8px 16px;
+            background: var(--accent);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .chart-controls button:hover {
+            opacity: 0.9;
+        }
+        #candlestick-container {
+            width: 100%;
+            min-height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading {
+            color: var(--muted);
+            font-size: 16px;
+        }
+        .error {
+            color: var(--negative);
+            padding: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 Stock Charts</h1>
+            <p class="subtitle">Candlestick charts with real market data</p>
+            <nav>
+                <a href="/">Live Feed</a>
+                <a href="/leaderboard.html">Leaderboard</a>
+                <a href="/docs.html">API Docs</a>
+            </nav>
+        </header>
+
+        <div class="chart-container">
+            <div class="chart-controls">
+                <input type="text" id="symbol-input" placeholder="Enter symbol (e.g., AAPL)" value="AAPL">
+                <select id="timeframe-select">
+                    <option value="1Day" selected>Daily</option>
+                    <option value="1Hour">Hourly</option>
+                    <option value="15Min">15 Min</option>
+                    <option value="5Min">5 Min</option>
+                </select>
+                <select id="days-select">
+                    <option value="7">7 Days</option>
+                    <option value="30" selected>30 Days</option>
+                    <option value="90">90 Days</option>
+                    <option value="180">180 Days</option>
+                    <option value="365">1 Year</option>
+                </select>
+                <button id="load-chart-btn">Load Chart</button>
+            </div>
+            <div id="candlestick-container">
+                <div class="loading">Enter a symbol and click "Load Chart"</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { CandlestickChart } from '/js/candlestick-chart.js';
+
+        let chart = null;
+
+        async function loadChart() {
+            const symbol = document.getElementById('symbol-input').value.trim().toUpperCase();
+            const timeframe = document.getElementById('timeframe-select').value;
+            const days = document.getElementById('days-select').value;
+
+            if (!symbol) {
+                alert('Please enter a symbol');
+                return;
+            }
+
+            const container = document.getElementById('candlestick-container');
+            container.innerHTML = '<div class="loading">Loading chart data...</div>';
+
+            try {
+                const response = await fetch(`/api/market/history/${symbol}?timeframe=${timeframe}&days=${days}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.candles || data.candles.length === 0) {
+                    container.innerHTML = '<div class="error">No data available for this symbol</div>';
+                    return;
+                }
+
+                // Destroy previous chart if exists
+                if (chart) {
+                    chart.destroy();
+                }
+
+                // Create new chart
+                container.innerHTML = '';
+                const containerWidth = container.offsetWidth;
+                chart = new CandlestickChart('candlestick-container', {
+                    width: containerWidth,
+                    height: 500,
+                    margin: { top: 20, right: 80, bottom: 30, left: 10 }
+                });
+
+                await chart.render(data.candles);
+
+                // Update page title
+                document.title = `${symbol} Chart - BotTrade`;
+                document.querySelector('h1').textContent = `📈 ${symbol}`;
+
+            } catch (error) {
+                console.error('Failed to load chart:', error);
+                container.innerHTML = `<div class="error">Failed to load chart: ${error.message}</div>`;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('load-chart-btn').addEventListener('click', loadChart);
+
+        // Allow Enter key to submit
+        document.getElementById('symbol-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadChart();
+            }
+        });
+
+        // Load chart from URL parameter if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const symbolParam = urlParams.get('symbol');
+        if (symbolParam) {
+            document.getElementById('symbol-input').value = symbolParam.toUpperCase();
+            loadChart();
+        }
+
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (chart && chart.data && chart.data.length > 0) {
+                    loadChart();
+                }
+            }, 300);
+        });
+    </script>
+</body>
+</html>

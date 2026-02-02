@@ -16,6 +16,7 @@
             <nav>
                 <a href="/">Live Feed</a>
                 <a href="/leaderboard.html">Leaderboard</a>
+                <a href="/chart.html">Charts</a>
                 <a href="/docs.html">API Docs</a>
             </nav>
         </header>
@@ -85,8 +86,11 @@
             </div>
         </div>
 
-        <div class="card mt-24">
+        <div class="card card-chart mt-24">
             <h2>Current Positions</h2>
+            <div class="chart-wrapper" style="margin-bottom: 24px;">
+                <canvas id="positions-allocation-chart" style="max-height: 300px;"></canvas>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -95,17 +99,30 @@
                         <th>Avg Cost</th>
                         <th>Current Price</th>
                         <th>Market Value</th>
+                        <th>% Portfolio</th>
                         <th>P&L</th>
+                        <th>P&L %</th>
                     </tr>
                 </thead>
                 <tbody id="positions-body">
                     <tr>
-                        <td colspan="6" class="text-center text-muted p-32">
+                        <td colspan="8" class="text-center text-muted p-32">
                             No positions
                         </td>
                     </tr>
                 </tbody>
             </table>
+            <div id="cash-position" style="margin-top: 16px; padding: 16px; background: var(--surface); border-radius: 8px; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-weight: 600;">Cash Balance</span>
+                    </div>
+                    <div style="display: flex; gap: 24px; align-items: center;">
+                        <span id="cash-amount" style="font-size: 18px; font-weight: 600;">$0.00</span>
+                        <span id="cash-percent" style="color: var(--muted);">0.00%</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="card mt-24">
@@ -147,8 +164,10 @@
         let allTradesData = [];
         let allPortfolioSnapshots = [];
         let currentPortfolioValue = 0;
+        let currentPortfolio = null;
         let portfolioChartInstance = null;
         let activityChartInstance = null;
+        let positionsAllocationChartInstance = null;
         let tradesDisplayLimit = 50;
 
         async function loadBotProfile() {
@@ -211,9 +230,10 @@
             allTradesData = data.recent_trades || [];
             allPortfolioSnapshots = data.portfolio_snapshots || [];
             currentPortfolioValue = totalValue;
+            currentPortfolio = data.portfolio || {};
 
-            // Display positions
-            displayPositions(data.portfolio?.positions || []);
+            // Display positions with allocation chart
+            displayPositions(data.portfolio?.positions || [], data.portfolio?.cash_balance || 0, totalValue);
 
             // Create charts and trades table
             tradesDisplayLimit = 50;
@@ -641,37 +661,234 @@
             });
         }
 
-        function displayPositions(positions) {
+        function displayPositions(positions, cashBalance, totalValue) {
             const tbody = document.getElementById('positions-body');
+            const cashDiv = document.getElementById('cash-position');
 
             if (!positions || positions.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center text-muted p-32">
+                        <td colspan="8" class="text-center text-muted p-32">
                             No open positions
                         </td>
                     </tr>
                 `;
+                // Show cash only
+                if (cashDiv && cashBalance > 0) {
+                    cashDiv.style.display = 'block';
+                    document.getElementById('cash-amount').textContent = `$${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const cashPercent = totalValue > 0 ? (cashBalance / totalValue * 100) : 100;
+                    document.getElementById('cash-percent').textContent = `${cashPercent.toFixed(1)}% of portfolio`;
+                }
                 return;
             }
 
-            tbody.innerHTML = positions.map(pos => {
+            // Sort positions by market value (largest first)
+            const sortedPositions = [...positions].sort((a, b) => b.market_value - a.market_value);
+
+            tbody.innerHTML = sortedPositions.map(pos => {
                 const pnlClass = pos.unrealized_pnl >= 0 ? 'positive' : 'negative';
                 const pnlSign = pos.unrealized_pnl >= 0 ? '+' : '';
+                const portfolioPercent = totalValue > 0 ? (pos.market_value / totalValue * 100) : 0;
+                const costBasis = pos.avg_cost * pos.quantity;
+                const pnlPercent = costBasis > 0 ? ((pos.market_value - costBasis) / costBasis * 100) : 0;
+                const pnlPercentClass = pnlPercent >= 0 ? 'positive' : 'negative';
+                const pnlPercentSign = pnlPercent >= 0 ? '+' : '';
 
                 return `
                     <tr>
-                        <td>${escapeHtml(pos.symbol)}</td>
+                        <td>
+                            <a href="/chart.html?symbol=${encodeURIComponent(pos.symbol)}" style="font-weight: 600; text-decoration: none;">
+                                ${escapeHtml(pos.symbol)}
+                            </a>
+                        </td>
                         <td>${pos.quantity}</td>
                         <td>$${pos.avg_cost.toFixed(2)}</td>
                         <td>$${pos.current_price.toFixed(2)}</td>
-                        <td>$${pos.market_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td style="font-weight: 600;">$${pos.market_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td style="font-weight: 600;">${portfolioPercent.toFixed(1)}%</td>
                         <td class="${pnlClass}">
                             ${pnlSign}$${Math.abs(pos.unrealized_pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td class="${pnlPercentClass}" style="font-weight: 600;">
+                            ${pnlPercentSign}${pnlPercent.toFixed(2)}%
                         </td>
                     </tr>
                 `;
             }).join('');
+
+            // Display cash balance
+            if (cashDiv && cashBalance > 0) {
+                cashDiv.style.display = 'block';
+                document.getElementById('cash-amount').textContent = `$${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const cashPercent = totalValue > 0 ? (cashBalance / totalValue * 100) : 0;
+                document.getElementById('cash-percent').textContent = `${cashPercent.toFixed(1)}% of portfolio`;
+            }
+
+            // Create allocation chart
+            createPositionAllocationChart(sortedPositions, cashBalance, totalValue);
+        }
+
+        function createPositionAllocationChart(positions, cashBalance, totalValue) {
+            const canvas = document.getElementById('positions-allocation-chart');
+            if (!canvas) return;
+
+            // Destroy existing chart
+            if (positionsAllocationChartInstance) {
+                positionsAllocationChartInstance.destroy();
+            }
+
+            // If no positions, show 100% cash
+            if (!positions || positions.length === 0) {
+                if (cashBalance > 0) {
+                    positionsAllocationChartInstance = new Chart(canvas.getContext('2d'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Cash'],
+                            datasets: [{
+                                data: [cashBalance],
+                                backgroundColor: ['#9ca3af'],
+                                borderColor: '#1f2937',
+                                borderWidth: 2,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'right',
+                                    labels: {
+                                        color: '#9ca3af',
+                                        padding: 15,
+                                        font: { size: 13, weight: '500' }
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                    titleColor: '#e5e5e5',
+                                    bodyColor: '#e5e5e5',
+                                    borderColor: '#374151',
+                                    borderWidth: 1,
+                                    padding: 12,
+                                    callbacks: {
+                                        label: function(context) {
+                                            return 'Cash: $' + context.parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                return;
+            }
+
+            // Destroy existing chart
+            if (positionsAllocationChartInstance) {
+                positionsAllocationChartInstance.destroy();
+            }
+
+            // Prepare data - show top 5 positions + "Others" if more than 5
+            const maxPositionsToShow = 5;
+            let chartData = [];
+            let chartLabels = [];
+            let chartColors = [];
+
+            const colorPalette = [
+                '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+                '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'
+            ];
+
+            if (positions.length <= maxPositionsToShow) {
+                chartLabels = positions.map(p => p.symbol);
+                chartData = positions.map(p => p.market_value);
+                chartColors = positions.map((_, i) => colorPalette[i % colorPalette.length]);
+            } else {
+                // Show top 5 + others
+                const top5 = positions.slice(0, maxPositionsToShow);
+                const others = positions.slice(maxPositionsToShow);
+                const othersTotal = others.reduce((sum, p) => sum + p.market_value, 0);
+
+                chartLabels = [...top5.map(p => p.symbol), 'Others'];
+                chartData = [...top5.map(p => p.market_value), othersTotal];
+                chartColors = [...top5.map((_, i) => colorPalette[i % colorPalette.length]), '#6b7280'];
+            }
+
+            // Add cash if significant (> 1% of portfolio)
+            const cashPercent = totalValue > 0 ? (cashBalance / totalValue * 100) : 0;
+            if (cashBalance > 0 && cashPercent > 1) {
+                chartLabels.push('Cash');
+                chartData.push(cashBalance);
+                chartColors.push('#9ca3af');
+            }
+
+            positionsAllocationChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        data: chartData,
+                        backgroundColor: chartColors,
+                        borderColor: '#1f2937',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'right',
+                            labels: {
+                                color: '#9ca3af',
+                                padding: 15,
+                                font: {
+                                    size: 13,
+                                    weight: '500'
+                                },
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    if (data.labels.length && data.datasets.length) {
+                                        return data.labels.map((label, i) => {
+                                            const value = data.datasets[0].data[i];
+                                            const percent = totalValue > 0 ? (value / totalValue * 100) : 0;
+                                            return {
+                                                text: `${label} (${percent.toFixed(1)}%)`,
+                                                fillStyle: data.datasets[0].backgroundColor[i],
+                                                hidden: false,
+                                                index: i
+                                            };
+                                        });
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#e5e5e5',
+                            bodyColor: '#e5e5e5',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed;
+                                    const percent = totalValue > 0 ? (value / totalValue * 100) : 0;
+                                    return [
+                                        `${context.label}`,
+                                        `Value: $${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                                        `${percent.toFixed(1)}% of portfolio`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function displayTradesFiltered() {

@@ -5,19 +5,22 @@ import (
 	"bottrade/services"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 type LeaderboardEntry struct {
-	Rank        int     `json:"rank"`
-	BotID       string  `json:"bot_id"`
-	BotName     string  `json:"bot_name"`
-	TotalValue  float64 `json:"total_value"`
-	PnL         float64 `json:"pnl"`
-	PnLPercent  float64 `json:"pnl_percent"`
-	TradeCount  int     `json:"trade_count"`
+	Rank          int     `json:"rank"`
+	BotID         string  `json:"bot_id"`
+	BotName       string  `json:"bot_name"`
+	TotalValue    float64 `json:"total_value"`
+	PnL           float64 `json:"pnl"`
+	PnLPercent    float64 `json:"pnl_percent"`
+	TradeCount    int     `json:"trade_count"`
+	RankChange    int     `json:"rank_change"`     // Positive = moved up, negative = moved down
+	PreviousRank  int     `json:"previous_rank"`   // Rank from yesterday
 }
 
 type LeaderboardResponse struct {
@@ -107,8 +110,46 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		entries = entries[:limit]
 	}
 
+	// Get previous day's rankings for comparison
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	previousRanks := make(map[string]int)
+
+	prevRows, err := database.DB.Query(ctx, `
+		SELECT bot_id, rank
+		FROM ranking_snapshots
+		WHERE snapshot_date = $1
+	`, yesterday)
+
+	if err == nil {
+		defer prevRows.Close()
+		for prevRows.Next() {
+			var botID string
+			var rank int
+			if err := prevRows.Scan(&botID, &rank); err == nil {
+				previousRanks[botID] = rank
+			}
+		}
+	}
+
+	// Assign ranks and calculate rank changes
 	for i := range entries {
 		entries[i].Rank = i + 1
+		if prevRank, exists := previousRanks[entries[i].BotID]; exists {
+			entries[i].PreviousRank = prevRank
+			entries[i].RankChange = prevRank - entries[i].Rank // Positive = moved up
+		}
+	}
+
+	// Save today's rankings for tomorrow's comparison
+	today := time.Now().Format("2006-01-02")
+	for _, entry := range entries {
+		botUUID, _ := uuid.Parse(entry.BotID)
+		database.DB.Exec(ctx, `
+			INSERT INTO ranking_snapshots (bot_id, rank, total_value, snapshot_date)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (bot_id, snapshot_date)
+			DO UPDATE SET rank = $2, total_value = $3
+		`, botUUID, entry.Rank, entry.TotalValue, today)
 	}
 
 	return c.JSON(LeaderboardResponse{
