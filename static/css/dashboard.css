@@ -1,0 +1,109 @@
+/* Dashboard: leaderboard tiles + bot portfolio cards grid */
+
+.dashboard-section {
+  margin-top: 32px;
+}
+
+.dashboard-section h2 {
+  margin-bottom: 20px;
+  font-size: 1.25rem;
+}
+
+.dashboard-leaderboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.dashboard-leaderboard .card {
+  min-height: 320px;
+}
+
+.dashboard-leaderboard .chart-wrapper {
+  height: 320px;
+}
+
+.dashboard-portfolio-section {
+  margin-top: 32px;
+}
+
+.dashboard-portfolio-section .chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dashboard-time-scale-selector {
+  display: flex;
+  gap: 4px;
+}
+
+.dashboard-time-scale-selector .time-scale-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dashboard-time-scale-selector .time-scale-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.dashboard-time-scale-selector .time-scale-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.dashboard-bot-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.dashboard-bot-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-bot-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.dashboard-bot-card-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.dashboard-bot-card-title a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dashboard-bot-card-stat {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.dashboard-bot-chart-wrapper {
+  flex: 1;
+  min-height: 0;
+  height: 200px;
+}
+
+.dashboard-bot-card .chart-wrapper,
+.dashboard-bot-card .dashboard-bot-chart-wrapper {
+  height: 200px;
+}
