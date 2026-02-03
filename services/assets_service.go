@@ -48,7 +48,7 @@ func (as *AssetsService) SyncAssets() error {
 			 SET name = EXCLUDED.name,
 			     exchange = EXCLUDED.exchange,
 			     tradable = EXCLUDED.tradable,
-			     updated_at = NOW()`,
+			     updated_at = CURRENT_TIMESTAMP`,
 			asset.Symbol, asset.Name, asset.Exchange, asset.Tradable)
 
 		if err != nil {

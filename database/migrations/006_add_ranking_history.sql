@@ -1,11 +1,11 @@
 -- Track daily bot rankings for movement indicators
 CREATE TABLE IF NOT EXISTS ranking_snapshots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
-    rank INT NOT NULL,
-    total_value DECIMAL(15,2) NOT NULL,
-    snapshot_date DATE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    total_value REAL NOT NULL,
+    snapshot_date TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bot_id, snapshot_date)
 );
 

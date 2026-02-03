@@ -1,10 +1,10 @@
 -- Assets table for storing tradable US equities
 CREATE TABLE IF NOT EXISTS assets (
-    symbol VARCHAR(10) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    exchange VARCHAR(50) NOT NULL,
-    tradable BOOLEAN DEFAULT true,
-    updated_at TIMESTAMP DEFAULT NOW()
+    symbol TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    exchange TEXT NOT NULL,
+    tradable INTEGER DEFAULT 1,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Index for searching assets by name
