@@ -143,13 +143,13 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 			return nil, fmt.Errorf("insufficient funds: need $%.2f, have $%.2f", totalValue, bot.CashBalance)
 		}
 		_, err = tx.Exec(
-			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
+			"UPDATE bots SET cash_balance = cash_balance - ?1 WHERE id = ?2",
 			totalValue, bot.ID.String())
 	} else {
 		var currentQty int
 		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
-			 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
+			 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3`,
 			bot.ID.String(), req.Symbol, optionType).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
@@ -159,7 +159,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 		}
 
 		_, err = tx.Exec(
-			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
+			"UPDATE bots SET cash_balance = cash_balance + ?1 WHERE id = ?2",
 			totalValue, bot.ID.String())
 	}
 
@@ -182,7 +182,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 	tradeID := uuid.New()
 	_, err = tx.Exec(
 		`INSERT INTO trades (id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
 		tradeID, bot.ID, req.Symbol, optionType, req.Side, req.Quantity, price, strikePrice, expDate, totalValue, req.Reasoning,
 	)
 
@@ -197,7 +197,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 	var trade models.Trade
 	err = database.DB.QueryRow(
 		`SELECT id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning, executed_at
-		 FROM trades WHERE id = ?`,
+		 FROM trades WHERE id = ?1`,
 		tradeID,
 	).Scan(&trade.ID, &trade.BotID, &trade.Symbol, &trade.TradeType, &trade.Side,
 		&trade.Quantity, &trade.Price, &trade.StrikePrice, &trade.ExpirationDate, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt)
@@ -218,7 +218,7 @@ func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symb
 
 	err := tx.QueryRow(
 		`SELECT id, quantity, avg_cost, strike_price, expiration_date FROM positions
-		 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
+		 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3`,
 		botID, symbol, optionType,
 	).Scan(&existingID, &existingQty, &existingAvgCost, &existingStrike, &existingExpiration)
 
@@ -226,7 +226,7 @@ func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symb
 		if side == "buy" {
 			_, err = tx.Exec(
 				`INSERT INTO positions (bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
 				botID, symbol, optionType, quantity, price, strikePrice, expirationDate)
 			return err
 		} else {
@@ -241,8 +241,8 @@ func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symb
 		newAvgCost := ((existingAvgCost * float64(existingQty)) + (price * float64(quantity))) / float64(newQty)
 
 		_, err = tx.Exec(
-			`UPDATE positions SET quantity = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP
-			 WHERE id = ?`,
+			`UPDATE positions SET quantity = ?1, avg_cost = ?2, updated_at = CURRENT_TIMESTAMP
+			 WHERE id = ?3`,
 			newQty, newAvgCost, existingID)
 		return err
 	} else {
@@ -250,12 +250,12 @@ func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symb
 
 		if newQty == 0 {
 			_, err = tx.Exec(
-				"DELETE FROM positions WHERE id = ?", existingID)
+				"DELETE FROM positions WHERE id = ?1", existingID)
 			return err
 		} else {
 			_, err = tx.Exec(
-				`UPDATE positions SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-				 WHERE id = ?`,
+				`UPDATE positions SET quantity = ?1, updated_at = CURRENT_TIMESTAMP
+				 WHERE id = ?2`,
 				newQty, existingID)
 			return err
 		}

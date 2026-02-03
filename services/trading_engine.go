@@ -60,14 +60,14 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 			return nil, fmt.Errorf("insufficient funds: need $%.2f, have $%.2f", totalValue, bot.CashBalance)
 		}
 		_, err = tx.Exec(
-			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
+			"UPDATE bots SET cash_balance = cash_balance - ?1 WHERE id = ?2",
 			totalValue, bot.ID.String())
 	} else {
 		// For sells, verify we have the position
 		var currentQty int
 		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
-			 WHERE bot_id = ? AND symbol = ? AND position_type = 'stock'`,
+			 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = 'stock'`,
 			bot.ID.String(), req.Symbol).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
@@ -77,7 +77,7 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 		}
 
 		_, err = tx.Exec(
-			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
+			"UPDATE bots SET cash_balance = cash_balance + ?1 WHERE id = ?2",
 			totalValue, bot.ID.String())
 	}
 
@@ -94,7 +94,7 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 	tradeID := uuid.New()
 	_, err = tx.Exec(
 		`INSERT INTO trades (id, bot_id, symbol, trade_type, side, quantity, price, total_value, reasoning)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
 		tradeID, bot.ID, req.Symbol, "stock", req.Side, req.Quantity, price, totalValue, req.Reasoning,
 	)
 	if err != nil {
@@ -110,7 +110,7 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 	var trade models.Trade
 	err = database.DB.QueryRow(
 		`SELECT id, bot_id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		 FROM trades WHERE id = ?`,
+		 FROM trades WHERE id = ?1`,
 		tradeID,
 	).Scan(&trade.ID, &trade.BotID, &trade.Symbol, &trade.TradeType, &trade.Side,
 		&trade.Quantity, &trade.Price, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt)
@@ -130,7 +130,7 @@ func (te *TradingEngine) updatePosition(tx *sql.Tx, botID uuid.UUID, symbol stri
 
 	err := tx.QueryRow(
 		`SELECT id, quantity, avg_cost FROM positions
-		 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
+		 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3`,
 		botID, symbol, posType,
 	).Scan(&existingID, &existingQty, &existingAvgCost)
 
@@ -140,7 +140,7 @@ func (te *TradingEngine) updatePosition(tx *sql.Tx, botID uuid.UUID, symbol stri
 			// Create new position
 			_, err = tx.Exec(
 				`INSERT INTO positions (bot_id, symbol, position_type, quantity, avg_cost)
-				 VALUES (?, ?, ?, ?, ?)`,
+				 VALUES (?1, ?2, ?3, ?4, ?5)`,
 				botID, symbol, posType, quantity, price)
 			return err
 		} else {
@@ -158,8 +158,8 @@ func (te *TradingEngine) updatePosition(tx *sql.Tx, botID uuid.UUID, symbol stri
 		newAvgCost := ((existingAvgCost * float64(existingQty)) + (price * float64(quantity))) / float64(newQty)
 
 		_, err = tx.Exec(
-			`UPDATE positions SET quantity = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP
-			 WHERE id = ?`,
+			`UPDATE positions SET quantity = ?1, avg_cost = ?2, updated_at = CURRENT_TIMESTAMP
+			 WHERE id = ?3`,
 			newQty, newAvgCost, existingID)
 		return err
 	} else {
@@ -169,13 +169,13 @@ func (te *TradingEngine) updatePosition(tx *sql.Tx, botID uuid.UUID, symbol stri
 		if newQty == 0 {
 			// Close position
 			_, err = tx.Exec(
-				"DELETE FROM positions WHERE id = ?", existingID)
+				"DELETE FROM positions WHERE id = ?1", existingID)
 			return err
 		} else {
 			// Update quantity (keep same avg cost)
 			_, err = tx.Exec(
-				`UPDATE positions SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-				 WHERE id = ?`,
+				`UPDATE positions SET quantity = ?1, updated_at = CURRENT_TIMESTAMP
+				 WHERE id = ?2`,
 				newQty, existingID)
 			return err
 		}

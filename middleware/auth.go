@@ -3,6 +3,7 @@ package middleware
 import (
 	"bottrade/database"
 	"bottrade/models"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -17,16 +18,16 @@ func RequireAPIKey(c *fiber.Ctx) error {
 	}
 
 	var bot models.Bot
-	var botIDStr string
+	var botIDStr, createdAt string
 	var isActive, claimed, isTest int
 	err := database.DB.QueryRow(
 		`SELECT id, name, api_key, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots
-		 WHERE api_key = ? AND is_active = 1`,
+		 WHERE api_key = ?1 AND is_active = 1`,
 		apiKey,
 	).Scan(
 		&botIDStr, &bot.Name, &bot.APIKey, &bot.Description,
-		&bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &isActive, &claimed, &isTest,
+		&bot.CreatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed, &isTest,
 	)
 
 	if err != nil {
@@ -41,6 +42,12 @@ func RequireAPIKey(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Invalid bot ID format",
 		})
+	}
+
+	// Parse created_at timestamp
+	bot.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAt)
+	if err != nil {
+		bot.CreatedAt = time.Now()
 	}
 
 	// Convert INTEGER to bool

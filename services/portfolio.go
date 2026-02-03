@@ -34,7 +34,7 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 	// Get bot info
 	var bot models.Bot
 	var botIDStr string
-	err := database.DB.QueryRow(		`SELECT id, name, cash_balance FROM bots WHERE id = ?`,
+	err := database.DB.QueryRow(		`SELECT id, name, cash_balance FROM bots WHERE id = ?1`,
 		botID.String(),
 	).Scan(&botIDStr, &bot.Name, &bot.CashBalance)
 
@@ -50,7 +50,7 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 
 	// Get all positions
 	rows, err := database.DB.Query(		`SELECT id, bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date, created_at, updated_at
-		 FROM positions WHERE bot_id = ?`,
+		 FROM positions WHERE bot_id = ?1`,
 		botID.String(),
 	)
 	if err != nil {

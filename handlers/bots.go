@@ -39,7 +39,7 @@ func RegisterBot(c *fiber.Ctx) error {
 
 	_, err = database.DB.Exec(
 		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
 		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
 	)
 
@@ -75,13 +75,13 @@ func GetBotDetails(c *fiber.Ctx) error {
 
 	// Get bot info
 	var bot models.Bot
-	var dbBotID string
+	var dbBotID, createdAt string
 	var isActive, claimed, isTest int
 	err = database.DB.QueryRow(
 		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
-		 FROM bots WHERE id = ?`,
+		 FROM bots WHERE id = ?1`,
 		botID.String(),
-	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &isActive, &claimed, &isTest)
+	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed, &isTest)
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -96,6 +96,13 @@ func GetBotDetails(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Invalid bot ID format",
 		})
+	}
+
+	// Parse created_at timestamp (SQLite format: "2006-01-02 15:04:05")
+	bot.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAt)
+	if err != nil {
+		// If parse fails, use current time as fallback
+		bot.CreatedAt = time.Now()
 	}
 
 	// Convert INTEGER to bool
@@ -128,20 +135,20 @@ func GetBotDetails(c *fiber.Ctx) error {
 	}
 
 	query := `SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		  FROM trades WHERE bot_id = ?`
+		  FROM trades WHERE bot_id = ?1`
 	args := []interface{}{botID.String()}
 	argNum := 2
 	if fromStr != "" {
-		query += fmt.Sprintf(" AND executed_at >= $%d", argNum)
+		query += fmt.Sprintf(" AND executed_at >= ?%d", argNum)
 		args = append(args, fromStr)
 		argNum++
 	}
 	if toStr != "" {
-		query += fmt.Sprintf(" AND executed_at <= $%d", argNum)
+		query += fmt.Sprintf(" AND executed_at <= ?%d", argNum)
 		args = append(args, toStr)
 		argNum++
 	}
-	query += fmt.Sprintf(" ORDER BY executed_at DESC LIMIT $%d", argNum)
+	query += fmt.Sprintf(" ORDER BY executed_at DESC LIMIT ?%d", argNum)
 	args = append(args, limit)
 
 	rows, err := database.DB.Query(query, args...)
@@ -168,13 +175,13 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Count total trades
 	var tradeCount int
 	database.DB.QueryRow(
-		"SELECT COUNT(*) FROM trades WHERE bot_id = ?",
+		"SELECT COUNT(*) FROM trades WHERE bot_id = ?1",
 		botID.String(),
 	).Scan(&tradeCount)
 
 	// Get portfolio snapshots for historical chart (daily mark-to-market from generate_snapshots.py)
 	snapshotRows, errSnap := database.DB.Query(
-		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = ? ORDER BY snapshot_at ASC`,
+		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = ?1 ORDER BY snapshot_at ASC`,
 		botID.String(),
 	)
 	portfolioSnapshots := []fiber.Map{}
@@ -218,7 +225,7 @@ func ClaimBot(c *fiber.Ctx) error {
 
 	// Update bot to claimed
 	result, err := database.DB.Exec(
-		`UPDATE bots SET claimed = true WHERE id = ? AND claimed = false`,
+		`UPDATE bots SET claimed = 1 WHERE id = ?1 AND claimed = 0`,
 		botID.String(),
 	)
 	if err != nil {
