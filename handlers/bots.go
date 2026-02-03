@@ -75,12 +75,12 @@ func GetBotDetails(c *fiber.Ctx) error {
 
 	// Get bot info
 	var bot models.Bot
-	var botIDStr string
+	var dbBotID string
 	err = database.DB.QueryRow(
 		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots WHERE id = ?`,
 		botID.String(),
-	).Scan(&botIDStr, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
+	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -89,7 +89,7 @@ func GetBotDetails(c *fiber.Ctx) error {
 	}
 
 	// Parse the ID string back to UUID
-	bot.ID, err = uuid.Parse(botIDStr)
+	bot.ID, err = uuid.Parse(dbBotID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Invalid bot ID format",
