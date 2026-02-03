@@ -20,7 +20,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	if err := database.Connect(cfg.DatabaseURL); err != nil {
+	if err := database.Connect(cfg.TursoDatabaseURL, cfg.TursoAuthToken); err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer database.Close()

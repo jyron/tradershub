@@ -4,7 +4,6 @@ import (
 	"bottrade/database"
 	"bottrade/models"
 	"bottrade/services"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -37,9 +36,8 @@ func RegisterBot(c *fiber.Ctx) error {
 
 	var botID uuid.UUID
 	err = database.DB.QueryRow(
-		context.Background(),
 		`INSERT INTO bots (name, api_key, description, creator_email, is_test)
-		 VALUES ($1, $2, $3, $4, $5)
+		 VALUES (?, ?, ?, ?, ?)
 		 RETURNING id`,
 		req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
 	).Scan(&botID)
@@ -77,9 +75,8 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Get bot info
 	var bot models.Bot
 	err = database.DB.QueryRow(
-		context.Background(),
 		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
-		 FROM bots WHERE id = $1`,
+		 FROM bots WHERE id = ?`,
 		botID,
 	).Scan(&bot.ID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
 
@@ -114,7 +111,7 @@ func GetBotDetails(c *fiber.Ctx) error {
 	}
 
 	query := `SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		  FROM trades WHERE bot_id = $1`
+		  FROM trades WHERE bot_id = ?`
 	args := []interface{}{botID}
 	argNum := 2
 	if fromStr != "" {
@@ -130,7 +127,7 @@ func GetBotDetails(c *fiber.Ctx) error {
 	query += fmt.Sprintf(" ORDER BY executed_at DESC LIMIT $%d", argNum)
 	args = append(args, limit)
 
-	rows, err := database.DB.Query(context.Background(), query, args...)
+	rows, err := database.DB.Query(query, args...)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch trades",
@@ -154,15 +151,13 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Count total trades
 	var tradeCount int
 	database.DB.QueryRow(
-		context.Background(),
-		"SELECT COUNT(*) FROM trades WHERE bot_id = $1",
+		"SELECT COUNT(*) FROM trades WHERE bot_id = ?",
 		botID,
 	).Scan(&tradeCount)
 
 	// Get portfolio snapshots for historical chart (daily mark-to-market from generate_snapshots.py)
 	snapshotRows, errSnap := database.DB.Query(
-		context.Background(),
-		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = $1 ORDER BY snapshot_at ASC`,
+		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = ? ORDER BY snapshot_at ASC`,
 		botID,
 	)
 	portfolioSnapshots := []fiber.Map{}
@@ -206,8 +201,7 @@ func ClaimBot(c *fiber.Ctx) error {
 
 	// Update bot to claimed
 	result, err := database.DB.Exec(
-		context.Background(),
-		`UPDATE bots SET claimed = true WHERE id = $1 AND claimed = false`,
+		`UPDATE bots SET claimed = true WHERE id = ? AND claimed = false`,
 		botID,
 	)
 	if err != nil {
@@ -216,7 +210,12 @@ func ClaimBot(c *fiber.Ctx) error {
 		})
 	}
 
-	rowsAffected := result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check rows affected",
+		})
+	}
 	if rowsAffected == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Bot not found or already claimed",

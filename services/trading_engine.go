@@ -3,11 +3,10 @@ package services
 import (
 	"bottrade/database"
 	"bottrade/models"
-	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type TradingEngine struct {
@@ -49,26 +48,26 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 	totalValue := price * float64(req.Quantity)
 
 	// Start a transaction
-	tx, err := database.DB.Begin(context.Background())
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback()
 
 	// Validate and update cash balance
 	if req.Side == "buy" {
 		if bot.CashBalance < totalValue {
 			return nil, fmt.Errorf("insufficient funds: need $%.2f, have $%.2f", totalValue, bot.CashBalance)
 		}
-		_, err = tx.Exec(context.Background(),
-			"UPDATE bots SET cash_balance = cash_balance - $1 WHERE id = $2",
+		_, err = tx.Exec(
+			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
 			totalValue, bot.ID)
 	} else {
 		// For sells, verify we have the position
 		var currentQty int
-		err = tx.QueryRow(context.Background(),
+		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
-			 WHERE bot_id = $1 AND symbol = $2 AND position_type = 'stock'`,
+			 WHERE bot_id = ? AND symbol = ? AND position_type = 'stock'`,
 			bot.ID, req.Symbol).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
@@ -77,8 +76,8 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 			return nil, fmt.Errorf("insufficient shares: need %d, have %d", req.Quantity, currentQty)
 		}
 
-		_, err = tx.Exec(context.Background(),
-			"UPDATE bots SET cash_balance = cash_balance + $1 WHERE id = $2",
+		_, err = tx.Exec(
+			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
 			totalValue, bot.ID)
 	}
 
@@ -92,28 +91,26 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 	}
 
 	// Create trade record
-	var tradeID uuid.UUID
-	err = tx.QueryRow(context.Background(),
-		`INSERT INTO trades (bot_id, symbol, trade_type, side, quantity, price, total_value, reasoning)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id`,
-		bot.ID, req.Symbol, "stock", req.Side, req.Quantity, price, totalValue, req.Reasoning,
-	).Scan(&tradeID)
-
+	tradeID := uuid.New()
+	_, err = tx.Exec(
+		`INSERT INTO trades (id, bot_id, symbol, trade_type, side, quantity, price, total_value, reasoning)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tradeID, bot.ID, req.Symbol, "stock", req.Side, req.Quantity, price, totalValue, req.Reasoning,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trade: %w", err)
 	}
 
 	// Commit transaction
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Return trade details
 	var trade models.Trade
-	err = database.DB.QueryRow(context.Background(),
+	err = database.DB.QueryRow(
 		`SELECT id, bot_id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		 FROM trades WHERE id = $1`,
+		 FROM trades WHERE id = ?`,
 		tradeID,
 	).Scan(&trade.ID, &trade.BotID, &trade.Symbol, &trade.TradeType, &trade.Side,
 		&trade.Quantity, &trade.Price, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt)
@@ -125,25 +122,25 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 	return &trade, nil
 }
 
-func (te *TradingEngine) updatePosition(tx pgx.Tx, botID uuid.UUID, symbol string, posType string, quantity int, price float64, side string) error {
+func (te *TradingEngine) updatePosition(tx *sql.Tx, botID uuid.UUID, symbol string, posType string, quantity int, price float64, side string) error {
 	// Check if position exists
 	var existingID uuid.UUID
 	var existingQty int
 	var existingAvgCost float64
 
-	err := tx.QueryRow(context.Background(),
+	err := tx.QueryRow(
 		`SELECT id, quantity, avg_cost FROM positions
-		 WHERE bot_id = $1 AND symbol = $2 AND position_type = $3`,
+		 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
 		botID, symbol, posType,
 	).Scan(&existingID, &existingQty, &existingAvgCost)
 
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		// No existing position
 		if side == "buy" {
 			// Create new position
-			_, err = tx.Exec(context.Background(),
+			_, err = tx.Exec(
 				`INSERT INTO positions (bot_id, symbol, position_type, quantity, avg_cost)
-				 VALUES ($1, $2, $3, $4, $5)`,
+				 VALUES (?, ?, ?, ?, ?)`,
 				botID, symbol, posType, quantity, price)
 			return err
 		} else {
@@ -160,9 +157,9 @@ func (te *TradingEngine) updatePosition(tx pgx.Tx, botID uuid.UUID, symbol strin
 		newQty := existingQty + quantity
 		newAvgCost := ((existingAvgCost * float64(existingQty)) + (price * float64(quantity))) / float64(newQty)
 
-		_, err = tx.Exec(context.Background(),
-			`UPDATE positions SET quantity = $1, avg_cost = $2, updated_at = NOW()
-			 WHERE id = $3`,
+		_, err = tx.Exec(
+			`UPDATE positions SET quantity = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP
+			 WHERE id = ?`,
 			newQty, newAvgCost, existingID)
 		return err
 	} else {
@@ -171,14 +168,14 @@ func (te *TradingEngine) updatePosition(tx pgx.Tx, botID uuid.UUID, symbol strin
 
 		if newQty == 0 {
 			// Close position
-			_, err = tx.Exec(context.Background(),
-				"DELETE FROM positions WHERE id = $1", existingID)
+			_, err = tx.Exec(
+				"DELETE FROM positions WHERE id = ?", existingID)
 			return err
 		} else {
 			// Update quantity (keep same avg cost)
-			_, err = tx.Exec(context.Background(),
-				`UPDATE positions SET quantity = $1, updated_at = NOW()
-				 WHERE id = $2`,
+			_, err = tx.Exec(
+				`UPDATE positions SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+				 WHERE id = ?`,
 				newQty, existingID)
 			return err
 		}

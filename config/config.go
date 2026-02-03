@@ -1,14 +1,14 @@
 package config
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL      string
+	TursoDatabaseURL string
+	TursoAuthToken   string
 	Port             string
 	MarketAPIKey     string
 	AlpacaAPIKey     string
@@ -19,24 +19,14 @@ type Config struct {
 func Load() *Config {
 	godotenv.Load()
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-			getEnv("DB_USER", "postgres"),
-			getEnv("DB_PASSWORD", "postgres"),
-			getEnv("DB_HOST", "localhost"),
-			getEnv("DB_PORT", "5432"),
-			getEnv("DB_NAME", "bottrade"),
-		)
-	}
-
 	return &Config{
-		DatabaseURL:     dbURL,
-		Port:            getEnv("PORT", "3000"),
-		MarketAPIKey:    getEnv("MARKET_API_KEY", ""),
-		AlpacaAPIKey:    getEnv("ALPACA_API_KEY", ""),
-		AlpacaSecretKey: getEnv("ALPACA_SECRET_KEY", ""),
-		AlpacaPaperMode: getEnv("ALPACA_PAPER", "true") == "true",
+		TursoDatabaseURL: os.Getenv("TURSO_DATABASE_URL"),
+		TursoAuthToken:   os.Getenv("TURSO_AUTH_TOKEN"),
+		Port:             getEnv("PORT", "3000"),
+		MarketAPIKey:     getEnv("MARKET_API_KEY", ""),
+		AlpacaAPIKey:     getEnv("ALPACA_API_KEY", ""),
+		AlpacaSecretKey:  getEnv("ALPACA_SECRET_KEY", ""),
+		AlpacaPaperMode:  getEnv("ALPACA_PAPER", "true") == "true",
 	}
 }
 

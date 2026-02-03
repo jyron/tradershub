@@ -3,7 +3,6 @@ package handlers
 import (
 	"bottrade/database"
 	"bottrade/services"
-	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -31,14 +30,12 @@ type BotGainerInfo struct {
 }
 
 func GetStats(c *fiber.Ctx) error {
-	ctx := context.Background()
 	now := time.Now()
 	oneHourAgo := now.Add(-1 * time.Hour)
 
 	// Count recent trades (last hour)
 	var recentTradesCount int
-	err := database.DB.QueryRow(ctx,
-		`SELECT COUNT(*) FROM trades WHERE executed_at >= $1`,
+	err := database.DB.QueryRow(		`SELECT COUNT(*) FROM trades WHERE executed_at >= ?`,
 		oneHourAgo,
 	).Scan(&recentTradesCount)
 	if err != nil {
@@ -47,8 +44,7 @@ func GetStats(c *fiber.Ctx) error {
 
 	// Count active bots
 	var activeBotsCount int
-	err = database.DB.QueryRow(ctx,
-		`SELECT COUNT(*) FROM bots WHERE is_active = true`,
+	err = database.DB.QueryRow(		`SELECT COUNT(*) FROM bots WHERE is_active = true`,
 	).Scan(&activeBotsCount)
 	if err != nil {
 		activeBotsCount = 0
@@ -56,13 +52,13 @@ func GetStats(c *fiber.Ctx) error {
 
 	// Get popular symbols (today's most traded)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	popularRows, err := database.DB.Query(ctx, `
+	popularRows, err := database.DB.Query(`
 		SELECT
 			symbol,
 			COUNT(*) as trade_count,
 			COUNT(DISTINCT bot_id) as bot_count
 		FROM trades
-		WHERE executed_at >= $1
+		WHERE executed_at >= ?
 		GROUP BY symbol
 		ORDER BY trade_count DESC
 		LIMIT 5
@@ -82,7 +78,7 @@ func GetStats(c *fiber.Ctx) error {
 	// Get biggest gainer and loser (calculate from portfolio values)
 	portfolioService := services.NewPortfolioService()
 
-	var botsRows, _ = database.DB.Query(ctx, `
+	var botsRows, _ = database.DB.Query(`
 		SELECT id, name FROM bots WHERE is_active = true
 	`)
 	defer botsRows.Close()

@@ -3,7 +3,7 @@ package services
 import (
 	"bottrade/database"
 	"bottrade/models"
-	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -11,7 +11,6 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type OptionsService struct {
@@ -133,24 +132,24 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 		optionType = "put"
 	}
 
-	tx, err := database.DB.Begin(context.Background())
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback()
 
 	if req.Side == "buy" {
 		if bot.CashBalance < totalValue {
 			return nil, fmt.Errorf("insufficient funds: need $%.2f, have $%.2f", totalValue, bot.CashBalance)
 		}
-		_, err = tx.Exec(context.Background(),
-			"UPDATE bots SET cash_balance = cash_balance - $1 WHERE id = $2",
+		_, err = tx.Exec(
+			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
 			totalValue, bot.ID)
 	} else {
 		var currentQty int
-		err = tx.QueryRow(context.Background(),
+		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
-			 WHERE bot_id = $1 AND symbol = $2 AND position_type = $3`,
+			 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
 			bot.ID, req.Symbol, optionType).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
@@ -159,8 +158,8 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 			return nil, fmt.Errorf("insufficient contracts: need %d, have %d", req.Quantity, currentQty)
 		}
 
-		_, err = tx.Exec(context.Background(),
-			"UPDATE bots SET cash_balance = cash_balance + $1 WHERE id = $2",
+		_, err = tx.Exec(
+			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
 			totalValue, bot.ID)
 	}
 
@@ -180,26 +179,25 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 		return nil, fmt.Errorf("failed to update position: %w", err)
 	}
 
-	var tradeID uuid.UUID
-	err = tx.QueryRow(context.Background(),
-		`INSERT INTO trades (bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id`,
-		bot.ID, req.Symbol, optionType, req.Side, req.Quantity, price, strikePrice, expDate, totalValue, req.Reasoning,
-	).Scan(&tradeID)
+	tradeID := uuid.New()
+	_, err = tx.Exec(
+		`INSERT INTO trades (id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tradeID, bot.ID, req.Symbol, optionType, req.Side, req.Quantity, price, strikePrice, expDate, totalValue, req.Reasoning,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trade: %w", err)
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	var trade models.Trade
-	err = database.DB.QueryRow(context.Background(),
+	err = database.DB.QueryRow(
 		`SELECT id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning, executed_at
-		 FROM trades WHERE id = $1`,
+		 FROM trades WHERE id = ?`,
 		tradeID,
 	).Scan(&trade.ID, &trade.BotID, &trade.Symbol, &trade.TradeType, &trade.Side,
 		&trade.Quantity, &trade.Price, &trade.StrikePrice, &trade.ExpirationDate, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt)
@@ -211,24 +209,24 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 	return &trade, nil
 }
 
-func (os *OptionsService) updateOptionPosition(tx pgx.Tx, botID uuid.UUID, symbol string, optionType string, quantity int, price float64, side string, strikePrice float64, expirationDate time.Time) error {
+func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symbol string, optionType string, quantity int, price float64, side string, strikePrice float64, expirationDate time.Time) error {
 	var existingID uuid.UUID
 	var existingQty int
 	var existingAvgCost float64
 	var existingStrike float64
 	var existingExpiration time.Time
 
-	err := tx.QueryRow(context.Background(),
+	err := tx.QueryRow(
 		`SELECT id, quantity, avg_cost, strike_price, expiration_date FROM positions
-		 WHERE bot_id = $1 AND symbol = $2 AND position_type = $3`,
+		 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
 		botID, symbol, optionType,
 	).Scan(&existingID, &existingQty, &existingAvgCost, &existingStrike, &existingExpiration)
 
-	if err == pgx.ErrNoRows {
+	if err == sql.ErrNoRows {
 		if side == "buy" {
-			_, err = tx.Exec(context.Background(),
+			_, err = tx.Exec(
 				`INSERT INTO positions (bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 				botID, symbol, optionType, quantity, price, strikePrice, expirationDate)
 			return err
 		} else {
@@ -242,22 +240,22 @@ func (os *OptionsService) updateOptionPosition(tx pgx.Tx, botID uuid.UUID, symbo
 		newQty := existingQty + quantity
 		newAvgCost := ((existingAvgCost * float64(existingQty)) + (price * float64(quantity))) / float64(newQty)
 
-		_, err = tx.Exec(context.Background(),
-			`UPDATE positions SET quantity = $1, avg_cost = $2, updated_at = NOW()
-			 WHERE id = $3`,
+		_, err = tx.Exec(
+			`UPDATE positions SET quantity = ?, avg_cost = ?, updated_at = CURRENT_TIMESTAMP
+			 WHERE id = ?`,
 			newQty, newAvgCost, existingID)
 		return err
 	} else {
 		newQty := existingQty - quantity
 
 		if newQty == 0 {
-			_, err = tx.Exec(context.Background(),
-				"DELETE FROM positions WHERE id = $1", existingID)
+			_, err = tx.Exec(
+				"DELETE FROM positions WHERE id = ?", existingID)
 			return err
 		} else {
-			_, err = tx.Exec(context.Background(),
-				`UPDATE positions SET quantity = $1, updated_at = NOW()
-				 WHERE id = $2`,
+			_, err = tx.Exec(
+				`UPDATE positions SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+				 WHERE id = ?`,
 				newQty, existingID)
 			return err
 		}

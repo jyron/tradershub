@@ -3,7 +3,6 @@ package services
 import (
 	"bottrade/database"
 	"bottrade/models"
-	"context"
 	"fmt"
 	"log"
 
@@ -43,9 +42,8 @@ func (as *AssetsService) SyncAssets() error {
 			continue
 		}
 
-		_, err := database.DB.Exec(context.Background(),
-			`INSERT INTO assets (symbol, name, exchange, tradable)
-			 VALUES ($1, $2, $3, $4)
+		_, err := database.DB.Exec(			`INSERT INTO assets (symbol, name, exchange, tradable)
+			 VALUES (?, ?, ?, ?)
 			 ON CONFLICT (symbol) DO UPDATE
 			 SET name = EXCLUDED.name,
 			     exchange = EXCLUDED.exchange,
@@ -66,19 +64,18 @@ func (as *AssetsService) SyncAssets() error {
 }
 
 func (as *AssetsService) GetAssets(limit int, offset int, search string) ([]models.Asset, int, error) {
-	ctx := context.Background()
 
 	var countQuery string
 	var selectQuery string
 	var args []interface{}
 
 	if search != "" {
-		countQuery = `SELECT COUNT(*) FROM assets WHERE (symbol ILIKE $1 OR name ILIKE $1) AND tradable = true`
+		countQuery = `SELECT COUNT(*) FROM assets WHERE (symbol ILIKE ? OR name ILIKE ?) AND tradable = true`
 		selectQuery = `SELECT symbol, name, exchange, tradable, updated_at
 		               FROM assets
-		               WHERE (symbol ILIKE $1 OR name ILIKE $1) AND tradable = true
+		               WHERE (symbol ILIKE ? OR name ILIKE ?) AND tradable = true
 		               ORDER BY symbol
-		               LIMIT $2 OFFSET $3`
+		               LIMIT ? OFFSET ?`
 		searchPattern := "%" + search + "%"
 		args = []interface{}{searchPattern, limit, offset}
 	} else {
@@ -87,24 +84,24 @@ func (as *AssetsService) GetAssets(limit int, offset int, search string) ([]mode
 		               FROM assets
 		               WHERE tradable = true
 		               ORDER BY symbol
-		               LIMIT $1 OFFSET $2`
+		               LIMIT ? OFFSET ?`
 		args = []interface{}{limit, offset}
 	}
 
 	var totalCount int
 	if search != "" {
-		err := database.DB.QueryRow(ctx, countQuery, "%"+search+"%").Scan(&totalCount)
+		err := database.DB.QueryRow(countQuery, "%"+search+"%").Scan(&totalCount)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to count assets: %w", err)
 		}
 	} else {
-		err := database.DB.QueryRow(ctx, countQuery).Scan(&totalCount)
+		err := database.DB.QueryRow(countQuery).Scan(&totalCount)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to count assets: %w", err)
 		}
 	}
 
-	rows, err := database.DB.Query(ctx, selectQuery, args...)
+	rows, err := database.DB.Query(selectQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query assets: %w", err)
 	}

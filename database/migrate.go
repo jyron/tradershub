@@ -1,7 +1,6 @@
 package database
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -23,7 +22,7 @@ func RunMigrations() error {
 			return fmt.Errorf("failed to read migration file %s: %w", migrationFile, err)
 		}
 
-		_, err = DB.Exec(context.Background(), string(sqlBytes))
+		_, err = DB.Exec(string(sqlBytes))
 		if err != nil {
 			return fmt.Errorf("failed to execute migration %s: %w", migrationFile, err)
 		}

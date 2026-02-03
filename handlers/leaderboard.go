@@ -3,7 +3,6 @@ package handlers
 import (
 	"bottrade/database"
 	"bottrade/services"
-	"context"
 	"fmt"
 	"time"
 
@@ -40,7 +39,6 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		limit = 100
 	}
 
-	ctx := context.Background()
 
 	// Get all active bots with their basic info and trade counts
 	query := `
@@ -55,7 +53,7 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		GROUP BY b.id, b.name, b.cash_balance
 	`
 
-	rows, err := database.DB.Query(ctx, query)
+	rows, err := database.DB.Query(query)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch leaderboard",
@@ -114,10 +112,10 @@ func GetLeaderboard(c *fiber.Ctx) error {
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	previousRanks := make(map[string]int)
 
-	prevRows, err := database.DB.Query(ctx, `
+	prevRows, err := database.DB.Query(`
 		SELECT bot_id, rank
 		FROM ranking_snapshots
-		WHERE snapshot_date = $1
+		WHERE snapshot_date = ?
 	`, yesterday)
 
 	if err == nil {
@@ -144,11 +142,11 @@ func GetLeaderboard(c *fiber.Ctx) error {
 	today := time.Now().Format("2006-01-02")
 	for _, entry := range entries {
 		botUUID, _ := uuid.Parse(entry.BotID)
-		database.DB.Exec(ctx, `
+		database.DB.Exec(`
 			INSERT INTO ranking_snapshots (bot_id, rank, total_value, snapshot_date)
-			VALUES ($1, $2, $3, $4)
+			VALUES (?, ?, ?, ?)
 			ON CONFLICT (bot_id, snapshot_date)
-			DO UPDATE SET rank = $2, total_value = $3
+			DO UPDATE SET rank = ?, total_value = ?
 		`, botUUID, entry.Rank, entry.TotalValue, today)
 	}
 

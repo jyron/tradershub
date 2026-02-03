@@ -3,7 +3,6 @@ package middleware
 import (
 	"bottrade/database"
 	"bottrade/models"
-	"context"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -19,10 +18,9 @@ func RequireAPIKey(c *fiber.Ctx) error {
 
 	var bot models.Bot
 	err := database.DB.QueryRow(
-		context.Background(),
 		`SELECT id, name, api_key, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots
-		 WHERE api_key = $1 AND is_active = true`,
+		 WHERE api_key = ? AND is_active = true`,
 		apiKey,
 	).Scan(
 		&bot.ID, &bot.Name, &bot.APIKey, &bot.Description,
