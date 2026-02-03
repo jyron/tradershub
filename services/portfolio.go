@@ -33,10 +33,17 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 
 	// Get bot info
 	var bot models.Bot
+	var botIDStr string
 	err := database.DB.QueryRow(		`SELECT id, name, cash_balance FROM bots WHERE id = ?`,
-		botID,
-	).Scan(&bot.ID, &bot.Name, &bot.CashBalance)
+		botID.String(),
+	).Scan(&botIDStr, &bot.Name, &bot.CashBalance)
 
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the ID string back to UUID
+	bot.ID, err = uuid.Parse(botIDStr)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +51,7 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 	// Get all positions
 	rows, err := database.DB.Query(		`SELECT id, bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date, created_at, updated_at
 		 FROM positions WHERE bot_id = ?`,
-		botID,
+		botID.String(),
 	)
 	if err != nil {
 		return nil, err
@@ -56,11 +63,22 @@ func (ps *PortfolioService) GetPortfolio(botID uuid.UUID) (*Portfolio, error) {
 
 	for rows.Next() {
 		var pos models.Position
+		var posIDStr, posBotIDStr string
 		err := rows.Scan(
-			&pos.ID, &pos.BotID, &pos.Symbol, &pos.PositionType,
+			&posIDStr, &posBotIDStr, &pos.Symbol, &pos.PositionType,
 			&pos.Quantity, &pos.AvgCost, &pos.StrikePrice, &pos.ExpirationDate,
 			&pos.CreatedAt, &pos.UpdatedAt,
 		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse UUID strings
+		pos.ID, err = uuid.Parse(posIDStr)
+		if err != nil {
+			return nil, err
+		}
+		pos.BotID, err = uuid.Parse(posBotIDStr)
 		if err != nil {
 			return nil, err
 		}

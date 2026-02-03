@@ -75,15 +75,24 @@ func GetBotDetails(c *fiber.Ctx) error {
 
 	// Get bot info
 	var bot models.Bot
+	var botIDStr string
 	err = database.DB.QueryRow(
 		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots WHERE id = ?`,
-		botID,
-	).Scan(&bot.ID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
+		botID.String(),
+	).Scan(&botIDStr, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Bot not found",
+		})
+	}
+
+	// Parse the ID string back to UUID
+	bot.ID, err = uuid.Parse(botIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Invalid bot ID format",
 		})
 	}
 
@@ -113,7 +122,7 @@ func GetBotDetails(c *fiber.Ctx) error {
 
 	query := `SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
 		  FROM trades WHERE bot_id = ?`
-	args := []interface{}{botID}
+	args := []interface{}{botID.String()}
 	argNum := 2
 	if fromStr != "" {
 		query += fmt.Sprintf(" AND executed_at >= $%d", argNum)
@@ -153,13 +162,13 @@ func GetBotDetails(c *fiber.Ctx) error {
 	var tradeCount int
 	database.DB.QueryRow(
 		"SELECT COUNT(*) FROM trades WHERE bot_id = ?",
-		botID,
+		botID.String(),
 	).Scan(&tradeCount)
 
 	// Get portfolio snapshots for historical chart (daily mark-to-market from generate_snapshots.py)
 	snapshotRows, errSnap := database.DB.Query(
 		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = ? ORDER BY snapshot_at ASC`,
-		botID,
+		botID.String(),
 	)
 	portfolioSnapshots := []fiber.Map{}
 	if errSnap == nil && snapshotRows != nil {
@@ -203,7 +212,7 @@ func ClaimBot(c *fiber.Ctx) error {
 	// Update bot to claimed
 	result, err := database.DB.Exec(
 		`UPDATE bots SET claimed = true WHERE id = ? AND claimed = false`,
-		botID,
+		botID.String(),
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

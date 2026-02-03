@@ -144,13 +144,13 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 		}
 		_, err = tx.Exec(
 			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
-			totalValue, bot.ID)
+			totalValue, bot.ID.String())
 	} else {
 		var currentQty int
 		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
 			 WHERE bot_id = ? AND symbol = ? AND position_type = ?`,
-			bot.ID, req.Symbol, optionType).Scan(&currentQty)
+			bot.ID.String(), req.Symbol, optionType).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
 		}
@@ -160,7 +160,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 
 		_, err = tx.Exec(
 			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
-			totalValue, bot.ID)
+			totalValue, bot.ID.String())
 	}
 
 	if err != nil {

@@ -61,14 +61,14 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 		}
 		_, err = tx.Exec(
 			"UPDATE bots SET cash_balance = cash_balance - ? WHERE id = ?",
-			totalValue, bot.ID)
+			totalValue, bot.ID.String())
 	} else {
 		// For sells, verify we have the position
 		var currentQty int
 		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
 			 WHERE bot_id = ? AND symbol = ? AND position_type = 'stock'`,
-			bot.ID, req.Symbol).Scan(&currentQty)
+			bot.ID.String(), req.Symbol).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
 		}
@@ -78,7 +78,7 @@ func (te *TradingEngine) ExecuteStockTrade(bot models.Bot, req models.StockTrade
 
 		_, err = tx.Exec(
 			"UPDATE bots SET cash_balance = cash_balance + ? WHERE id = ?",
-			totalValue, bot.ID)
+			totalValue, bot.ID.String())
 	}
 
 	if err != nil {
