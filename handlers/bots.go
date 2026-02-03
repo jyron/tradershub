@@ -34,13 +34,14 @@ func RegisterBot(c *fiber.Ctx) error {
 		})
 	}
 
-	var botID uuid.UUID
-	err = database.DB.QueryRow(
-		`INSERT INTO bots (name, api_key, description, creator_email, is_test)
-		 VALUES (?, ?, ?, ?, ?)
-		 RETURNING id`,
-		req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
-	).Scan(&botID)
+	// Generate UUID for the bot
+	botID := uuid.New()
+
+	_, err = database.DB.Exec(
+		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
+	)
 
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
