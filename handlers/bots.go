@@ -76,15 +76,17 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Get bot info
 	var bot models.Bot
 	var dbBotID string
+	var isActive, claimed, isTest int
 	err = database.DB.QueryRow(
 		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots WHERE id = ?`,
 		botID.String(),
-	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest)
+	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &isActive, &claimed, &isTest)
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Bot not found",
+			"details": err.Error(),
 		})
 	}
 
@@ -95,6 +97,11 @@ func GetBotDetails(c *fiber.Ctx) error {
 			"error": "Invalid bot ID format",
 		})
 	}
+
+	// Convert INTEGER to bool
+	bot.IsActive = isActive != 0
+	bot.Claimed = claimed != 0
+	bot.IsTest = isTest != 0
 
 	// Get portfolio
 	portfolioService := services.NewPortfolioService()

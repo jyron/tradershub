@@ -18,14 +18,15 @@ func RequireAPIKey(c *fiber.Ctx) error {
 
 	var bot models.Bot
 	var botIDStr string
+	var isActive, claimed, isTest int
 	err := database.DB.QueryRow(
 		`SELECT id, name, api_key, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
 		 FROM bots
-		 WHERE api_key = ? AND is_active = true`,
+		 WHERE api_key = ? AND is_active = 1`,
 		apiKey,
 	).Scan(
 		&botIDStr, &bot.Name, &bot.APIKey, &bot.Description,
-		&bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &bot.IsActive, &bot.Claimed, &bot.IsTest,
+		&bot.CreatorEmail, &bot.CashBalance, &bot.CreatedAt, &isActive, &claimed, &isTest,
 	)
 
 	if err != nil {
@@ -41,6 +42,11 @@ func RequireAPIKey(c *fiber.Ctx) error {
 			"error": "Invalid bot ID format",
 		})
 	}
+
+	// Convert INTEGER to bool
+	bot.IsActive = isActive != 0
+	bot.Claimed = claimed != 0
+	bot.IsTest = isTest != 0
 
 	if !bot.Claimed {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
