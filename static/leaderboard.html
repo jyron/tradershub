@@ -5,13 +5,106 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Leaderboard - BotTrade</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .tab-btn {
+            background: #1f2937;
+            color: #9ca3af;
+            border: 1px solid #374151;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .tab-btn:hover { color: #e5e5e5; }
+        .tab-btn.active {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+        }
+        .tab-hint {
+            color: #9ca3af;
+            font-size: 12px;
+            margin: 4px 0 12px;
+        }
+        .metric-pill {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            background: #1f2937;
+            color: #9ca3af;
+        }
+        .na { color: #6b7280; font-style: italic; }
+        .hidden-note {
+            background: #1e293b;
+            border-left: 3px solid #2563eb;
+            color: #cbd5e1;
+            padding: 10px 14px;
+            margin: 0 0 16px;
+            font-size: 13px;
+            border-radius: 4px;
+        }
+        .ineligible-badge {
+            font-size: 10px;
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.12);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .season-block {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .season-block h3 {
+            margin: 0 0 4px;
+            font-size: 16px;
+            color: #e5e5e5;
+        }
+        .season-meta {
+            color: #9ca3af;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+        .season-status {
+            display: inline-block;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .season-status.pending { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+        .season-status.active  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+        .season-status.closed  { background: rgba(156, 163, 175, 0.18); color: #cbd5e1; }
+        .season-empty {
+            color: #9ca3af;
+            font-size: 13px;
+            padding: 16px;
+            text-align: center;
+        }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🏆 Leaderboard</h1>
-            <p class="subtitle">Top performing trading bots</p>
+            <p class="subtitle">Ranked four ways. Each tells you something different.</p>
             <nav>
                 <a href="/">Live Feed</a>
                 <a href="/leaderboard.html">Leaderboard</a>
@@ -20,26 +113,32 @@
             </nav>
         </header>
 
+        <div class="card">
+            <div class="tabs" id="tabs">
+                <button class="tab-btn active" data-tab="value">Total Value</button>
+                <button class="tab-btn" data-tab="sharpe">Sharpe (risk-adjusted)</button>
+                <button class="tab-btn" data-tab="sortino">Sortino (downside-only)</button>
+                <button class="tab-btn" data-tab="drawdown">Lowest Drawdown</button>
+                <button class="tab-btn" data-tab="creators">Creators</button>
+                <button class="tab-btn" data-tab="seasons">Seasons</button>
+            </div>
+            <p class="tab-hint" id="tab-hint">
+                Raw portfolio value. Fun, but easy to game — one lucky YOLO trade wins.
+            </p>
+        </div>
+
         <div class="card card-chart">
-            <h2>Top 10 Performers</h2>
+            <h2 id="chart-title">Top 10 — Total Value</h2>
             <div class="chart-wrapper">
                 <canvas id="leaderboard-chart"></canvas>
             </div>
         </div>
 
         <div class="card mt-24">
-            <h2>Full Rankings</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Bot</th>
-                        <th>Portfolio Value</th>
-                        <th>P&L</th>
-                        <th>Return %</th>
-                        <th>Trades</th>
-                    </tr>
-                </thead>
+            <h2 id="table-title">Full Rankings</h2>
+            <div id="hidden-note" class="hidden-note" style="display:none;"></div>
+            <table id="leaderboard-table">
+                <thead id="leaderboard-head"></thead>
                 <tbody id="leaderboard-body">
                     <tr>
                         <td colspan="6" class="text-center text-muted p-32">
@@ -52,56 +151,364 @@
     </div>
 
     <script>
-        let leaderboardChartInstance = null;
+        const TAB_HINTS = {
+            value:   "Raw portfolio value. Fun, but easy to game — one lucky YOLO trade wins.",
+            sharpe:  "Return per unit of bumpiness. Higher = steadier compounding. Needs ~5 days of data.",
+            sortino: "Like Sharpe, but only counts losses against you. Higher = doesn't blow up.",
+            drawdown:"Biggest peak-to-trough loss. Lower is better. The number that scares allocators.",
+            creators:"Bots grouped by who made them. Average return per bot — so spamming 50 random bots can't fake a winner.",
+            seasons: "Fixed-window tournaments. Every enrolled bot gets a fresh $100k account just for the season. Last balance standing wins."
+        };
 
-        async function loadFullLeaderboard() {
+        let activeTab = 'value';
+        let chartInstance = null;
+        let cachedData = null;
+
+        const fmtMoney = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtPct   = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+
+        function escapeHtml(text) {
+            if (text == null) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadLeaderboard() {
             try {
-                const response = await fetch('/api/leaderboard?limit=100');
-                const data = await response.json();
-                displayLeaderboard(data.rankings);
-                createLeaderboardChart(data.rankings);
-            } catch (error) {
-                console.error('Failed to load leaderboard:', error);
-                const tbody = document.getElementById('leaderboard-body');
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="text-center p-32" style="color: var(--negative);">
-                            Failed to load leaderboard. Please try again.
-                        </td>
-                    </tr>
-                `;
+                if (activeTab === 'seasons') {
+                    await loadSeasons();
+                    return;
+                }
+                const res = await fetch(`/api/leaderboard?limit=100&sort_by=${activeTab === 'creators' ? 'value' : activeTab}`);
+                cachedData = await res.json();
+                renderActiveTab();
+            } catch (err) {
+                console.error('Failed to load leaderboard:', err);
+                document.getElementById('leaderboard-body').innerHTML = `
+                    <tr><td colspan="6" class="text-center p-32" style="color: var(--negative);">
+                        Failed to load leaderboard.
+                    </td></tr>`;
             }
         }
 
-        function createLeaderboardChart(rankings) {
-            if (!rankings || rankings.length === 0) return;
+        async function loadSeasons() {
+            document.getElementById('tab-hint').textContent = TAB_HINTS.seasons;
+            document.getElementById('hidden-note').style.display = 'none';
+            document.getElementById('chart-title').textContent = 'Active Season — Top 10';
+            document.getElementById('table-title').textContent = 'Seasons';
 
-            const top10 = rankings.slice(0, 10);
-            const canvas = document.getElementById('leaderboard-chart');
-            if (!canvas) return;
+            const head = document.getElementById('leaderboard-head');
+            const body = document.getElementById('leaderboard-body');
+            head.innerHTML = '';
+            body.innerHTML = '<tr><td class="text-center text-muted p-32">Loading seasons...</td></tr>';
 
-            // Destroy existing chart
-            if (leaderboardChartInstance) {
-                leaderboardChartInstance.destroy();
+            const res = await fetch('/api/seasons');
+            const payload = await res.json();
+            const seasons = payload.seasons || [];
+
+            const active   = seasons.filter(s => s.status === 'active');
+            const pending  = seasons.filter(s => s.status === 'pending');
+            const closed   = seasons.filter(s => s.status === 'closed');
+
+            let activeBoard = null;
+            if (active.length > 0) {
+                const r = await fetch(`/api/seasons/${encodeURIComponent(active[0].id)}/leaderboard`);
+                activeBoard = await r.json();
             }
 
-            leaderboardChartInstance = new Chart(canvas.getContext('2d'), {
+            renderSeasonsView({ active, pending, closed, activeBoard });
+        }
+
+        function renderSeasonsView({ active, pending, closed, activeBoard }) {
+            const head = document.getElementById('leaderboard-head');
+            const body = document.getElementById('leaderboard-body');
+            head.innerHTML = '';
+
+            const blocks = [];
+
+            if (active.length === 0 && pending.length === 0 && closed.length === 0) {
+                body.innerHTML = `<tr><td class="text-center text-muted p-32">
+                    No seasons yet. Tournaments will appear here once scheduled.
+                </td></tr>`;
+                renderChart([], 'seasons');
+                return;
+            }
+
+            if (active.length > 0) {
+                const s = active[0];
+                blocks.push(renderActiveSeasonBlock(s, activeBoard));
+                renderChart((activeBoard?.rankings || []).slice(0, 10), 'seasons');
+            } else {
+                renderChart([], 'seasons');
+            }
+
+            if (pending.length > 0) {
+                blocks.push(renderUpcomingBlock(pending));
+            }
+            if (closed.length > 0) {
+                blocks.push(renderClosedBlock(closed));
+            }
+
+            body.innerHTML = `<tr><td style="padding:0;border:none;">
+                ${blocks.join('')}
+            </td></tr>`;
+        }
+
+        function renderActiveSeasonBlock(s, board) {
+            const top = (board?.rankings || []).slice(0, 10);
+            const rows = top.length === 0
+                ? `<div class="season-empty">No bots enrolled yet — enrollment closed when the season started.</div>`
+                : `<table style="margin-top:8px;">
+                     <thead><tr>
+                       <th>Rank</th><th>Bot</th><th>Account</th><th>Return</th><th>Trades</th>
+                     </tr></thead>
+                     <tbody>
+                       ${top.map(e => `
+                         <tr>
+                           <td>${e.rank}</td>
+                           <td><a href="/bot.html?id=${encodeURIComponent(e.bot_id)}">${escapeHtml(e.bot_name)}</a></td>
+                           <td>${fmtMoney(e.total_value)}</td>
+                           <td class="${e.return_pct >= 0 ? 'positive' : 'negative'}">${fmtPct(e.return_pct * 100)}</td>
+                           <td>${e.trade_count}</td>
+                         </tr>
+                       `).join('')}
+                     </tbody>
+                   </table>`;
+            return `
+                <div class="season-block">
+                    <h3>${escapeHtml(s.name)} <span class="season-status active">Live</span></h3>
+                    <div class="season-meta">
+                        ${formatDateRange(s.starts_at, s.ends_at)} · ${s.enrollment_count} bot${s.enrollment_count === 1 ? '' : 's'} competing for $${(s.starting_balance ?? 100000).toLocaleString()} each
+                    </div>
+                    ${rows}
+                </div>`;
+        }
+
+        function renderUpcomingBlock(pending) {
+            return `
+                <div class="season-block">
+                    <h3>Upcoming — Enrollment Open</h3>
+                    <div class="season-meta">
+                        Bots can enroll while a season is pending. Once it starts, the field is locked.
+                        Enroll with <code>POST /api/seasons/&lt;id&gt;/enroll</code> using your API key.
+                    </div>
+                    ${pending.map(s => `
+                        <div style="padding:8px 0;border-top:1px solid #1f2937;">
+                            <strong>${escapeHtml(s.name)}</strong>
+                            <span class="season-status pending">Enrollment open</span>
+                            <div class="season-meta">
+                                Starts ${formatDateOnly(s.starts_at)} · Ends ${formatDateOnly(s.ends_at)} · ${s.enrollment_count} enrolled
+                            </div>
+                            <div class="season-meta" style="font-family:monospace;font-size:11px;color:#6b7280;">
+                                id: ${escapeHtml(s.id)}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>`;
+        }
+
+        function renderClosedBlock(closed) {
+            return `
+                <div class="season-block">
+                    <h3>Recently Closed</h3>
+                    ${closed.slice(0, 5).map(s => `
+                        <div style="padding:8px 0;border-top:1px solid #1f2937;">
+                            <strong>${escapeHtml(s.name)}</strong>
+                            <span class="season-status closed">Closed</span>
+                            <div class="season-meta">${formatDateRange(s.starts_at, s.ends_at)} · ${s.enrollment_count} bots</div>
+                        </div>
+                    `).join('')}
+                </div>`;
+        }
+
+        function formatDateRange(startIso, endIso) {
+            return `${formatDateOnly(startIso)} → ${formatDateOnly(endIso)}`;
+        }
+        function formatDateOnly(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return iso;
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function renderActiveTab() {
+            if (!cachedData) return;
+            document.getElementById('tab-hint').textContent = TAB_HINTS[activeTab];
+
+            const noteEl = document.getElementById('hidden-note');
+            const hidden = cachedData.hidden_ineligible || 0;
+            const minTrades = cachedData.min_trades_required || 5;
+            if (activeTab !== 'value' && activeTab !== 'creators' && hidden > 0) {
+                noteEl.style.display = 'block';
+                noteEl.textContent = `${hidden} bot${hidden === 1 ? '' : 's'} hidden — need ${minTrades}+ trades and ${minTrades}+ snapshots to rank on this board.`;
+            } else {
+                noteEl.style.display = 'none';
+            }
+
+            if (activeTab === 'creators') {
+                renderCreators(cachedData.creators || []);
+            } else {
+                renderBots(cachedData.rankings || [], activeTab);
+            }
+        }
+
+        function renderBots(rankings, tab) {
+            const head = document.getElementById('leaderboard-head');
+            const body = document.getElementById('leaderboard-body');
+
+            const cols = {
+                value:    ['Rank', 'Bot', 'Portfolio', 'P&L', 'Return %', 'Trades'],
+                sharpe:   ['Rank', 'Bot', 'Sharpe', 'Return %', 'Drawdown', 'Snapshots'],
+                sortino:  ['Rank', 'Bot', 'Sortino', 'Return %', 'Drawdown', 'Snapshots'],
+                drawdown: ['Rank', 'Bot', 'Drawdown', 'Return %', 'Sharpe', 'Snapshots'],
+            }[tab];
+
+            document.getElementById('chart-title').textContent =
+                'Top 10 — ' + ({value:'Total Value', sharpe:'Sharpe', sortino:'Sortino', drawdown:'Lowest Drawdown'}[tab]);
+
+            head.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+            if (!rankings.length) {
+                body.innerHTML = `<tr><td colspan="${cols.length}" class="text-center text-muted p-32">No bots yet.</td></tr>`;
+                renderChart([], tab);
+                return;
+            }
+
+            body.innerHTML = rankings.map(b => {
+                const rankIndicator = rankMovement(b);
+                const ret = b.pnl_percent;
+                const returnCell = `<td class="${ret >= 0 ? 'positive' : 'negative'}">${fmtPct(ret)}</td>`;
+                const sharpeCell  = `<td>${formatMetric(b.sharpe, 2)}</td>`;
+                const sortinoCell = `<td>${formatMetric(b.sortino, 2)}</td>`;
+                const ddCell      = `<td>${formatPct(b.max_drawdown)}</td>`;
+                const snapCell    = `<td><span class="metric-pill">${b.snapshot_count}</span></td>`;
+
+                // On Total Value, surface ineligibility so a casual reader knows
+                // why a #1 bot might not appear on the Sharpe board.
+                const ineligibleBadge = (!b.eligible && tab === 'value')
+                    ? `<span class="ineligible-badge" title="Needs ${cachedData.min_trades_required}+ trades and snapshots before risk-adjusted ranking">unranked</span>`
+                    : '';
+                const nameCell = `<td><a href="/bot.html?id=${encodeURIComponent(b.bot_id)}">${escapeHtml(b.bot_name)}</a>${ineligibleBadge}</td>`;
+                const rankCell = `<td><div style="display:flex;align-items:center;">${b.rank}${rankIndicator}</div></td>`;
+
+                if (tab === 'value') {
+                    return `<tr>${rankCell}${nameCell}
+                        <td>${fmtMoney(b.total_value)}</td>
+                        <td class="${b.pnl >= 0 ? 'positive' : 'negative'}">${b.pnl >= 0 ? '+' : '-'}$${Math.abs(b.pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        ${returnCell}<td>${b.trade_count}</td></tr>`;
+                }
+                if (tab === 'sharpe') {
+                    return `<tr>${rankCell}${nameCell}${sharpeCell}${returnCell}${ddCell}${snapCell}</tr>`;
+                }
+                if (tab === 'sortino') {
+                    return `<tr>${rankCell}${nameCell}${sortinoCell}${returnCell}${ddCell}${snapCell}</tr>`;
+                }
+                // drawdown
+                return `<tr>${rankCell}${nameCell}${ddCell}${returnCell}${sharpeCell}${snapCell}</tr>`;
+            }).join('');
+
+            renderChart(rankings.slice(0, 10), tab);
+        }
+
+        function renderCreators(creators) {
+            document.getElementById('chart-title').textContent = 'Top 10 — Creators (avg return per bot)';
+            const head = document.getElementById('leaderboard-head');
+            const body = document.getElementById('leaderboard-body');
+            head.innerHTML = '<tr><th>Rank</th><th>Creator</th><th>Bots</th><th>Avg Return</th><th>Best Bot</th><th>Worst Bot</th><th>Trades</th></tr>';
+
+            if (!creators.length) {
+                body.innerHTML = `<tr><td colspan="7" class="text-center text-muted p-32">No creators with verified bots yet.</td></tr>`;
+                renderChart([], 'creators');
+                return;
+            }
+
+            body.innerHTML = creators.map(c => `
+                <tr>
+                    <td>${c.rank}</td>
+                    <td>${escapeHtml(c.creator_email)}</td>
+                    <td>${c.bot_count}</td>
+                    <td class="${c.avg_pnl_percent >= 0 ? 'positive' : 'negative'}">${fmtPct(c.avg_pnl_percent)}</td>
+                    <td class="positive">${fmtPct(c.best_bot_pnl_percent)}</td>
+                    <td class="negative">${fmtPct(c.worst_bot_pnl_percent)}</td>
+                    <td>${c.total_trade_count}</td>
+                </tr>
+            `).join('');
+
+            renderChart(creators.slice(0, 10), 'creators');
+        }
+
+        function formatMetric(v, decimals) {
+            if (v == null) return '<span class="na">n/a</span>';
+            return v.toFixed(decimals);
+        }
+        function formatPct(v) {
+            if (v == null) return '<span class="na">n/a</span>';
+            return (v * 100).toFixed(2) + '%';
+        }
+
+        function rankMovement(b) {
+            if (b.rank_change > 0) {
+                const arrows = b.rank_change >= 5 ? '↑↑' : '↑';
+                return `<span style="color:#10b981;font-weight:600;margin-left:6px;" title="Up ${b.rank_change}">${arrows}</span>`;
+            }
+            if (b.rank_change < 0) {
+                return `<span style="color:#ef4444;font-weight:600;margin-left:6px;" title="Down ${Math.abs(b.rank_change)}">↓</span>`;
+            }
+            if (b.previous_rank > 0) {
+                return `<span style="color:#9ca3af;margin-left:6px;">→</span>`;
+            }
+            return '';
+        }
+
+        function renderChart(rows, tab) {
+            const canvas = document.getElementById('leaderboard-chart');
+            if (!canvas) return;
+            if (chartInstance) chartInstance.destroy();
+
+            let labels = [], data = [], suffix = '';
+            if (tab === 'seasons') {
+                labels = rows.map(e => e.bot_name);
+                // Chart on real account value, not return %, since the
+                // tournament-account dollar amount is what people screenshot.
+                data   = rows.map(e => e.total_value ?? 0);
+                suffix = '';
+            } else if (tab === 'creators') {
+                labels = rows.map(c => c.creator_email);
+                data   = rows.map(c => c.avg_pnl_percent);
+                suffix = '%';
+            } else if (tab === 'value') {
+                labels = rows.map(r => r.bot_name);
+                data   = rows.map(r => r.pnl_percent);
+                suffix = '%';
+            } else if (tab === 'drawdown') {
+                labels = rows.map(r => r.bot_name);
+                data   = rows.map(r => (r.max_drawdown ?? 0) * 100);
+                suffix = '%';
+            } else { // sharpe / sortino
+                labels = rows.map(r => r.bot_name);
+                data   = rows.map(r => (tab === 'sharpe' ? r.sharpe : r.sortino) ?? 0);
+                suffix = '';
+            }
+
+            const positiveIsGood = tab !== 'drawdown';
+            const colorFor = v => {
+                // Seasons: green if account is above the $100k starting line.
+                if (tab === 'seasons') {
+                    return v >= 100000 ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)';
+                }
+                const good = positiveIsGood ? v >= 0 : v <= 0;
+                return good ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)';
+            };
+
+            chartInstance = new Chart(canvas.getContext('2d'), {
                 type: 'bar',
                 data: {
-                    labels: top10.map(bot => bot.bot_name),
+                    labels,
                     datasets: [{
-                        label: 'Return %',
-                        data: top10.map(bot => bot.pnl_percent),
-                        backgroundColor: top10.map((bot, idx) => {
-                            const opacity = 1 - (idx * 0.07);
-                            return bot.pnl_percent >= 0
-                                ? `rgba(16, 185, 129, ${opacity})`
-                                : `rgba(239, 68, 68, ${opacity})`;
-                        }),
-                        borderColor: top10.map(bot =>
-                            bot.pnl_percent >= 0 ? '#10b981' : '#ef4444'
-                        ),
-                        borderWidth: 2,
+                        data,
+                        backgroundColor: data.map(colorFor),
+                        borderWidth: 0,
                         borderRadius: 6,
                     }]
                 },
@@ -120,124 +527,42 @@
                             padding: 12,
                             displayColors: false,
                             callbacks: {
-                                title: function(context) {
-                                    return top10[context[0].dataIndex].bot_name;
-                                },
-                                label: function(context) {
-                                    const bot = top10[context.dataIndex];
-                                    return [
-                                        `Return: ${context.parsed.x >= 0 ? '+' : ''}${context.parsed.x.toFixed(2)}%`,
-                                        `Portfolio: $${bot.total_value.toLocaleString()}`,
-                                        `P&L: ${bot.pnl >= 0 ? '+' : ''}$${bot.pnl.toLocaleString()}`,
-                                        `Trades: ${bot.trade_count}`
-                                    ];
-                                }
+                                label: ctx => tab === 'seasons'
+                                    ? fmtMoney(ctx.parsed.x)
+                                    : `${ctx.parsed.x.toFixed(2)}${suffix}`
                             }
                         }
                     },
                     scales: {
                         x: {
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.05)',
-                                drawBorder: false,
-                            },
+                            grid: { color: 'rgba(255,255,255,0.05)' },
                             ticks: {
                                 color: '#9ca3af',
-                                callback: function(value) {
-                                    return (value >= 0 ? '+' : '') + value + '%';
-                                }
+                                callback: v => tab === 'seasons' ? '$' + Math.round(v).toLocaleString() : v + suffix
                             }
                         },
-                        y: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                color: '#9ca3af',
-                                font: {
-                                    size: 13,
-                                    weight: '500'
-                                }
-                            }
-                        }
+                        y: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 13, weight: '500' } } }
                     }
                 }
             });
         }
 
-        function displayLeaderboard(rankings) {
-            const tbody = document.getElementById('leaderboard-body');
+        // Tab wiring
+        document.getElementById('tabs').addEventListener('click', e => {
+            const btn = e.target.closest('.tab-btn');
+            if (!btn) return;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTab = btn.dataset.tab;
+            loadLeaderboard();
+        });
 
-            if (!rankings || rankings.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="text-center text-muted p-32">
-                            No bots have registered yet.<br>
-                            <a href="/docs.html#register" class="inline-block mt-12">Register a Bot</a>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            tbody.innerHTML = rankings.map(bot => {
-                const pnlClass = bot.pnl >= 0 ? 'positive' : 'negative';
-                const pnlSign = bot.pnl >= 0 ? '+' : '';
-                const returnClass = bot.pnl_percent >= 0 ? 'positive' : 'negative';
-                const returnSign = bot.pnl_percent >= 0 ? '+' : '';
-
-                // Rank movement indicator
-                let rankIndicator = '';
-                if (bot.rank_change > 0) {
-                    const arrows = bot.rank_change >= 5 ? '↑↑' : '↑';
-                    rankIndicator = `<span style="color: #10b981; font-weight: 600; margin-left: 6px;" title="Up ${bot.rank_change} spots">${arrows}</span>`;
-                } else if (bot.rank_change < 0) {
-                    rankIndicator = `<span style="color: #ef4444; font-weight: 600; margin-left: 6px;" title="Down ${Math.abs(bot.rank_change)} spots">↓</span>`;
-                } else if (bot.previous_rank > 0) {
-                    rankIndicator = `<span style="color: #9ca3af; margin-left: 6px;">→</span>`;
-                }
-
-                return `
-                    <tr>
-                        <td>
-                            <div style="display: flex; align-items: center;">
-                                ${bot.rank}${rankIndicator}
-                            </div>
-                        </td>
-                        <td>
-                            <a href="/bot.html?id=${encodeURIComponent(bot.bot_id)}">
-                                ${escapeHtml(bot.bot_name)}
-                            </a>
-                        </td>
-                        <td>$${bot.total_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td class="${pnlClass}">
-                            ${pnlSign}$${Math.abs(bot.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td class="${returnClass}">
-                            ${returnSign}${bot.pnl_percent.toFixed(2)}%
-                        </td>
-                        <td>${bot.trade_count}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Load on page load
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadFullLeaderboard);
+            document.addEventListener('DOMContentLoaded', loadLeaderboard);
         } else {
-            loadFullLeaderboard();
+            loadLeaderboard();
         }
-
-        // Auto-refresh every 30 seconds
-        setInterval(loadFullLeaderboard, 30000);
+        setInterval(loadLeaderboard, 30000);
     </script>
 </body>
 </html>

@@ -15,7 +15,9 @@
       "Bash(go run:*)",
       "Bash(find:*)",
       "Bash(goimports:*)",
-      "Bash(perl:*)"
+      "Bash(perl:*)",
+      "Bash(go vet *)",
+      "Bash(go test *)"
     ]
   }
 }

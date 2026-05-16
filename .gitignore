@@ -1,5 +1,12 @@
 # Environment variables
 .env
+.env.local
+
+# Local dev SQLite database
+bottrade.db
+bottrade.db-journal
+bottrade.db-wal
+bottrade.db-shm
 
 # Binary
 bottrade

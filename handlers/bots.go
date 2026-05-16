@@ -135,7 +135,7 @@ func GetBotDetails(c *fiber.Ctx) error {
 	}
 
 	query := `SELECT id, symbol, trade_type, side, quantity, price, total_value, reasoning, executed_at
-		  FROM trades WHERE bot_id = ?1`
+		  FROM trades WHERE bot_id = ?1 AND season_id IS NULL`
 	args := []interface{}{botID.String()}
 	argNum := 2
 	if fromStr != "" {
@@ -175,13 +175,14 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Count total trades
 	var tradeCount int
 	database.DB.QueryRow(
-		"SELECT COUNT(*) FROM trades WHERE bot_id = ?1",
+		"SELECT COUNT(*) FROM trades WHERE bot_id = ?1 AND season_id IS NULL",
 		botID.String(),
 	).Scan(&tradeCount)
 
 	// Get portfolio snapshots for historical chart (daily mark-to-market from generate_snapshots.py)
 	snapshotRows, errSnap := database.DB.Query(
-		`SELECT snapshot_at, total_value FROM portfolio_snapshots WHERE bot_id = ?1 ORDER BY snapshot_at ASC`,
+		`SELECT snapshot_at, total_value FROM portfolio_snapshots
+		 WHERE bot_id = ?1 AND season_id IS NULL ORDER BY snapshot_at ASC`,
 		botID.String(),
 	)
 	portfolioSnapshots := []fiber.Map{}

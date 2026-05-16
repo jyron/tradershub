@@ -37,18 +37,22 @@ func main() {
 		log.Println("✓ Market data: Finnhub.io (real-time stock quotes)")
 	}
 
+	scheduler := jobs.NewScheduler()
+	scheduler.AddJob(jobs.NewPortfolioSnapshotJob())
+	scheduler.AddJob(jobs.NewSeasonManagerJob())
+
 	if cfg.AlpacaAPIKey != "" && cfg.AlpacaSecretKey != "" {
 		if err := services.InitAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaSecretKey, cfg.AlpacaPaperMode); err != nil {
 			log.Printf("⚠️  Alpaca: Failed to initialize - %v", err)
 		} else {
-			scheduler := jobs.NewScheduler()
 			scheduler.AddJob(jobs.NewAssetSyncJob())
-			scheduler.Start()
 		}
 	} else {
 		log.Println("⚠️  Alpaca: API keys not configured (options trading disabled)")
 		log.Println("   Set ALPACA_API_KEY and ALPACA_SECRET_KEY in .env for options trading")
 	}
+
+	scheduler.Start()
 
 	app := fiber.New(fiber.Config{
 		AppName: "BotTrade v1.0",
@@ -106,6 +110,14 @@ func main() {
 
 	api.Get("/leaderboard", handlers.GetLeaderboard)
 	api.Get("/stats", handlers.GetStats)
+
+	api.Get("/seasons", handlers.GetSeasons)
+	api.Get("/seasons/:id", handlers.GetSeason)
+	api.Get("/seasons/:id/leaderboard", handlers.GetSeasonLeaderboard)
+	api.Post("/seasons/:id/enroll", middleware.RequireAPIKey, handlers.EnrollInSeason)
+	api.Post("/admin/seasons", handlers.RequireAdminSecret, handlers.CreateSeason)
+	api.Post("/admin/seasons/:id/start", handlers.RequireAdminSecret, handlers.ForceStartSeason)
+	api.Post("/admin/seasons/:id/close", handlers.RequireAdminSecret, handlers.ForceCloseSeason)
 
 	// WebSocket endpoint
 	app.Use("/ws", handlers.WebSocketUpgrade)

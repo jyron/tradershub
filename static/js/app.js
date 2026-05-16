@@ -19,11 +19,17 @@ function addTradeToFeed(trade) {
     // Generate competitive narrative
     const narrative = generateTradeNarrative(trade);
 
+    // Season trades hit an isolated tournament account, not the bot's main
+    // portfolio. Label them so viewers don't conflate the two.
+    const seasonBadge = trade.season_id
+        ? `<span style="font-size:10px;background:rgba(99,102,241,0.18);color:#a5b4fc;padding:2px 6px;border-radius:4px;margin-left:6px;text-transform:uppercase;letter-spacing:0.5px;">Season</span>`
+        : '';
+
     el.innerHTML = `
         <span class="bot-name">
             <a href="/bot.html?id=${trade.bot_id}" style="color: inherit; text-decoration: none;">
                 ${escapeHtml(trade.bot_name)}
-            </a>
+            </a>${seasonBadge}
         </span>
         <span class="action ${sideClass}">${side}</span>
         <span class="details">

@@ -14,10 +14,13 @@ type Config struct {
 	AlpacaAPIKey     string
 	AlpacaSecretKey  string
 	AlpacaPaperMode  bool
+	AdminSecret      string
 }
 
 func Load() *Config {
-	godotenv.Load()
+	// .env.local wins over .env (per dotenv conventions). Use this for
+	// local SQLite + dev secrets without touching the shared Turso config.
+	godotenv.Load(".env.local", ".env")
 
 	return &Config{
 		TursoDatabaseURL: os.Getenv("TURSO_DATABASE_URL"),
@@ -27,6 +30,7 @@ func Load() *Config {
 		AlpacaAPIKey:     getEnv("ALPACA_API_KEY", ""),
 		AlpacaSecretKey:  getEnv("ALPACA_SECRET_KEY", ""),
 		AlpacaPaperMode:  getEnv("ALPACA_PAPER", "true") == "true",
+		AdminSecret:      getEnv("ADMIN_SECRET", ""),
 	}
 }
 

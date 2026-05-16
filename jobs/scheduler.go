@@ -9,6 +9,8 @@ import (
 type Job interface {
 	Run() error
 	Name() string
+	// Interval returns how often Run should be invoked after the initial run.
+	Interval() time.Duration
 }
 
 type Scheduler struct {
@@ -61,13 +63,13 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) runJobPeriodically(job Job) {
-	log.Printf("Starting background job: %s", job.Name())
+	log.Printf("Starting background job: %s (interval %s)", job.Name(), job.Interval())
 
 	if err := job.Run(); err != nil {
 		log.Printf("Error running job %s: %v", job.Name(), err)
 	}
 
-	ticker := time.NewTicker(24 * time.Hour)
+	ticker := time.NewTicker(job.Interval())
 	defer ticker.Stop()
 
 	for {

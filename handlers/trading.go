@@ -6,8 +6,12 @@ import (
 	"bottrade/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
+// TradeStock executes a stock trade. If the request body includes season_id,
+// the trade routes into the bot's isolated tournament account for that
+// season; otherwise it hits the bot's main account.
 func TradeStock(c *fiber.Ctx) error {
 	bot := middleware.GetBot(c)
 
@@ -19,15 +23,30 @@ func TradeStock(c *fiber.Ctx) error {
 	}
 
 	tradingEngine := services.NewTradingEngine()
-	trade, err := tradingEngine.ExecuteStockTrade(bot, req)
+	var (
+		trade *models.Trade
+		err   error
+	)
+	var seasonForBroadcast *uuid.UUID
+	if req.SeasonID != "" {
+		seasonID, parseErr := uuid.Parse(req.SeasonID)
+		if parseErr != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid season_id",
+			})
+		}
+		seasonForBroadcast = &seasonID
+		trade, err = tradingEngine.ExecuteSeasonStockTrade(bot, seasonID, req)
+	} else {
+		trade, err = tradingEngine.ExecuteStockTrade(bot, req)
+	}
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
-	// Broadcast trade to all WebSocket clients
-	BroadcastEvent("trade", map[string]interface{}{
+	event := map[string]interface{}{
 		"bot_id":    bot.ID,
 		"bot_name":  bot.Name,
 		"symbol":    trade.Symbol,
@@ -36,7 +55,11 @@ func TradeStock(c *fiber.Ctx) error {
 		"price":     trade.Price,
 		"reasoning": trade.Reasoning,
 		"timestamp": trade.ExecutedAt,
-	})
+	}
+	if seasonForBroadcast != nil {
+		event["season_id"] = seasonForBroadcast.String()
+	}
+	BroadcastEvent("trade", event)
 
 	return c.Status(fiber.StatusOK).JSON(models.TradeResponse{
 		TradeID:    trade.ID,

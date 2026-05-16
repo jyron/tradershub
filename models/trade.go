@@ -26,6 +26,9 @@ type StockTradeRequest struct {
 	Side      string `json:"side"` // 'buy' or 'sell'
 	Quantity  int    `json:"quantity"`
 	Reasoning string `json:"reasoning"`
+	// SeasonID routes the trade into the bot's isolated season account.
+	// Omit (or pass empty) to trade against the bot's main account.
+	SeasonID string `json:"season_id,omitempty"`
 }
 
 type TradeResponse struct {

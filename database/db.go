@@ -4,17 +4,36 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB
 
+// Connect opens the SQLite/Turso database. Two URL forms are supported:
+//   - "libsql://<host>" — remote Turso; an authToken is required and appended.
+//   - "file:./local.db" — local SQLite file via the libsql driver; no token.
+//
+// Use the local form for development so dev iteration doesn't burn Turso quota
+// or risk dirtying shared state.
 func Connect(databaseURL, authToken string) error {
-	// Turso connection string format: libsql://your-db.turso.io?authToken=xxx
-	connStr := fmt.Sprintf("%s?authToken=%s", databaseURL, authToken)
+	if databaseURL == "" {
+		return fmt.Errorf("TURSO_DATABASE_URL is required (set to libsql://... for Turso or file:./bottrade.db for local)")
+	}
 
-	db, err := sql.Open("libsql", connStr)
+	driver := "libsql"
+	connStr := databaseURL
+	if strings.HasPrefix(databaseURL, "file:") || strings.HasPrefix(databaseURL, ":memory:") {
+		// Local SQLite via modernc.org/sqlite (pure Go, no CGO). Keeps
+		// dev iteration entirely off of Turso.
+		driver = "sqlite"
+	} else {
+		connStr = fmt.Sprintf("%s?authToken=%s", databaseURL, authToken)
+	}
+
+	db, err := sql.Open(driver, connStr)
 	if err != nil {
 		return fmt.Errorf("unable to connect to database: %w", err)
 	}
@@ -24,8 +43,16 @@ func Connect(databaseURL, authToken string) error {
 	}
 
 	DB = db
-	log.Println("Database connection established")
+	log.Printf("Database connection established (%s)", redactURL(databaseURL))
 	return nil
+}
+
+// redactURL hides any sensitive parts of the connection string before logging.
+func redactURL(u string) string {
+	if i := strings.Index(u, "@"); i >= 0 {
+		return u[:i] + "@…"
+	}
+	return u
 }
 
 func Close() {

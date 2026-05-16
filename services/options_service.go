@@ -149,7 +149,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 		var currentQty int
 		err = tx.QueryRow(
 			`SELECT COALESCE(SUM(quantity), 0) FROM positions
-			 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3`,
+			 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3 AND season_id IS NULL`,
 			bot.ID.String(), req.Symbol, optionType).Scan(&currentQty)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check position: %w", err)
@@ -183,7 +183,7 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 	_, err = tx.Exec(
 		`INSERT INTO trades (id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning)
 		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
-		tradeID, bot.ID, req.Symbol, optionType, req.Side, req.Quantity, price, strikePrice, expDate, totalValue, req.Reasoning,
+		tradeID.String(), bot.ID.String(), req.Symbol, optionType, req.Side, req.Quantity, price, strikePrice, expDate, totalValue, req.Reasoning,
 	)
 
 	if err != nil {
@@ -195,39 +195,63 @@ func (os *OptionsService) ExecuteOptionTrade(bot models.Bot, req models.OptionTr
 	}
 
 	var trade models.Trade
+	var tradeIDStr, botIDStr, executedAt string
+	var dbStrikePrice sql.NullFloat64
+	var dbExpirationDate sql.NullString
 	err = database.DB.QueryRow(
 		`SELECT id, bot_id, symbol, trade_type, side, quantity, price, strike_price, expiration_date, total_value, reasoning, executed_at
 		 FROM trades WHERE id = ?1`,
-		tradeID,
-	).Scan(&trade.ID, &trade.BotID, &trade.Symbol, &trade.TradeType, &trade.Side,
-		&trade.Quantity, &trade.Price, &trade.StrikePrice, &trade.ExpirationDate, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt)
+		tradeID.String(),
+	).Scan(&tradeIDStr, &botIDStr, &trade.Symbol, &trade.TradeType, &trade.Side,
+		&trade.Quantity, &trade.Price, &dbStrikePrice, &dbExpirationDate, &trade.TotalValue, &trade.Reasoning, &executedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch trade: %w", err)
+	}
+
+	// Parse UUIDs and timestamp
+	trade.ID, _ = uuid.Parse(tradeIDStr)
+	trade.BotID, _ = uuid.Parse(botIDStr)
+	trade.ExecutedAt, _ = time.Parse("2006-01-02 15:04:05", executedAt)
+
+	if dbStrikePrice.Valid {
+		sp := dbStrikePrice.Float64
+		trade.StrikePrice = &sp
+	}
+	if dbExpirationDate.Valid {
+		expDate, _ := time.Parse("2006-01-02", dbExpirationDate.String)
+		trade.ExpirationDate = &expDate
 	}
 
 	return &trade, nil
 }
 
 func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symbol string, optionType string, quantity int, price float64, side string, strikePrice float64, expirationDate time.Time) error {
-	var existingID uuid.UUID
+	var existingIDStr string
 	var existingQty int
 	var existingAvgCost float64
 	var existingStrike float64
-	var existingExpiration time.Time
+	var existingExpirationStr string
 
 	err := tx.QueryRow(
 		`SELECT id, quantity, avg_cost, strike_price, expiration_date FROM positions
-		 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3`,
-		botID, symbol, optionType,
-	).Scan(&existingID, &existingQty, &existingAvgCost, &existingStrike, &existingExpiration)
+		 WHERE bot_id = ?1 AND symbol = ?2 AND position_type = ?3 AND season_id IS NULL`,
+		botID.String(), symbol, optionType,
+	).Scan(&existingIDStr, &existingQty, &existingAvgCost, &existingStrike, &existingExpirationStr)
+
+	var existingID uuid.UUID
+	if err == nil {
+		existingID, _ = uuid.Parse(existingIDStr)
+	}
 
 	if err == sql.ErrNoRows {
 		if side == "buy" {
+			posID := uuid.New()
+			expDateStr := expirationDate.Format("2006-01-02")
 			_, err = tx.Exec(
-				`INSERT INTO positions (bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date)
-				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-				botID, symbol, optionType, quantity, price, strikePrice, expirationDate)
+				`INSERT INTO positions (id, bot_id, symbol, position_type, quantity, avg_cost, strike_price, expiration_date)
+				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+				posID.String(), botID.String(), symbol, optionType, quantity, price, strikePrice, expDateStr)
 			return err
 		} else {
 			return fmt.Errorf("no position to sell")
@@ -243,20 +267,20 @@ func (os *OptionsService) updateOptionPosition(tx *sql.Tx, botID uuid.UUID, symb
 		_, err = tx.Exec(
 			`UPDATE positions SET quantity = ?1, avg_cost = ?2, updated_at = CURRENT_TIMESTAMP
 			 WHERE id = ?3`,
-			newQty, newAvgCost, existingID)
+			newQty, newAvgCost, existingID.String())
 		return err
 	} else {
 		newQty := existingQty - quantity
 
 		if newQty == 0 {
 			_, err = tx.Exec(
-				"DELETE FROM positions WHERE id = ?1", existingID)
+				"DELETE FROM positions WHERE id = ?1", existingID.String())
 			return err
 		} else {
 			_, err = tx.Exec(
 				`UPDATE positions SET quantity = ?1, updated_at = CURRENT_TIMESTAMP
 				 WHERE id = ?2`,
-				newQty, existingID)
+				newQty, existingID.String())
 			return err
 		}
 	}
