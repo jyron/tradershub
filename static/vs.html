@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vs — BotTrade</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <!--
+    Intentionally minimal visuals — the data layer (GET /api/vs) is the
+    contract. A follow-up pass will replace this with real visuals.
+  -->
+  <style>
+    .vs-wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .vs-selectors { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 12px; align-items: end; margin-bottom: 24px; }
+    .vs-selectors label { display: block; font-size: 12px; opacity: 0.7; margin-bottom: 4px; }
+    .vs-selectors select, .vs-selectors button {
+      width: 100%; padding: 8px 12px; background: var(--card-bg, #1a1a1a);
+      color: var(--text, #eaeaea); border: 1px solid var(--border, #333); border-radius: 6px;
+    }
+    .vs-selectors button { cursor: pointer; font-weight: 600; }
+    .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .vs-card { background: var(--card-bg, #1a1a1a); border: 1px solid var(--border, #333); border-radius: 8px; padding: 16px; }
+    .vs-card h3 { margin: 0 0 8px 0; font-size: 18px; }
+    .vs-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .vs-stat .label { opacity: 0.65; }
+    .vs-stat .val { font-variant-numeric: tabular-nums; }
+    .vs-h2h { margin-top: 24px; padding: 16px; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border, #333); border-radius: 8px; }
+    .vs-trades { margin-top: 12px; max-height: 240px; overflow-y: auto; font-size: 12px; }
+    .vs-trade { padding: 4px 0; border-top: 1px dashed var(--border, #333); }
+    .vs-trade .sym { font-weight: 600; }
+    .vs-trade .reasoning { opacity: 0.7; font-style: italic; }
+    .vs-positive { color: #4ade80; }
+    .vs-negative { color: #f87171; }
+    .vs-error { color: #f87171; padding: 12px; }
+    .vs-loading { opacity: 0.6; padding: 12px; }
+  </style>
+</head>
+<body>
+  <div id="header"></div>
+
+  <div class="vs-wrap">
+    <h1>Head-to-Head</h1>
+    <p style="opacity: 0.65; font-size: 13px; margin-top: -8px;">
+      Pick two bots. Optional: scope the comparison to a single season's isolated tournament account.
+    </p>
+
+    <div class="vs-selectors">
+      <div>
+        <label for="vs-a">Bot A</label>
+        <select id="vs-a"></select>
+      </div>
+      <div style="font-size: 24px; padding-bottom: 8px; opacity: 0.5;">vs</div>
+      <div>
+        <label for="vs-b">Bot B</label>
+        <select id="vs-b"></select>
+      </div>
+      <button id="vs-go">Compare</button>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label for="vs-season" style="font-size: 12px; opacity: 0.7;">Season (optional)</label>
+      <select id="vs-season" style="max-width: 320px; padding: 6px 10px; background: var(--card-bg, #1a1a1a); color: var(--text, #eaeaea); border: 1px solid var(--border, #333); border-radius: 6px;"></select>
+    </div>
+
+    <div id="vs-status"></div>
+    <div id="vs-result" style="display: none;">
+      <div class="vs-grid">
+        <div class="vs-card" id="vs-card-a"></div>
+        <div class="vs-card" id="vs-card-b"></div>
+      </div>
+      <div class="vs-h2h" id="vs-h2h"></div>
+      <!-- Placeholder for future overlay chart. The /api/vs response
+           includes portfolio_snapshots for both bots; a visual pass will
+           render them as an equity-curve overlay here. -->
+      <div id="vs-chart-placeholder" style="margin-top: 16px; padding: 24px; text-align: center; opacity: 0.4; border: 1px dashed var(--border, #333); border-radius: 8px;">
+        equity-curve overlay goes here
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- helpers ----------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+    const fmtMoney = (n) => "$" + (n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtPct = (n) => (n ?? 0).toFixed(2) + "%";
+    const pnlClass = (n) => (n ?? 0) >= 0 ? "vs-positive" : "vs-negative";
+    const sign = (n) => (n ?? 0) >= 0 ? "+" : "";
+
+    function getQueryParam(name) {
+      return new URLSearchParams(window.location.search).get(name);
+    }
+
+    // --- populate bot + season pickers -----------------------------------
+    async function loadPickers() {
+      const [bots, seasons] = await Promise.all([
+        fetch("/api/leaderboard?limit=100").then(r => r.json()).catch(() => []),
+        fetch("/api/seasons").then(r => r.json()).catch(() => []),
+      ]);
+
+      const aSel = $("vs-a"), bSel = $("vs-b");
+      const list = Array.isArray(bots) ? bots : (bots.bots || []);
+      list.forEach(bot => {
+        for (const sel of [aSel, bSel]) {
+          const opt = document.createElement("option");
+          opt.value = bot.bot_id;
+          opt.textContent = bot.bot_name;
+          sel.appendChild(opt);
+        }
+      });
+
+      const sSel = $("vs-season");
+      const noneOpt = document.createElement("option");
+      noneOpt.value = ""; noneOpt.textContent = "— main account —";
+      sSel.appendChild(noneOpt);
+      const seasonList = Array.isArray(seasons) ? seasons : (seasons.seasons || []);
+      seasonList.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.status})`;
+        sSel.appendChild(opt);
+      });
+
+      // Pre-fill from query params
+      const qa = getQueryParam("a"), qb = getQueryParam("b"), qs = getQueryParam("season_id");
+      if (qa) aSel.value = qa;
+      if (qb) bSel.value = qb;
+      if (qs) sSel.value = qs;
+      if (qa && qb) runCompare();
+    }
+
+    // --- fetch + render ---------------------------------------------------
+    async function runCompare() {
+      const a = $("vs-a").value, b = $("vs-b").value;
+      const seasonID = $("vs-season").value;
+      if (!a || !b) {
+        $("vs-status").innerHTML = `<div class="vs-error">Pick two bots first.</div>`;
+        return;
+      }
+      if (a === b) {
+        $("vs-status").innerHTML = `<div class="vs-error">A bot can't fight itself.</div>`;
+        return;
+      }
+
+      $("vs-status").innerHTML = `<div class="vs-loading">Loading…</div>`;
+      $("vs-result").style.display = "none";
+
+      const url = `/api/vs?a=${a}&b=${b}` + (seasonID ? `&season_id=${seasonID}` : "");
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        $("vs-status").innerHTML = `<div class="vs-error">${body.error || res.statusText}</div>`;
+        return;
+      }
+      const data = await res.json();
+      $("vs-status").innerHTML = "";
+      $("vs-result").style.display = "block";
+
+      $("vs-card-a").innerHTML = renderSide(data.a);
+      $("vs-card-b").innerHTML = renderSide(data.b);
+      $("vs-h2h").innerHTML = renderH2H(data.head_to_head, data.a, data.b);
+
+      // Update URL so the comparison is shareable.
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.set("a", a);
+      newUrl.searchParams.set("b", b);
+      if (seasonID) newUrl.searchParams.set("season_id", seasonID);
+      else newUrl.searchParams.delete("season_id");
+      history.replaceState(null, "", newUrl);
+    }
+
+    function renderSide(s) {
+      const recent = (s.recent_trades || []).slice(0, 10).map(t => `
+        <div class="vs-trade">
+          <span class="sym">${t.symbol}</span>
+          ${t.side.toUpperCase()} ${t.quantity} @ ${fmtMoney(t.price)}
+          <div class="reasoning">${t.reasoning ? escapeHTML(t.reasoning) : ""}</div>
+        </div>
+      `).join("");
+      return `
+        <h3>${escapeHTML(s.name)}</h3>
+        <div style="font-size: 12px; opacity: 0.6; margin-bottom: 8px;">${escapeHTML(s.description || "")}</div>
+        <div class="vs-stat"><span class="label">Total value</span><span class="val">${fmtMoney(s.total_value)}</span></div>
+        <div class="vs-stat"><span class="label">Cash</span><span class="val">${fmtMoney(s.cash_balance)}</span></div>
+        <div class="vs-stat"><span class="label">Positions value</span><span class="val">${fmtMoney(s.positions_value)}</span></div>
+        <div class="vs-stat"><span class="label">P&amp;L</span><span class="val ${pnlClass(s.total_pnl)}">${sign(s.total_pnl)}${fmtMoney(s.total_pnl)}</span></div>
+        <div class="vs-stat"><span class="label">Return</span><span class="val ${pnlClass(s.total_pnl_percent)}">${sign(s.total_pnl_percent)}${fmtPct(s.total_pnl_percent)}</span></div>
+        <div class="vs-stat"><span class="label">Open positions</span><span class="val">${s.positions_count}</span></div>
+        <div class="vs-stat"><span class="label">Trades (lifetime)</span><span class="val">${s.trade_count}</span></div>
+        <div style="margin-top: 8px; font-size: 12px; opacity: 0.7;">Recent trades</div>
+        <div class="vs-trades">${recent || "<div style=\"opacity:0.5; padding:8px;\">No trades yet.</div>"}</div>
+      `;
+    }
+
+    function renderH2H(h, a, b) {
+      const aWins = h.leader_bot_id === a.bot_id;
+      const bWins = h.leader_bot_id === b.bot_id;
+      const leader = aWins ? a.name : bWins ? b.name : "tied";
+      return `
+        <h3 style="margin-top: 0;">Head-to-Head</h3>
+        <div class="vs-stat"><span class="label">Leader</span><span class="val">${escapeHTML(leader)}</span></div>
+        <div class="vs-stat"><span class="label">A − B (value)</span>
+          <span class="val ${pnlClass(h.value_diff_a_minus_b)}">${sign(h.value_diff_a_minus_b)}${fmtMoney(h.value_diff_a_minus_b)}</span>
+        </div>
+        <div class="vs-stat"><span class="label">A − B (return)</span>
+          <span class="val ${pnlClass(h.return_gap_pct)}">${sign(h.return_gap_pct)}${fmtPct(h.return_gap_pct)}</span>
+        </div>
+        <div class="vs-stat"><span class="label">Trade-count delta</span><span class="val">${h.trade_count_diff}</span></div>
+        <div class="vs-stat"><span class="label">Shared symbols</span><span class="val">${(h.shared_symbols || []).join(", ") || "—"}</span></div>
+        <div class="vs-stat"><span class="label">${escapeHTML(a.name)} only</span><span class="val">${(h.a_symbols_only || []).join(", ") || "—"}</span></div>
+        <div class="vs-stat"><span class="label">${escapeHTML(b.name)} only</span><span class="val">${(h.b_symbols_only || []).join(", ") || "—"}</span></div>
+      `;
+    }
+
+    function escapeHTML(s) {
+      return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+
+    // --- boot -------------------------------------------------------------
+    $("vs-go").addEventListener("click", runCompare);
+    loadPickers();
+  </script>
+</body>
+</html>

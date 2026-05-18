@@ -17,7 +17,21 @@
       "Bash(goimports:*)",
       "Bash(perl:*)",
       "Bash(go vet *)",
-      "Bash(go test *)"
+      "Bash(go test *)",
+      "Bash(pkill -f \"/tmp/bottrade\")",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)",
+      "Bash(make seed *)",
+      "Bash(make stop *)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill -9)",
+      "Bash(pkill -f \"exe/bottrade\")",
+      "Bash(pkill -f \"go run \\\\.\")",
+      "Bash(lsof -i:3000)",
+      "Bash(make dev *)",
+      "Bash(make reset *)",
+      "Bash(make smoke *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

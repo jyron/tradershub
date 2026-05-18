@@ -2,6 +2,10 @@
 .env
 .env.local
 
+# Local dev state (contains API keys — never commit)
+.dev_bot.json
+.test_workflow_state
+
 # Local dev SQLite database
 bottrade.db
 bottrade.db-journal

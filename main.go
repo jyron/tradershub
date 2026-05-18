@@ -110,6 +110,7 @@ func main() {
 
 	api.Get("/leaderboard", handlers.GetLeaderboard)
 	api.Get("/stats", handlers.GetStats)
+	api.Get("/vs", handlers.Vs)
 
 	api.Get("/seasons", handlers.GetSeasons)
 	api.Get("/seasons/:id", handlers.GetSeason)
