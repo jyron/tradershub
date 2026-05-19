@@ -6,6 +6,9 @@
 .dev_bot.json
 .test_workflow_state
 
+# Official-bot API keys (written by scripts/seed_official_bots.py)
+bots/.keys/
+
 # Local dev SQLite database
 bottrade.db
 bottrade.db-journal

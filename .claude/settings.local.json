@@ -31,7 +31,9 @@
       "Bash(make dev *)",
       "Bash(make reset *)",
       "Bash(make smoke *)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "WebFetch(domain:claude.ai)",
+      "WebFetch(domain:api.anthropic.com)"
     ]
   }
 }

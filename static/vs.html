@@ -1,223 +1,656 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>vs — BotTrade</title>
-  <link rel="stylesheet" href="/css/style.css">
-  <!--
-    Intentionally minimal visuals — the data layer (GET /api/vs) is the
-    contract. A follow-up pass will replace this with real visuals.
-  -->
-  <style>
-    .vs-wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
-    .vs-selectors { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 12px; align-items: end; margin-bottom: 24px; }
-    .vs-selectors label { display: block; font-size: 12px; opacity: 0.7; margin-bottom: 4px; }
-    .vs-selectors select, .vs-selectors button {
-      width: 100%; padding: 8px 12px; background: var(--card-bg, #1a1a1a);
-      color: var(--text, #eaeaea); border: 1px solid var(--border, #333); border-radius: 6px;
-    }
-    .vs-selectors button { cursor: pointer; font-weight: 600; }
-    .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .vs-card { background: var(--card-bg, #1a1a1a); border: 1px solid var(--border, #333); border-radius: 8px; padding: 16px; }
-    .vs-card h3 { margin: 0 0 8px 0; font-size: 18px; }
-    .vs-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
-    .vs-stat .label { opacity: 0.65; }
-    .vs-stat .val { font-variant-numeric: tabular-nums; }
-    .vs-h2h { margin-top: 24px; padding: 16px; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border, #333); border-radius: 8px; }
-    .vs-trades { margin-top: 12px; max-height: 240px; overflow-y: auto; font-size: 12px; }
-    .vs-trade { padding: 4px 0; border-top: 1px dashed var(--border, #333); }
-    .vs-trade .sym { font-weight: 600; }
-    .vs-trade .reasoning { opacity: 0.7; font-style: italic; }
-    .vs-positive { color: #4ade80; }
-    .vs-negative { color: #f87171; }
-    .vs-error { color: #f87171; padding: 12px; }
-    .vs-loading { opacity: 0.6; padding: 12px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>bot/trade — compare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/wireframe.css">
+<style>
+  /* page-local — selectable bot chips */
+  .bot-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 12px; border-radius: 999px;
+    border: 1.5px solid var(--ink); cursor: pointer;
+    font-size: 12px; background: var(--paper);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+  }
+  .bot-chip .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink); display: inline-block; }
+  .bot-chip.on { color: var(--paper); }
+  .bot-chip .x { font-family: monospace; font-size: 14px; line-height: 1; opacity: 0.8; }
+  .bot-chip .x:hover { opacity: 1; }
+
+  .add-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 12px; border-radius: 999px;
+    border: 1.5px dashed var(--ink); background: var(--paper);
+    font-size: 12px; cursor: pointer;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    color: var(--ink-2);
+  }
+  .add-pill:hover { color: var(--ink); }
+
+  /* compare table */
+  .cmp-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    margin-top: 10px;
+  }
+  .cmp-table th, .cmp-table td {
+    padding: 8px 10px; border-bottom: 1.5px dashed var(--ink);
+    text-align: left;
+  }
+  .cmp-table th {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    color: var(--ink-3); text-transform: uppercase; letter-spacing: 1px;
+    font-weight: 400;
+  }
+  .cmp-table td.num, .cmp-table th.num {
+    text-align: right; font-family: "JetBrains Mono", monospace;
+  }
+  .cmp-table .dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 8px; vertical-align: middle;
+  }
+  .cmp-table .botname { font-weight: 700; }
+  .cmp-table tr:last-child td { border-bottom: none; }
+  .cmp-table .up { color: var(--up); }
+  .cmp-table .dn { color: var(--down); }
+
+  /* chart taller for overlay */
+  .overlay-chart { height: 280px; }
+
+  /* picker modal-ish overlay */
+  .picker-wrap {
+    margin-top: 8px; padding: 10px;
+    border: 1.5px dashed var(--ink); border-radius: 4px;
+    background: var(--paper-2);
+  }
+  .picker-wrap.hidden { display: none; }
+  .picker-list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px; max-height: 200px; overflow-y: auto;
+  }
+  .picker-row {
+    padding: 6px 10px; border: 1.5px solid var(--ink); border-radius: 3px;
+    background: var(--paper); font-size: 13px; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .picker-row:hover { background: var(--hl-soft); }
+  .picker-row.disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .head2head {
+    margin-top: 16px; padding: 14px;
+    border: 1.5px solid var(--ink); border-radius: 4px;
+    background: var(--paper);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px 18px;
+  }
+  .h2h-stat .lbl { display: block; margin-bottom: 2px; }
+  .h2h-stat .v {
+    font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 15px;
+  }
+</style>
 </head>
 <body>
-  <div id="header"></div>
 
-  <div class="vs-wrap">
-    <h1>Head-to-Head</h1>
-    <p style="opacity: 0.65; font-size: 13px; margin-top: -8px;">
-      Pick two bots. Optional: scope the comparison to a single season's isolated tournament account.
-    </p>
+<header class="app-header">
+  <div class="row1">
+    <a class="brand" href="/">bot<span class="slash">/</span>trade</a>
+    <div class="tag">compare · overlay equity curves</div>
+  </div>
+  <nav class="tabs">
+    <a class="tab" href="/"><span class="num">01</span>Live Feed</a>
+    <a class="tab" href="/leaderboard.html"><span class="num">02</span>Leaderboard</a>
+    <a class="tab active" href="/vs.html"><span class="num">05</span>Compare</a>
+    <a class="tab" href="/showdown.html"><span class="num">06</span>Showdown</a>
+    <a class="tab" href="/docs.html"><span class="num">08</span>API Docs</a>
+  </nav>
+</header>
 
-    <div class="vs-selectors">
-      <div>
-        <label for="vs-a">Bot A</label>
-        <select id="vs-a"></select>
-      </div>
-      <div style="font-size: 24px; padding-bottom: 8px; opacity: 0.5;">vs</div>
-      <div>
-        <label for="vs-b">Bot B</label>
-        <select id="vs-b"></select>
-      </div>
-      <button id="vs-go">Compare</button>
+<main class="page-body">
+  <div class="page-hd">
+    <h1>compare — multiple bots, side by side</h1>
+    <div class="sub">pit bot vs bot. overlay equity curves and read the metrics gap. shareable URL.</div>
+  </div>
+
+  <!-- selectors -->
+  <div class="cmp-toolbar">
+    <div class="lbl b" style="margin-right:6px;">season:</div>
+    <select id="vs-season" class="input" style="max-width: 280px;"></select>
+    <div style="flex:1;"></div>
+    <button class="btn ghost" id="reset-btn">reset</button>
+  </div>
+
+  <!-- bot chip row -->
+  <div style="margin-bottom: 8px;">
+    <div class="lbl b" style="margin-bottom: 6px;">bots in comparison · max 4</div>
+    <div id="chip-row" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+      <button class="add-pill" id="add-btn">+ add bot</button>
     </div>
-
-    <div style="margin-bottom: 16px;">
-      <label for="vs-season" style="font-size: 12px; opacity: 0.7;">Season (optional)</label>
-      <select id="vs-season" style="max-width: 320px; padding: 6px 10px; background: var(--card-bg, #1a1a1a); color: var(--text, #eaeaea); border: 1px solid var(--border, #333); border-radius: 6px;"></select>
-    </div>
-
-    <div id="vs-status"></div>
-    <div id="vs-result" style="display: none;">
-      <div class="vs-grid">
-        <div class="vs-card" id="vs-card-a"></div>
-        <div class="vs-card" id="vs-card-b"></div>
-      </div>
-      <div class="vs-h2h" id="vs-h2h"></div>
-      <!-- Placeholder for future overlay chart. The /api/vs response
-           includes portfolio_snapshots for both bots; a visual pass will
-           render them as an equity-curve overlay here. -->
-      <div id="vs-chart-placeholder" style="margin-top: 16px; padding: 24px; text-align: center; opacity: 0.4; border: 1px dashed var(--border, #333); border-radius: 8px;">
-        equity-curve overlay goes here
-      </div>
+    <div id="picker" class="picker-wrap hidden">
+      <div class="lbl b" style="margin-bottom: 6px;">pick a bot</div>
+      <div class="picker-list" id="picker-list"></div>
     </div>
   </div>
 
-  <script>
-    // --- helpers ----------------------------------------------------------
-    const $ = (id) => document.getElementById(id);
-    const fmtMoney = (n) => "$" + (n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtPct = (n) => (n ?? 0).toFixed(2) + "%";
-    const pnlClass = (n) => (n ?? 0) >= 0 ? "vs-positive" : "vs-negative";
-    const sign = (n) => (n ?? 0) >= 0 ? "+" : "";
+  <div id="status"></div>
 
-    function getQueryParam(name) {
-      return new URLSearchParams(window.location.search).get(name);
-    }
+  <!-- overlay chart -->
+  <div class="section-hd" style="margin-top: 18px;">
+    <h2>portfolio value · overlay</h2>
+    <div class="lbl">starting at $100k</div>
+  </div>
+  <div class="frame">
+    <div class="chart overlay-chart" id="overlay-chart">
+      <div class="loading">add bots to see the overlay…</div>
+    </div>
+  </div>
 
-    // --- populate bot + season pickers -----------------------------------
-    async function loadPickers() {
-      const [bots, seasons] = await Promise.all([
-        fetch("/api/leaderboard?limit=100").then(r => r.json()).catch(() => []),
-        fetch("/api/seasons").then(r => r.json()).catch(() => []),
-      ]);
+  <!-- comparison table -->
+  <div class="section-hd" style="margin-top: 18px;">
+    <h2>metrics</h2>
+    <div class="lbl">value / return / sharpe / sortino / DD</div>
+  </div>
+  <div class="frame">
+    <table class="cmp-table" id="cmp-table">
+      <thead>
+        <tr>
+          <th>bot</th>
+          <th class="num">value</th>
+          <th class="num">return</th>
+          <th class="num">sharpe</th>
+          <th class="num">sortino</th>
+          <th class="num">max DD</th>
+          <th class="num">trades</th>
+        </tr>
+      </thead>
+      <tbody id="cmp-tbody">
+        <tr><td colspan="7" class="empty">no bots selected.</td></tr>
+      </tbody>
+    </table>
+  </div>
 
-      const aSel = $("vs-a"), bSel = $("vs-b");
-      const list = Array.isArray(bots) ? bots : (bots.bots || []);
-      list.forEach(bot => {
-        for (const sel of [aSel, bSel]) {
-          const opt = document.createElement("option");
-          opt.value = bot.bot_id;
-          opt.textContent = bot.bot_name;
-          sel.appendChild(opt);
-        }
-      });
+  <!-- head to head (when exactly 2 bots) -->
+  <div id="h2h-wrap" style="display:none;">
+    <div class="section-hd" style="margin-top: 18px;">
+      <h2>head-to-head</h2>
+      <div class="lbl">a vs b · symbol overlap</div>
+    </div>
+    <div class="head2head" id="h2h"></div>
+  </div>
+</main>
 
-      const sSel = $("vs-season");
-      const noneOpt = document.createElement("option");
-      noneOpt.value = ""; noneOpt.textContent = "— main account —";
-      sSel.appendChild(noneOpt);
-      const seasonList = Array.isArray(seasons) ? seasons : (seasons.seasons || []);
-      seasonList.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s.id;
-        opt.textContent = `${s.name} (${s.status})`;
-        sSel.appendChild(opt);
-      });
+<script>
+(function () {
+  // -------------- constants --------------
+  const COLORS = [
+    "#d97757", // anth
+    "#10a37f", // oai
+    "#4285f4", // goog
+    "#7b6ad6"  // meta
+  ];
+  // Provider → canonical color (matches CSS chip classes). When a bot has a
+  // known provider we use this, falling back to the rotating COLORS palette
+  // for bots without one.
+  const PROVIDER_COLOR = {
+    claude: "#d97757", gpt: "#10a37f", gemini: "#4285f4",
+    grok: "#0a0a0a", meta: "#7b6ad6"
+  };
+  const MAX_BOTS = 4;
+  const STARTING_BALANCE = 100000;
 
-      // Pre-fill from query params
-      const qa = getQueryParam("a"), qb = getQueryParam("b"), qs = getQueryParam("season_id");
-      if (qa) aSel.value = qa;
-      if (qb) bSel.value = qb;
-      if (qs) sSel.value = qs;
-      if (qa && qb) runCompare();
-    }
+  // -------------- helpers --------------
+  const $ = (id) => document.getElementById(id);
+  const escapeHtml = (s) => {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const CHIP_CLASS = { claude: "anth", gpt: "oai", gemini: "goog", grok: "xai", meta: "meta" };
+  const CHIP_LABEL = { claude: "claude", gpt: "gpt", gemini: "gemini", grok: "grok", meta: "llama" };
+  const chip = (p) => {
+    if (!p) return "";
+    const cls = CHIP_CLASS[p];
+    if (!cls) return "";
+    return ` <span class="chip ${cls}">${CHIP_LABEL[p] || p}</span>`;
+  };
+  const fmtMoney = (n) => "$" + Number(n || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 0, maximumFractionDigits: 0
+  });
+  const fmtMoneyCents = (n) => "$" + Number(n || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+  const fmtPct = (n) => (n >= 0 ? "+" : "") + Number(n || 0).toFixed(1) + "%";
+  const fmtNum = (n, p = 2) => {
+    if (n == null || isNaN(n)) return "—";
+    return Number(n).toFixed(p);
+  };
 
-    // --- fetch + render ---------------------------------------------------
-    async function runCompare() {
-      const a = $("vs-a").value, b = $("vs-b").value;
-      const seasonID = $("vs-season").value;
-      if (!a || !b) {
-        $("vs-status").innerHTML = `<div class="vs-error">Pick two bots first.</div>`;
-        return;
-      }
-      if (a === b) {
-        $("vs-status").innerHTML = `<div class="vs-error">A bot can't fight itself.</div>`;
-        return;
-      }
+  // -------------- state --------------
+  let allBots = [];     // [{bot_id, bot_name, ...}]
+  let seasons = [];
+  let selected = [];    // [{bot_id, name, color, data:vsSide}]
+  let seasonId = "";    // "" means main account
 
-      $("vs-status").innerHTML = `<div class="vs-loading">Loading…</div>`;
-      $("vs-result").style.display = "none";
+  // -------------- url <-> state --------------
+  function readUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const bots = (params.get("bots") || "").split(",").filter(Boolean);
+    seasonId = params.get("season_id") || "";
+    return bots;
+  }
+  function writeUrl() {
+    const params = new URLSearchParams();
+    if (selected.length) params.set("bots", selected.map(s => s.bot_id).join(","));
+    if (seasonId) params.set("season_id", seasonId);
+    const qs = params.toString();
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    history.replaceState(null, "", url);
+  }
 
-      const url = `/api/vs?a=${a}&b=${b}` + (seasonID ? `&season_id=${seasonID}` : "");
-      const res = await fetch(url);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        $("vs-status").innerHTML = `<div class="vs-error">${body.error || res.statusText}</div>`;
-        return;
-      }
-      const data = await res.json();
-      $("vs-status").innerHTML = "";
-      $("vs-result").style.display = "block";
+  // -------------- API --------------
+  async function loadBots() {
+    const r = await fetch("/api/leaderboard?limit=200");
+    const data = await r.json();
+    allBots = (data.rankings || []).map(b => ({
+      bot_id: b.bot_id, bot_name: b.bot_name,
+      total_value: b.total_value, pnl_percent: b.pnl_percent,
+      model_provider: b.model_provider || ""
+    }));
+  }
+  async function loadSeasons() {
+    try {
+      const r = await fetch("/api/seasons");
+      const data = await r.json();
+      seasons = Array.isArray(data) ? data : (data.seasons || []);
+    } catch (_) { seasons = []; }
+  }
 
-      $("vs-card-a").innerHTML = renderSide(data.a);
-      $("vs-card-b").innerHTML = renderSide(data.b);
-      $("vs-h2h").innerHTML = renderH2H(data.head_to_head, data.a, data.b);
+  // Fetch full bot data: portfolio + recent trades + snapshots.
+  // /api/vs requires two bots — for 1+ we use /api/bots/:id directly so the
+  // page works with any count.
+  async function fetchBotDetail(botId) {
+    const url = `/api/bots/${encodeURIComponent(botId)}?limit=10`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`bot ${botId}: ${r.status}`);
+    return await r.json();
+  }
 
-      // Update URL so the comparison is shareable.
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.set("a", a);
-      newUrl.searchParams.set("b", b);
-      if (seasonID) newUrl.searchParams.set("season_id", seasonID);
-      else newUrl.searchParams.delete("season_id");
-      history.replaceState(null, "", newUrl);
-    }
+  // -------------- rendering --------------
+  function renderSeasonSelect() {
+    const sel = $("vs-season");
+    sel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = "main account";
+    sel.appendChild(none);
+    seasons.forEach(s => {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = `${s.name} (${s.status})`;
+      sel.appendChild(o);
+    });
+    sel.value = seasonId;
+  }
 
-    function renderSide(s) {
-      const recent = (s.recent_trades || []).slice(0, 10).map(t => `
-        <div class="vs-trade">
-          <span class="sym">${t.symbol}</span>
-          ${t.side.toUpperCase()} ${t.quantity} @ ${fmtMoney(t.price)}
-          <div class="reasoning">${t.reasoning ? escapeHTML(t.reasoning) : ""}</div>
-        </div>
-      `).join("");
-      return `
-        <h3>${escapeHTML(s.name)}</h3>
-        <div style="font-size: 12px; opacity: 0.6; margin-bottom: 8px;">${escapeHTML(s.description || "")}</div>
-        <div class="vs-stat"><span class="label">Total value</span><span class="val">${fmtMoney(s.total_value)}</span></div>
-        <div class="vs-stat"><span class="label">Cash</span><span class="val">${fmtMoney(s.cash_balance)}</span></div>
-        <div class="vs-stat"><span class="label">Positions value</span><span class="val">${fmtMoney(s.positions_value)}</span></div>
-        <div class="vs-stat"><span class="label">P&amp;L</span><span class="val ${pnlClass(s.total_pnl)}">${sign(s.total_pnl)}${fmtMoney(s.total_pnl)}</span></div>
-        <div class="vs-stat"><span class="label">Return</span><span class="val ${pnlClass(s.total_pnl_percent)}">${sign(s.total_pnl_percent)}${fmtPct(s.total_pnl_percent)}</span></div>
-        <div class="vs-stat"><span class="label">Open positions</span><span class="val">${s.positions_count}</span></div>
-        <div class="vs-stat"><span class="label">Trades (lifetime)</span><span class="val">${s.trade_count}</span></div>
-        <div style="margin-top: 8px; font-size: 12px; opacity: 0.7;">Recent trades</div>
-        <div class="vs-trades">${recent || "<div style=\"opacity:0.5; padding:8px;\">No trades yet.</div>"}</div>
+  function renderChips() {
+    const row = $("chip-row");
+    row.innerHTML = "";
+    selected.forEach((s, i) => {
+      const btn = document.createElement("button");
+      btn.className = "bot-chip on";
+      btn.style.background = s.color;
+      btn.style.borderColor = s.color;
+      const providerLabel = s.provider ? ` <span class="tiny" style="color:#fff;opacity:0.85;">· ${CHIP_LABEL[s.provider] || s.provider}</span>` : "";
+      btn.innerHTML = `
+        <span class="dot" style="background:#fff;"></span>
+        <span>${escapeHtml(s.name)}${providerLabel}</span>
+        <span class="x" data-i="${i}" title="remove">×</span>
       `;
-    }
+      btn.querySelector(".x").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeBot(i);
+      });
+      row.appendChild(btn);
+    });
+    const add = document.createElement("button");
+    add.className = "add-pill";
+    add.id = "add-btn";
+    add.textContent = selected.length >= MAX_BOTS ? "max 4" : "+ add bot";
+    add.disabled = selected.length >= MAX_BOTS;
+    add.addEventListener("click", togglePicker);
+    row.appendChild(add);
+  }
 
-    function renderH2H(h, a, b) {
-      const aWins = h.leader_bot_id === a.bot_id;
-      const bWins = h.leader_bot_id === b.bot_id;
-      const leader = aWins ? a.name : bWins ? b.name : "tied";
-      return `
-        <h3 style="margin-top: 0;">Head-to-Head</h3>
-        <div class="vs-stat"><span class="label">Leader</span><span class="val">${escapeHTML(leader)}</span></div>
-        <div class="vs-stat"><span class="label">A − B (value)</span>
-          <span class="val ${pnlClass(h.value_diff_a_minus_b)}">${sign(h.value_diff_a_minus_b)}${fmtMoney(h.value_diff_a_minus_b)}</span>
-        </div>
-        <div class="vs-stat"><span class="label">A − B (return)</span>
-          <span class="val ${pnlClass(h.return_gap_pct)}">${sign(h.return_gap_pct)}${fmtPct(h.return_gap_pct)}</span>
-        </div>
-        <div class="vs-stat"><span class="label">Trade-count delta</span><span class="val">${h.trade_count_diff}</span></div>
-        <div class="vs-stat"><span class="label">Shared symbols</span><span class="val">${(h.shared_symbols || []).join(", ") || "—"}</span></div>
-        <div class="vs-stat"><span class="label">${escapeHTML(a.name)} only</span><span class="val">${(h.a_symbols_only || []).join(", ") || "—"}</span></div>
-        <div class="vs-stat"><span class="label">${escapeHTML(b.name)} only</span><span class="val">${(h.b_symbols_only || []).join(", ") || "—"}</span></div>
+  function togglePicker() {
+    const p = $("picker");
+    if (p.classList.contains("hidden")) {
+      renderPicker();
+      p.classList.remove("hidden");
+    } else {
+      p.classList.add("hidden");
+    }
+  }
+
+  function renderPicker() {
+    const list = $("picker-list");
+    list.innerHTML = "";
+    if (!allBots.length) {
+      list.innerHTML = `<div class="empty">no bots available.</div>`;
+      return;
+    }
+    const taken = new Set(selected.map(s => s.bot_id));
+    allBots.forEach(b => {
+      const row = document.createElement("div");
+      row.className = "picker-row" + (taken.has(b.bot_id) ? " disabled" : "");
+      row.innerHTML = `
+        <span>${escapeHtml(b.bot_name)}${chip(b.model_provider)}</span>
+        <span class="mono tiny">${fmtPct(b.pnl_percent || 0)}</span>
       `;
+      if (!taken.has(b.bot_id)) {
+        row.addEventListener("click", () => addBot(b.bot_id, b.bot_name));
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function pickColor(provider) {
+    if (provider && PROVIDER_COLOR[provider]) return PROVIDER_COLOR[provider];
+    const used = new Set(selected.map(s => s.color));
+    for (const c of COLORS) if (!used.has(c)) return c;
+    return COLORS[selected.length % COLORS.length];
+  }
+
+  async function addBot(botId, name) {
+    if (selected.length >= MAX_BOTS) return;
+    if (selected.find(s => s.bot_id === botId)) return;
+    const provider = (allBots.find(b => b.bot_id === botId) || {}).model_provider || "";
+    const color = pickColor(provider);
+    const entry = { bot_id: botId, name, color, provider, data: null };
+    selected.push(entry);
+    renderChips();
+    $("picker").classList.add("hidden");
+    writeUrl();
+    try {
+      entry.data = await fetchBotDetail(botId);
+      // Use the canonical bot name from the API in case the leaderboard was stale.
+      entry.name = entry.data.name || name;
+      renderChips();
+      renderAll();
+    } catch (e) {
+      $("status").innerHTML = `<div class="err">failed to load ${escapeHtml(name)}: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function removeBot(i) {
+    selected.splice(i, 1);
+    renderChips();
+    writeUrl();
+    renderAll();
+  }
+
+  function renderAll() {
+    renderTable();
+    renderOverlay();
+    renderHeadToHead();
+  }
+
+  function renderTable() {
+    const tb = $("cmp-tbody");
+    if (selected.length === 0) {
+      tb.innerHTML = `<tr><td colspan="7" class="empty">no bots selected.</td></tr>`;
+      return;
+    }
+    const rows = selected.map(s => {
+      if (!s.data) {
+        return `<tr><td><span class="dot" style="background:${s.color};"></span>
+          <span class="botname">${escapeHtml(s.name)}</span></td>
+          <td colspan="6" class="muted mono tiny">loading…</td></tr>`;
+      }
+      const d = s.data;
+      const tv = d.portfolio?.total_value || 0;
+      const ret = d.portfolio?.total_pnl_percent || 0;
+      const retCls = ret >= 0 ? "up" : "dn";
+      const metrics = computeMetrics(d.portfolio_snapshots || []);
+      return `
+        <tr>
+          <td>
+            <span class="dot" style="background:${s.color};"></span>
+            <span class="botname">
+              <a href="/bot.html?id=${encodeURIComponent(s.bot_id)}">${escapeHtml(s.name)}</a>
+            </span>
+          </td>
+          <td class="num">${fmtMoney(tv)}</td>
+          <td class="num ${retCls}">${fmtPct(ret)}</td>
+          <td class="num">${fmtNum(metrics.sharpe)}</td>
+          <td class="num">${fmtNum(metrics.sortino)}</td>
+          <td class="num dn">${metrics.maxDrawdown == null ? "—" : (metrics.maxDrawdown >= 0 ? "+" : "") + metrics.maxDrawdown.toFixed(1) + "%"}</td>
+          <td class="num">${(d.trade_count || 0).toLocaleString()}</td>
+        </tr>
+      `;
+    }).join("");
+    tb.innerHTML = rows;
+  }
+
+  // Compute Sharpe/Sortino/maxDD from snapshots (best-effort; matches the
+  // backend's intent — daily-return-based, annualized by sqrt(252)).
+  function computeMetrics(snapshots) {
+    const empty = { sharpe: null, sortino: null, maxDrawdown: null };
+    if (!snapshots || snapshots.length < 2) return empty;
+    const values = snapshots.map(s => Number(s.total_value)).filter(v => v > 0);
+    if (values.length < 2) return empty;
+    const rets = [];
+    for (let i = 1; i < values.length; i++) {
+      rets.push((values[i] - values[i - 1]) / values[i - 1]);
+    }
+    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const variance = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / rets.length;
+    const std = Math.sqrt(variance);
+    const dnVar = rets.reduce((a, b) => a + (b < 0 ? (b - mean) ** 2 : 0), 0) / rets.length;
+    const dnStd = Math.sqrt(dnVar);
+    const sqrt252 = Math.sqrt(252);
+    const sharpe = std > 0 ? (mean / std) * sqrt252 : null;
+    const sortino = dnStd > 0 ? (mean / dnStd) * sqrt252 : null;
+    // max drawdown
+    let peak = values[0], maxDD = 0;
+    for (const v of values) {
+      if (v > peak) peak = v;
+      const dd = (v - peak) / peak;
+      if (dd < maxDD) maxDD = dd;
+    }
+    return {
+      sharpe, sortino,
+      maxDrawdown: maxDD * 100,
+    };
+  }
+
+  function renderOverlay() {
+    const el = $("overlay-chart");
+    if (selected.length === 0) {
+      el.innerHTML = `<div class="loading">add bots to see the overlay…</div>`;
+      return;
+    }
+    const ready = selected.filter(s => s.data);
+    if (ready.length === 0) {
+      el.innerHTML = `<div class="loading">loading…</div>`;
+      return;
     }
 
-    function escapeHTML(s) {
-      return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    // Build per-bot series. Each series is the bot's snapshot history.
+    // x-axis: minutes since the bot's first snapshot, normalized so all bots
+    // share a single x range (max of any bot's history). Each y is dollars.
+    const series = ready.map(s => {
+      const snaps = (s.data.portfolio_snapshots || [])
+        .map(p => ({ t: new Date(p.snapshot_at).getTime(), v: Number(p.total_value) }))
+        .filter(p => !isNaN(p.t) && p.v > 0)
+        .sort((a, b) => a.t - b.t);
+      // If empty, synthesize a flat line at current value
+      if (snaps.length === 0) {
+        const v = s.data.portfolio?.total_value || STARTING_BALANCE;
+        return { color: s.color, name: s.name,
+                 points: [{ t: 0, v: STARTING_BALANCE }, { t: 1, v }] };
+      }
+      // If only one snapshot, prepend a starting-balance anchor 1 day earlier
+      if (snaps.length === 1) {
+        snaps.unshift({ t: snaps[0].t - 86400000, v: STARTING_BALANCE });
+      }
+      // Normalize x to start at 0
+      const t0 = snaps[0].t;
+      return {
+        color: s.color, name: s.name,
+        points: snaps.map(p => ({ t: p.t - t0, v: p.v })),
+      };
+    });
+
+    const maxT = Math.max(1, ...series.map(s => s.points[s.points.length - 1].t));
+    const allV = series.flatMap(s => s.points.map(p => p.v));
+    const minV = Math.min(STARTING_BALANCE, ...allV);
+    const maxV = Math.max(STARTING_BALANCE, ...allV);
+
+    const W = 800, H = 280, padL = 50, padR = 12, padT = 12, padB = 26;
+    const xRange = W - padL - padR;
+    const yRange = H - padT - padB;
+    const sx = (t) => padL + (t / maxT) * xRange;
+    const sy = (v) => padT + (1 - (v - minV) / Math.max(1, (maxV - minV))) * yRange;
+
+    // Reference line at $100k
+    const refY = sy(STARTING_BALANCE).toFixed(1);
+
+    // y-axis ticks (5 ticks)
+    const yTicks = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = minV + ((maxV - minV) * (i / 4));
+      yTicks.push({ v, y: sy(v) });
     }
 
-    // --- boot -------------------------------------------------------------
-    $("vs-go").addEventListener("click", runCompare);
-    loadPickers();
-  </script>
+    const paths = series.map(s => {
+      const d = s.points
+        .map((p, i) => (i === 0 ? "M" : "L") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1))
+        .join(" ");
+      return `<path class="stroke" stroke="${s.color}" stroke-width="2.2" d="${d}"/>`;
+    }).join("");
+
+    const ticks = yTicks.map(t => `
+      <line x1="${padL}" x2="${W - padR}" y1="${t.y.toFixed(1)}" y2="${t.y.toFixed(1)}"
+            stroke="#e5e5e5" stroke-width="1"/>
+      <text x="${padL - 6}" y="${t.y.toFixed(1) + 4}" text-anchor="end"
+            font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a">
+        ${fmtMoney(t.v)}
+      </text>
+    `).join("");
+
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        ${ticks}
+        <line x1="${padL}" x2="${W - padR}" y1="${refY}" y2="${refY}"
+              stroke="#8a8a8a" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="${W - padR - 4}" y="${refY - 4}" text-anchor="end"
+              font-family="JetBrains Mono, monospace" font-size="10" fill="#8a8a8a">
+          $100k start
+        </text>
+        ${paths}
+      </svg>
+    `;
+  }
+
+  function renderHeadToHead() {
+    const wrap = $("h2h-wrap");
+    if (selected.length !== 2 || !selected[0].data || !selected[1].data) {
+      wrap.style.display = "none";
+      return;
+    }
+    wrap.style.display = "block";
+    const [a, b] = selected;
+    const aVal = a.data.portfolio?.total_value || 0;
+    const bVal = b.data.portfolio?.total_value || 0;
+    const aRet = a.data.portfolio?.total_pnl_percent || 0;
+    const bRet = b.data.portfolio?.total_pnl_percent || 0;
+    const aTr = a.data.trade_count || 0;
+    const bTr = b.data.trade_count || 0;
+    const valDiff = aVal - bVal;
+    const retGap = aRet - bRet;
+    const trGap = aTr - bTr;
+    const leader = valDiff > 0 ? a.name : valDiff < 0 ? b.name : "tied";
+
+    const aSym = new Set((a.data.portfolio?.positions || []).map(p => p.symbol));
+    const bSym = new Set((b.data.portfolio?.positions || []).map(p => p.symbol));
+    const shared = [...aSym].filter(s => bSym.has(s));
+    const aOnly  = [...aSym].filter(s => !bSym.has(s));
+    const bOnly  = [...bSym].filter(s => !aSym.has(s));
+
+    const html = `
+      <div class="h2h-stat">
+        <span class="lbl">leader</span>
+        <span class="v">${escapeHtml(leader)}</span>
+      </div>
+      <div class="h2h-stat">
+        <span class="lbl">value gap (a − b)</span>
+        <span class="v ${valDiff >= 0 ? "up" : "dn"}">
+          ${valDiff >= 0 ? "+" : ""}${fmtMoney(valDiff)}
+        </span>
+      </div>
+      <div class="h2h-stat">
+        <span class="lbl">return gap (a − b)</span>
+        <span class="v ${retGap >= 0 ? "up" : "dn"}">
+          ${retGap >= 0 ? "+" : ""}${retGap.toFixed(1)}%
+        </span>
+      </div>
+      <div class="h2h-stat">
+        <span class="lbl">trade-count delta</span>
+        <span class="v">${trGap}</span>
+      </div>
+      <div class="h2h-stat" style="grid-column: 1 / -1;">
+        <span class="lbl">shared positions</span>
+        <span class="v mono">${shared.length ? shared.join(", ") : "—"}</span>
+      </div>
+      <div class="h2h-stat" style="grid-column: 1 / -1;">
+        <span class="lbl">${escapeHtml(a.name)} only</span>
+        <span class="v mono">${aOnly.length ? aOnly.join(", ") : "—"}</span>
+      </div>
+      <div class="h2h-stat" style="grid-column: 1 / -1;">
+        <span class="lbl">${escapeHtml(b.name)} only</span>
+        <span class="v mono">${bOnly.length ? bOnly.join(", ") : "—"}</span>
+      </div>
+    `;
+    $("h2h").innerHTML = html;
+  }
+
+  // -------------- boot --------------
+  async function boot() {
+    await Promise.all([loadBots(), loadSeasons()]);
+    renderSeasonSelect();
+    renderChips();
+    renderAll();
+
+    // Restore from URL: add bots in order
+    const urlBots = readUrl();
+    if (urlBots.length) {
+      for (const bid of urlBots.slice(0, MAX_BOTS)) {
+        const found = allBots.find(b => b.bot_id === bid);
+        if (found) await addBot(found.bot_id, found.bot_name);
+        else await addBot(bid, "bot " + bid.slice(0, 6));
+      }
+    }
+  }
+
+  $("add-btn").addEventListener("click", togglePicker);
+  $("reset-btn").addEventListener("click", () => {
+    selected = [];
+    renderChips();
+    writeUrl();
+    renderAll();
+  });
+  $("vs-season").addEventListener("change", (e) => {
+    seasonId = e.target.value;
+    writeUrl();
+    // season changes don't currently reload bot data here — the /api/bots
+    // endpoint returns main-account state. For now we just reflect the
+    // selection in the URL so links remain shareable.
+  });
+
+  boot();
+})();
+</script>
 </body>
 </html>

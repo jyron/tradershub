@@ -11,22 +11,31 @@ DEV_PORT      ?= 3000
 ADMIN_SECRET  ?= dev
 BASE_URL      ?= http://localhost:$(DEV_PORT)
 
-.PHONY: help dev run build prod-bin reset seed smoke test fmt vet tidy clean stop logs
+.PHONY: help dev run build prod-bin reset seed smoke test fmt vet tidy clean stop logs \
+        seed-official replay-bots replay-claude replay-gpt replay-gemini replay-grok
 
 help:
 	@echo "Targets:"
-	@echo "  dev       run server with .env.local (local SQLite, no Turso)"
-	@echo "  build     compile $(BINARY) for the current platform"
-	@echo "  prod-bin  compile a stripped/optimized linux/amd64 binary"
-	@echo "  reset     wipe local SQLite DB"
-	@echo "  seed      bootstrap a claimed bot + pending season for fast iteration"
-	@echo "  smoke     hit the running dev server with a curl-based sanity check"
-	@echo "  test      go test ./..."
-	@echo "  fmt       gofmt -w ."
-	@echo "  vet       go vet ./..."
-	@echo "  tidy      go mod tidy"
-	@echo "  stop      kill any locally-running bottrade process"
-	@echo "  clean     remove built binaries and dev state files"
+	@echo "  dev             run server with .env.local (local SQLite, no Turso)"
+	@echo "  build           compile $(BINARY) for the current platform"
+	@echo "  prod-bin        compile a stripped/optimized linux/amd64 binary"
+	@echo "  reset           wipe local SQLite DB"
+	@echo "  seed            bootstrap a claimed bot + pending season for fast iteration"
+	@echo "  smoke           hit the running dev server with a curl-based sanity check"
+	@echo "  test            go test ./..."
+	@echo "  fmt             gofmt -w ."
+	@echo "  vet             go vet ./..."
+	@echo "  tidy            go mod tidy"
+	@echo "  stop            kill any locally-running bottrade process"
+	@echo "  clean           remove built binaries and dev state files"
+	@echo
+	@echo "Official-bot showdown (bots/README.md for details):"
+	@echo "  seed-official   register the 4 official benchmark bots (idempotent)"
+	@echo "  replay-bots     run 90-day historical replay for all 4 providers"
+	@echo "  replay-claude   replay just Claude"
+	@echo "  replay-gpt      replay just GPT"
+	@echo "  replay-gemini   replay just Gemini"
+	@echo "  replay-grok     replay just Grok"
 
 dev: stop
 	@echo "→ starting dev server on :$(DEV_PORT) against $(DEV_DB)"
@@ -80,3 +89,28 @@ logs:
 clean: stop
 	@rm -f $(BINARY) $(DEV_BINARY) .dev_bot.json
 	@echo "✓ cleaned"
+
+# Official-bot showdown ----------------------------------------------
+# `seed-official` is safe to run repeatedly: it skips providers whose bot
+# already exists. `replay-bots` runs each provider serially so you can see
+# errors and Ctrl-C cleanly.
+
+REPLAY_DAYS ?= 90
+
+seed-official:
+	@BASE_URL=$(BASE_URL) python3 scripts/seed_official_bots.py
+
+replay-claude:
+	@python3 -m bots.claude_bot --replay $(REPLAY_DAYS)
+
+replay-gpt:
+	@python3 -m bots.gpt_bot --replay $(REPLAY_DAYS)
+
+replay-gemini:
+	@python3 -m bots.gemini_bot --replay $(REPLAY_DAYS)
+
+replay-grok:
+	@python3 -m bots.grok_bot --replay $(REPLAY_DAYS)
+
+replay-bots: replay-claude replay-gpt replay-gemini replay-grok
+	@echo "✓ all 4 providers replayed"

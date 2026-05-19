@@ -17,6 +17,7 @@ func RunMigrations() error {
 		"database/migrations/006_add_ranking_history.sql",
 		"database/migrations/007_seasons.sql",
 		"database/migrations/008_season_isolated_accounts.sql",
+		"database/migrations/009_add_model_provider.sql",
 	}
 
 	for _, migrationFile := range migrations {

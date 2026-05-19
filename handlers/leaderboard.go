@@ -33,6 +33,8 @@ type LeaderboardEntry struct {
 	BotID         string   `json:"bot_id"`
 	BotName       string   `json:"bot_name"`
 	CreatorEmail  string   `json:"creator_email,omitempty"`
+	ModelProvider string   `json:"model_provider,omitempty"`
+	IsOfficial    bool     `json:"is_official,omitempty"`
 	TotalValue    float64  `json:"total_value"`
 	PnL           float64  `json:"pnl"`
 	PnLPercent    float64  `json:"pnl_percent"`
@@ -137,11 +139,13 @@ func loadEntries() ([]LeaderboardEntry, error) {
 			b.id,
 			b.name,
 			COALESCE(b.creator_email, ''),
+			COALESCE(b.model_provider, ''),
+			COALESCE(b.is_official, 0),
 			COALESCE(COUNT(t.id), 0) AS trade_count
 		FROM bots b
 		LEFT JOIN trades t ON b.id = t.bot_id AND t.season_id IS NULL
 		WHERE b.is_active = 1
-		GROUP BY b.id, b.name, b.creator_email
+		GROUP BY b.id, b.name, b.creator_email, b.model_provider, b.is_official
 	`)
 	if err != nil {
 		return nil, err
@@ -152,9 +156,9 @@ func loadEntries() ([]LeaderboardEntry, error) {
 	var entries []LeaderboardEntry
 
 	for rows.Next() {
-		var idStr, name, email string
-		var tradeCount int
-		if err := rows.Scan(&idStr, &name, &email, &tradeCount); err != nil {
+		var idStr, name, email, modelProvider string
+		var isOfficial, tradeCount int
+		if err := rows.Scan(&idStr, &name, &email, &modelProvider, &isOfficial, &tradeCount); err != nil {
 			continue
 		}
 		botID, err := uuid.Parse(idStr)
@@ -167,13 +171,15 @@ func loadEntries() ([]LeaderboardEntry, error) {
 		}
 
 		entry := LeaderboardEntry{
-			BotID:        botID.String(),
-			BotName:      name,
-			CreatorEmail: email,
-			TotalValue:   portfolio.TotalValue,
-			PnL:          portfolio.TotalPnL,
-			PnLPercent:   portfolio.TotalPnLPct,
-			TradeCount:   tradeCount,
+			BotID:         botID.String(),
+			BotName:       name,
+			CreatorEmail:  email,
+			ModelProvider: modelProvider,
+			IsOfficial:    isOfficial != 0,
+			TotalValue:    portfolio.TotalValue,
+			PnL:           portfolio.TotalPnL,
+			PnLPercent:    portfolio.TotalPnLPct,
+			TradeCount:    tradeCount,
 		}
 
 		values := loadSnapshotValues(botID)

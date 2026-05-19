@@ -5,13 +5,52 @@ import (
 	"bottrade/models"
 	"bottrade/services"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// sqlNullString is a local alias to keep the call sites short.
+type sqlNullString = sql.NullString
+
+// normalizeProvider lowercases and canonicalizes the model_provider hint.
+// We accept a small set of values; anything else is dropped to "" so the UI
+// doesn't render an unknown chip.
+func normalizeProvider(p string) string {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "claude", "anthropic", "anth":
+		return "claude"
+	case "gpt", "openai", "oai":
+		return "gpt"
+	case "gemini", "google", "goog":
+		return "gemini"
+	case "grok", "xai":
+		return "grok"
+	case "meta", "llama":
+		return "meta"
+	default:
+		return ""
+	}
+}
+
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
 
 func RegisterBot(c *fiber.Ctx) error {
 	var req models.RegisterBotRequest
@@ -37,10 +76,14 @@ func RegisterBot(c *fiber.Ctx) error {
 	// Generate UUID for the bot
 	botID := uuid.New()
 
+	// Normalize model_provider to a short lowercase token. Empty stays empty
+	// (legacy / user-registered bots without a provider hint).
+	provider := normalizeProvider(req.ModelProvider)
+
 	_, err = database.DB.Exec(
-		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test)
-		 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
-		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest,
+		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test, model_provider, is_official)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest, nullIfEmpty(provider), boolToInt(req.IsOfficial),
 	)
 
 	if err != nil {
@@ -76,12 +119,19 @@ func GetBotDetails(c *fiber.Ctx) error {
 	// Get bot info
 	var bot models.Bot
 	var dbBotID, createdAt string
-	var isActive, claimed, isTest int
+	var isActive, claimed, isTest, isOfficial int
+	var modelProvider, description, creatorEmail sqlNullString
 	err = database.DB.QueryRow(
-		`SELECT id, name, description, creator_email, cash_balance, created_at, is_active, claimed, is_test
+		`SELECT id, name, description, creator_email, cash_balance, created_at,
+		        is_active, claimed, is_test, model_provider, is_official
 		 FROM bots WHERE id = ?1`,
 		botID.String(),
-	).Scan(&dbBotID, &bot.Name, &bot.Description, &bot.CreatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed, &isTest)
+	).Scan(&dbBotID, &bot.Name, &description, &creatorEmail, &bot.CashBalance, &createdAt,
+		&isActive, &claimed, &isTest, &modelProvider, &isOfficial)
+	bot.Description = description.String
+	bot.CreatorEmail = creatorEmail.String
+	bot.ModelProvider = modelProvider.String
+	bot.IsOfficial = isOfficial != 0
 
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -208,6 +258,8 @@ func GetBotDetails(c *fiber.Ctx) error {
 		"creator_email":       bot.CreatorEmail,
 		"created_at":          bot.CreatedAt,
 		"claimed":             bot.Claimed,
+		"model_provider":      bot.ModelProvider,
+		"is_official":         bot.IsOfficial,
 		"portfolio":           portfolio,
 		"recent_trades":       trades,
 		"trade_count":         tradeCount,
