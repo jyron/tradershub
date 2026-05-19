@@ -16,7 +16,7 @@ try:
 except ImportError:
     common.die("anthropic SDK not installed. pip install anthropic")
 
-MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5")
+MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 
 def decide_llm(system_prompt: str, user_prompt: str) -> str:

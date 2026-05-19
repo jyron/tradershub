@@ -44,8 +44,16 @@ try:
     from alpaca.data.historical.stock import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
     from alpaca.data.timeframe import TimeFrame
+    from alpaca.data.enums import DataFeed
 except ImportError:  # alpaca-py not installed → fail loudly when first needed
     StockHistoricalDataClient = None
+    DataFeed = None
+
+# Alpaca data feed. SIP (consolidated US tape) requires a paid market-data
+# subscription; IEX is free but covers only IEX-routed trades. For daily
+# bars the difference is small. Override with ALPACA_FEED=sip if you've
+# upgraded your plan.
+ALPACA_FEED_NAME = os.getenv("ALPACA_FEED", "iex").lower()
 
 try:
     from dotenv import load_dotenv
@@ -74,25 +82,35 @@ UNIVERSE = [
 # Each bot persona — keep these short; they're appended to the bot's own
 # system prompt to give it a personality but stay consistent across providers.
 SYSTEM_PROMPT = """\
-You are a portfolio manager running a public paper-trading account on \
-BotTrade. You start with $100,000 in cash. You can BUY or SELL US equities \
-or HOLD on any given trading day. Long-only, no margin, no shorts. \
-Each trade must include a 1-2 sentence reasoning that explains the why.
+You are an active portfolio manager running a public paper-trading account \
+on BotTrade. You start with $100,000 in cash and you are being judged on \
+total return over time. Sitting in cash means you are losing to inflation \
+and to every other manager who actually deploys capital — so HOLD only \
+when no opportunity is compelling, not as a default.
 
-You will receive a market snapshot (yesterday's close, today's open, your \
-current portfolio). Decide ONE action and respond ONLY with strict JSON \
-matching this schema (no markdown, no prose):
+You can BUY or SELL US equities, or HOLD. Long-only, no margin, no shorts. \
+Each trade must include a 1-2 sentence reasoning citing concrete signal \
+from the snapshot (trend, momentum, position P&L, sector rotation, etc).
+
+You will receive a market snapshot for the day: latest close + recent price \
+history (5-day and 20-day prior close, with % change) for each symbol, plus \
+your current portfolio. Decide ONE action and respond ONLY with strict JSON \
+(no markdown, no prose, no code fences) in this exact schema:
 
   {"action": "buy" | "sell" | "hold",
    "symbol": "<TICKER>" | null,
    "quantity": <integer> | null,
    "reasoning": "<1-2 sentences>"}
 
-Rules:
-  - "hold" → symbol and quantity must be null.
-  - Position size: never put more than 25% of total portfolio value into a single new buy.
-  - Don't sell what you don't hold.
-  - Reasoning must reference something concrete (price action, position, market context).
+Operating guidance:
+  - In the first ~5 trading days you should establish initial positions. A \
+    fully-cash portfolio after a week is a failure mode.
+  - Target 4-8 positions over time. If you're under-positioned, lean BUY.
+  - "hold" → both symbol and quantity must be null.
+  - Position size: never put more than 25% of total portfolio value into \
+    one new buy. Smaller positions (5-15%) are typical.
+  - Don't sell what you don't hold. Trim partial positions when reasonable.
+  - Reasoning must reference something concrete from the snapshot.
 """
 
 
@@ -113,6 +131,9 @@ class MarketSnapshot:
     # date is the "as-of" trading day. Prices are that day's close.
     date: datetime
     prices: dict[str, float]  # symbol -> last close
+    # history[symbol] = {"d5_close": float, "d5_pct": float, "d20_close": float, "d20_pct": float}
+    # Empty when not enough history is available (e.g. early days of the replay).
+    history: dict[str, dict[str, float]] | None = None
 
 
 @dataclass
@@ -168,18 +189,29 @@ def alpaca_client() -> "StockHistoricalDataClient":
     return StockHistoricalDataClient(key, sec)
 
 
+def _alpaca_feed():
+    if DataFeed is None:
+        return None
+    return DataFeed.SIP if ALPACA_FEED_NAME == "sip" else DataFeed.IEX
+
+
 def fetch_daily_bars(client, days_back: int) -> dict[str, dict[str, float]]:
     """
     Returns bars[symbol][YYYY-MM-DD] = close_price for every UNIVERSE symbol
     over the past `days_back` calendar days. One Alpaca call total — much
     faster than per-day fetches.
     """
-    end = datetime.now(timezone.utc)
+    # Free Alpaca plans block "recent SIP data" (last ~15 min). Even on IEX,
+    # asking for `end=now` sometimes lands in that window. Back off one full
+    # day to dodge the boundary entirely — losing today's bar is fine for a
+    # 90-day replay.
+    end = datetime.now(timezone.utc) - timedelta(days=1)
     start = end - timedelta(days=days_back + 5)  # pad for weekends/holidays
     req = StockBarsRequest(
         symbol_or_symbols=UNIVERSE,
         timeframe=TimeFrame.Day,
         start=start, end=end,
+        feed=_alpaca_feed(),
     )
     bars = client.get_stock_bars(req)
     out: dict[str, dict[str, float]] = {sym: {} for sym in UNIVERSE}
@@ -199,7 +231,7 @@ def fetch_daily_bars(client, days_back: int) -> dict[str, dict[str, float]]:
 
 def fetch_latest_quotes(client) -> dict[str, float]:
     """Latest quote for each universe symbol — used in --live mode."""
-    req = StockLatestQuoteRequest(symbol_or_symbols=UNIVERSE)
+    req = StockLatestQuoteRequest(symbol_or_symbols=UNIVERSE, feed=_alpaca_feed())
     quotes = client.get_stock_latest_quote(req)
     out: dict[str, float] = {}
     for sym, q in quotes.items():
@@ -217,6 +249,31 @@ def trading_days(bars: dict[str, dict[str, float]]) -> list[str]:
     for sym, by_date in bars.items():
         dates.update(by_date.keys())
     return sorted(dates)
+
+
+def _build_history(
+    bars: dict[str, dict[str, float]],
+    dates: list[str],
+    idx: int,
+    as_of: dict[str, float],
+) -> dict[str, dict[str, float]]:
+    """For each symbol in `as_of`, look up the close from 5 and 20 trading
+    days ago and compute % change. Skips entries where lookback isn't available."""
+    out: dict[str, dict[str, float]] = {}
+    for sym, today_px in as_of.items():
+        entry: dict[str, float] = {}
+        for label, lookback in (("d5", 5), ("d20", 20)):
+            if idx - lookback < 0:
+                continue
+            prior_date = dates[idx - lookback]
+            prior_px = bars.get(sym, {}).get(prior_date)
+            if prior_px is None or prior_px <= 0:
+                continue
+            entry[f"{label}_close"] = prior_px
+            entry[f"{label}_pct"] = ((today_px - prior_px) / prior_px) * 100.0
+        if entry:
+            out[sym] = entry
+    return out
 
 
 # -----------------------------------------------------------------------------
@@ -381,38 +438,56 @@ def build_user_prompt(snapshot: MarketSnapshot, portfolio: Portfolio) -> str:
         pnl_pct = ((last - p["avg_cost"]) / p["avg_cost"]) * 100 if p["avg_cost"] > 0 else 0.0
         pos_lines.append(f"  - {sym}: {p['quantity']} sh @ avg ${p['avg_cost']:.2f} "
                          f"now ${last:.2f} ({pnl_pct:+.1f}%) = ${mv:,.0f}")
-    pos_block = "\n".join(pos_lines) if pos_lines else "  (no positions)"
+    pos_block = "\n".join(pos_lines) if pos_lines else "  (no positions yet — deploy capital)"
 
-    price_block = "\n".join(
-        f"  - {sym}: ${px:.2f}"
-        for sym, px in sorted(snapshot.prices.items())
-    )
+    # Trend block: today, 5-day ago, 20-day ago, with % moves. Without this
+    # the LLM is staring at a single column of numbers and predictably holds.
+    hist = snapshot.history or {}
+    price_lines = []
+    for sym in sorted(snapshot.prices.keys()):
+        px = snapshot.prices[sym]
+        h = hist.get(sym, {})
+        d5 = h.get("d5_pct")
+        d20 = h.get("d20_pct")
+        d5_str = f"  5d {d5:+.1f}%" if d5 is not None else "  5d   n/a"
+        d20_str = f"  20d {d20:+.1f}%" if d20 is not None else "  20d   n/a"
+        price_lines.append(f"  - {sym:5s}  ${px:>7.2f}  {d5_str}  {d20_str}")
+    price_block = "\n".join(price_lines)
+
+    deploy_hint = ""
+    if portfolio.cash / max(1, portfolio.total_value) > 0.8 and len(portfolio.positions) < 3:
+        deploy_hint = ("\nNote: you are still heavily in cash. Consider opening "
+                       "positions in symbols showing constructive trend.")
 
     return f"""\
 Market snapshot for {snapshot.date.strftime('%Y-%m-%d')}:
 
-Today's closing prices:
+Prices (today's close + recent % change):
 {price_block}
 
 Your portfolio:
-  cash: ${portfolio.cash:,.2f}
+  cash: ${portfolio.cash:,.2f}  ({portfolio.cash / max(1, portfolio.total_value) * 100:.0f}% of total)
   total value: ${portfolio.total_value:,.2f}
-  positions:
+  positions ({len(portfolio.positions)}):
 {pos_block}
-
+{deploy_hint}
 What's your move for tomorrow? Reply with JSON only."""
 
 
 def parse_decision(raw: str) -> Decision:
     """Tolerant parser: pulls the first {...} block out and validates fields."""
     raw = raw.strip()
-    # Strip code fences if present
+    # Strip ```json … ``` fences. Bug-fix: the original split-and-take-last
+    # version threw the JSON away — it returned the empty string after the
+    # closing fence. We instead trim the opening fence (optionally with
+    # "json" tag) and the trailing fence in place.
     if raw.startswith("```"):
-        raw = raw.split("```", 2)[-1].strip()
-        if raw.startswith("json"):
-            raw = raw[4:].strip()
+        raw = raw[3:]
+        if raw[:4].lower() == "json":
+            raw = raw[4:]
+        raw = raw.lstrip()
         if raw.endswith("```"):
-            raw = raw[:-3].strip()
+            raw = raw[:-3].rstrip()
     # Find the first { and matching close
     start = raw.find("{")
     if start < 0:
@@ -458,8 +533,12 @@ def parse_decision(raw: str) -> Decision:
 
 DecideFn = Callable[[str, str], str]  # (system_prompt, user_prompt) -> raw LLM response
 
+# Module-level so the replay loop can read it without threading args through.
+VERBOSE = False
+
 
 def run_cli(provider: str, decide_llm: DecideFn) -> None:
+    global VERBOSE
     parser = argparse.ArgumentParser(description=f"{provider} BotTrade bot")
     parser.add_argument("--replay", type=int, metavar="N",
                         help="Replay last N trading days, calling the LLM once per day. Writes trades and daily snapshots to SQLite directly.")
@@ -469,7 +548,10 @@ def run_cli(provider: str, decide_llm: DecideFn) -> None:
                         help="Same as --live but dry-runs (no trade actually posted).")
     parser.add_argument("--limit-days", type=int, default=None,
                         help="(replay only) cap the loop at this many days for testing")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print the raw LLM response on every iteration")
     args = parser.parse_args()
+    VERBOSE = bool(args.verbose)
 
     if not args.replay and not args.live and not args.once:
         parser.print_help()
@@ -510,7 +592,8 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
             continue  # not enough data this day
         portfolio = replay_portfolio(con, bot_id, as_of)
         snap_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=20, minute=0)
-        snapshot = MarketSnapshot(date=snap_dt, prices=as_of)
+        history = _build_history(bars, dates, i, as_of)
+        snapshot = MarketSnapshot(date=snap_dt, prices=as_of, history=history)
 
         prompt = build_user_prompt(snapshot, portfolio)
         try:
@@ -546,9 +629,11 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
             price = as_of.get(decision.symbol, 0)
             record_trade_db(con, bot_id, decision, price, exec_time)
             print(f"  [{date_str}] {decision.action.upper()} {decision.quantity} {decision.symbol} @ ${price:.2f}"
-                  f"  | port=${portfolio.total_value:,.0f}")
+                  f"  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
         else:
-            print(f"  [{date_str}] HOLD  | port=${portfolio.total_value:,.0f}")
+            print(f"  [{date_str}] HOLD  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
+        if VERBOSE:
+            print(f"      raw: {raw.strip()[:500]}")
 
         # End-of-day snapshot (recomputed since we may have traded)
         portfolio_after = replay_portfolio(con, bot_id, as_of)
