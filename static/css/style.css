@@ -1,7 +1,0 @@
-/* BotTrade Main Stylesheet */
-/* Modular CSS architecture for maintainability */
-
-@import 'base.css';
-@import 'components.css';
-@import 'charts.css';
-@import 'utilities.css';

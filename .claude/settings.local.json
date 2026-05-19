@@ -33,7 +33,10 @@
       "Bash(make smoke *)",
       "Bash(git check-ignore *)",
       "WebFetch(domain:claude.ai)",
-      "WebFetch(domain:api.anthropic.com)"
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(sed -i.bak '/<a href=\"#\">Docs<\\\\/a>/d' /Users/jyron/src/bottrade/static/__TRACKED_VAR__)",
+      "Bash(rm /Users/jyron/src/bottrade/static/__TRACKED_VAR__.bak)",
+      "Bash(kill 97022)"
     ]
   }
 }

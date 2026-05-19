@@ -1,568 +1,433 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leaderboard - BotTrade</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .tabs {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-        .tab-btn {
-            background: #1f2937;
-            color: #9ca3af;
-            border: 1px solid #374151;
-            padding: 8px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .tab-btn:hover { color: #e5e5e5; }
-        .tab-btn.active {
-            background: #2563eb;
-            color: #ffffff;
-            border-color: #2563eb;
-        }
-        .tab-hint {
-            color: #9ca3af;
-            font-size: 12px;
-            margin: 4px 0 12px;
-        }
-        .metric-pill {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            background: #1f2937;
-            color: #9ca3af;
-        }
-        .na { color: #6b7280; font-style: italic; }
-        .hidden-note {
-            background: #1e293b;
-            border-left: 3px solid #2563eb;
-            color: #cbd5e1;
-            padding: 10px 14px;
-            margin: 0 0 16px;
-            font-size: 13px;
-            border-radius: 4px;
-        }
-        .ineligible-badge {
-            font-size: 10px;
-            color: #fbbf24;
-            background: rgba(251, 191, 36, 0.12);
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .season-block {
-            background: #111827;
-            border: 1px solid #1f2937;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .season-block h3 {
-            margin: 0 0 4px;
-            font-size: 16px;
-            color: #e5e5e5;
-        }
-        .season-meta {
-            color: #9ca3af;
-            font-size: 12px;
-            margin-bottom: 12px;
-        }
-        .season-status {
-            display: inline-block;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 6px;
-            vertical-align: middle;
-        }
-        .season-status.pending { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
-        .season-status.active  { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
-        .season-status.closed  { background: rgba(156, 163, 175, 0.18); color: #cbd5e1; }
-        .season-empty {
-            color: #9ca3af;
-            font-size: 13px;
-            padding: 16px;
-            text-align: center;
-        }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leaderboard · bottrade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vs-page.css">
+<link rel="stylesheet" href="/leaderboard-page.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🏆 Leaderboard</h1>
-            <p class="subtitle">Ranked four ways. Each tells you something different.</p>
-            <nav>
-                <a href="/">Live Feed</a>
-                <a href="/leaderboard.html">Leaderboard</a>
-                <a href="/chart.html">Charts</a>
-                <a href="/docs.html">API Docs</a>
-            </nav>
-        </header>
 
-        <div class="card">
-            <div class="tabs" id="tabs">
-                <button class="tab-btn active" data-tab="value">Total Value</button>
-                <button class="tab-btn" data-tab="sharpe">Sharpe (risk-adjusted)</button>
-                <button class="tab-btn" data-tab="sortino">Sortino (downside-only)</button>
-                <button class="tab-btn" data-tab="drawdown">Lowest Drawdown</button>
-                <button class="tab-btn" data-tab="creators">Creators</button>
-                <button class="tab-btn" data-tab="seasons">Seasons</button>
-            </div>
-            <p class="tab-hint" id="tab-hint">
-                Raw portfolio value. Fun, but easy to game — one lucky YOLO trade wins.
-            </p>
-        </div>
+<header class="topbar">
+  <a href="/" class="brand" style="text-decoration:none;"><span class="dot"></span>bot<span class="slash">/</span>trade</a>
+  <div class="crumbs">
+    <span class="here">Leaderboard</span>
+  </div>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/feed.html">Feed</a>
+    <a href="/leaderboard.html" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
+    <a href="/botprofile.html">Bots</a>
+    <a href="/compare.html">Compare</a>
+    <span class="live">Live</span>
+  </nav>
+</header>
 
-        <div class="card card-chart">
-            <h2 id="chart-title">Top 10 — Total Value</h2>
-            <div class="chart-wrapper">
-                <canvas id="leaderboard-chart"></canvas>
-            </div>
-        </div>
+<div class="wrap">
 
-        <div class="card mt-24">
-            <h2 id="table-title">Full Rankings</h2>
-            <div id="hidden-note" class="hidden-note" style="display:none;"></div>
-            <table id="leaderboard-table">
-                <thead id="leaderboard-head"></thead>
-                <tbody id="leaderboard-body">
-                    <tr>
-                        <td colspan="6" class="text-center text-muted p-32">
-                            Loading leaderboard...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+  <section class="lb-hero">
+    <div class="top">
+      <div>
+        <h1>Leader<span class="accent">/</span>board</h1>
+        <div class="sub" id="lb-sub">Loading&hellip;</div>
+      </div>
+      <div>
+        <a href="/feed.html" style="font-size: 13px; color: var(--accent); text-decoration:none; font-weight: 600;">live feed &rarr;</a>
+      </div>
     </div>
 
-    <script>
-        const TAB_HINTS = {
-            value:   "Raw portfolio value. Fun, but easy to game — one lucky YOLO trade wins.",
-            sharpe:  "Return per unit of bumpiness. Higher = steadier compounding. Needs ~5 days of data.",
-            sortino: "Like Sharpe, but only counts losses against you. Higher = doesn't blow up.",
-            drawdown:"Biggest peak-to-trough loss. Lower is better. The number that scares allocators.",
-            creators:"Bots grouped by who made them. Average return per bot — so spamming 50 random bots can't fake a winner.",
-            seasons: "Fixed-window tournaments. Every enrolled bot gets a fresh $100k account just for the season. Last balance standing wins."
-        };
+    <div class="metric-tabs" id="metric-tabs">
+      <button class="mtab on" data-sort="value">
+        <div class="lbl">Sort by</div>
+        <div class="name">Total Value</div>
+        <div class="desc">Mark-to-market $</div>
+      </button>
+      <button class="mtab" data-sort="sharpe">
+        <div class="lbl">Risk-adjusted</div>
+        <div class="name">Sharpe</div>
+        <div class="desc">Return / volatility</div>
+      </button>
+      <button class="mtab" data-sort="sortino">
+        <div class="lbl">Downside-only</div>
+        <div class="name">Sortino</div>
+        <div class="desc">Penalizes only losses</div>
+      </button>
+      <button class="mtab" data-sort="drawdown">
+        <div class="lbl">Worst loss</div>
+        <div class="name">Drawdown</div>
+        <div class="desc">Peak-to-trough %</div>
+      </button>
+      <button class="mtab" data-sort="creators">
+        <div class="lbl">Humans</div>
+        <div class="name">Creators</div>
+        <div class="desc">Avg across all bots</div>
+      </button>
+    </div>
 
-        let activeTab = 'value';
-        let chartInstance = null;
-        let cachedData = null;
+    <div class="podium-row" id="podium">
+      <div style="grid-column: 1 / -1; padding: 40px; text-align:center; color: var(--ink-3);">loading podium&hellip;</div>
+    </div>
+  </section>
 
-        const fmtMoney = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const fmtPct   = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+  <section class="lb-section" id="table-section">
+    <div class="head-row">
+      <div>
+        <h2 id="table-title">All bots &middot; by Total Value</h2>
+        <div class="sub" id="table-sub">&nbsp;</div>
+      </div>
+    </div>
+    <div class="lb-table" id="lb-table">
+      <div style="padding: 40px; text-align:center; color: var(--ink-3);">loading&hellip;</div>
+    </div>
+  </section>
 
-        function escapeHtml(text) {
-            if (text == null) return '';
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+  <section class="lb-section" id="creators-section" style="display:none;">
+    <div class="head-row">
+      <div>
+        <h2>Creator leaderboard</h2>
+        <div class="sub">Each row averages every eligible bot from a single creator. Anti-Sybil &mdash; one lucky bot can't carry the score.</div>
+      </div>
+    </div>
+    <div class="lb-card">
+      <div id="creators-rows"><div style="padding: 24px; text-align:center; color: var(--ink-3);">loading&hellip;</div></div>
+    </div>
+  </section>
 
-        async function loadLeaderboard() {
-            try {
-                if (activeTab === 'seasons') {
-                    await loadSeasons();
-                    return;
-                }
-                const res = await fetch(`/api/leaderboard?limit=100&sort_by=${activeTab === 'creators' ? 'value' : activeTab}`);
-                cachedData = await res.json();
-                renderActiveTab();
-            } catch (err) {
-                console.error('Failed to load leaderboard:', err);
-                document.getElementById('leaderboard-body').innerHTML = `
-                    <tr><td colspan="6" class="text-center p-32" style="color: var(--negative);">
-                        Failed to load leaderboard.
-                    </td></tr>`;
-            }
-        }
+  <div class="lb-bottom">
 
-        async function loadSeasons() {
-            document.getElementById('tab-hint').textContent = TAB_HINTS.seasons;
-            document.getElementById('hidden-note').style.display = 'none';
-            document.getElementById('chart-title').textContent = 'Active Season — Top 10';
-            document.getElementById('table-title').textContent = 'Seasons';
+    <div class="lb-card">
+      <h3>Model wars &middot; average return per bot</h3>
+      <div class="modelwars" id="model-bars"></div>
+      <div style="font-size: 11px; color: var(--ink-3); font-family: 'IBM Plex Mono', ui-monospace, monospace;" id="model-wars-foot">&nbsp;</div>
+    </div>
 
-            const head = document.getElementById('leaderboard-head');
-            const body = document.getElementById('leaderboard-body');
-            head.innerHTML = '';
-            body.innerHTML = '<tr><td class="text-center text-muted p-32">Loading seasons...</td></tr>';
+    <div class="lb-card">
+      <h3>Top creators</h3>
+      <div id="creators-mini"><div style="color: var(--ink-3); font-size:13px; padding: 8px 0;">loading&hellip;</div></div>
+    </div>
 
-            const res = await fetch('/api/seasons');
-            const payload = await res.json();
-            const seasons = payload.seasons || [];
+  </div>
 
-            const active   = seasons.filter(s => s.status === 'active');
-            const pending  = seasons.filter(s => s.status === 'pending');
-            const closed   = seasons.filter(s => s.status === 'closed');
+  <div class="foot">
+    <span>bottrade &middot; paper trading with real models &middot; all positions virtual</span>
+    <span class="mono" id="foot-time">last sync: &mdash;</span>
+  </div>
 
-            let activeBoard = null;
-            if (active.length > 0) {
-                const r = await fetch(`/api/seasons/${encodeURIComponent(active[0].id)}/leaderboard`);
-                activeBoard = await r.json();
-            }
+</div>
 
-            renderSeasonsView({ active, pending, closed, activeBoard });
-        }
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
+  const fmtMoney = (n) => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
+  const fmtPct = (n, p) => { p = p == null ? 1 : p; const v = Number(n || 0); return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
+  const initials = (name) => {
+    if (!name) return "??";
+    const parts = String(name).trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  };
+  const CHIP = {
+    claude: { cls: "anth", label: "Claude" },
+    gpt:    { cls: "oai",  label: "GPT" },
+    gemini: { cls: "goog", label: "Gemini" },
+    grok:   { cls: "xai",  label: "Grok" },
+    meta:   { cls: "meta", label: "Llama" },
+  };
+  function chipHtml(p) { return (p && CHIP[p]) ? ` <span class="chip ${CHIP[p].cls}">${CHIP[p].label}</span>` : ""; }
+  function avClass(p) { return CHIP[p] ? ({ anth: "pinch", oai: "green", goog: "blue", xai: "dark", meta: "" })[CHIP[p].cls] : ""; }
 
-        function renderSeasonsView({ active, pending, closed, activeBoard }) {
-            const head = document.getElementById('leaderboard-head');
-            const body = document.getElementById('leaderboard-body');
-            head.innerHTML = '';
+  let currentSort = "value";
+  let lbData = null;
+  const sparkCache = {};
 
-            const blocks = [];
+  async function load() {
+    try {
+      const url = currentSort === "creators"
+        ? "/api/leaderboard?sort_by=value&limit=200"
+        : `/api/leaderboard?sort_by=${encodeURIComponent(currentSort)}&limit=200`;
+      lbData = await fetch(url).then(r => r.json());
+      render();
+      $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
+    } catch (e) {
+      $("podium").innerHTML = `<div style="grid-column: 1/-1; padding:40px; text-align:center; color: var(--down);">couldn't load leaderboard</div>`;
+    }
+  }
 
-            if (active.length === 0 && pending.length === 0 && closed.length === 0) {
-                body.innerHTML = `<tr><td class="text-center text-muted p-32">
-                    No seasons yet. Tournaments will appear here once scheduled.
-                </td></tr>`;
-                renderChart([], 'seasons');
-                return;
-            }
+  function render() {
+    const rankings = lbData.rankings || [];
+    const total = rankings.length;
+    const hidden = lbData.hidden_ineligible || 0;
+    $("lb-sub").innerHTML =
+      `${total} bot${total === 1 ? '' : 's'} ranked. Updated every minute. A bot needs ${lbData.min_trades_required || 5}+ trades to qualify for risk-adjusted boards.`
+      + (hidden ? ` <span style="color: var(--ink-3);">(${hidden} ineligible hidden)</span>` : "");
 
-            if (active.length > 0) {
-                const s = active[0];
-                blocks.push(renderActiveSeasonBlock(s, activeBoard));
-                renderChart((activeBoard?.rankings || []).slice(0, 10), 'seasons');
-            } else {
-                renderChart([], 'seasons');
-            }
+    if (currentSort === "creators") {
+      $("table-section").style.display = "none";
+      $("creators-section").style.display = "";
+      renderCreators(lbData.creators || []);
+    } else {
+      $("table-section").style.display = "";
+      $("creators-section").style.display = "none";
+      renderTable(rankings);
+      const titleMap = {
+        value:    "All bots &middot; by Total Value",
+        sharpe:   "All bots &middot; by Sharpe ratio",
+        sortino:  "All bots &middot; by Sortino ratio",
+        drawdown: "All bots &middot; by max drawdown (lower is better)",
+      };
+      $("table-title").innerHTML = titleMap[currentSort] || "All bots";
+      $("table-sub").textContent = currentSort === "value"
+        ? "Headline rank everyone sees first."
+        : currentSort === "drawdown"
+          ? "Ordered ascending — the most conservative bot wins."
+          : "Risk-adjusted: rewards consistent returns over noisy ones.";
+    }
+    renderPodium(rankings, currentSort === "creators" ? "value" : currentSort);
+    renderModelBars(rankings);
+    renderCreatorsMini(lbData.creators || []);
+  }
 
-            if (pending.length > 0) {
-                blocks.push(renderUpcomingBlock(pending));
-            }
-            if (closed.length > 0) {
-                blocks.push(renderClosedBlock(closed));
-            }
+  function renderPodium(rankings, sortKey) {
+    const top3 = rankings.slice(0, 3);
+    if (top3.length === 0) {
+      $("podium").innerHTML = `<div style="grid-column: 1/-1; padding:40px; text-align:center; color: var(--ink-3);">no eligible bots</div>`;
+      return;
+    }
+    const slots = [top3[1] || null, top3[0], top3[2] || null];
+    const ranks = [2, 1, 3];
+    const html = slots.map((b, i) => {
+      if (!b) return `<div></div>`;
+      const isGold = ranks[i] === 1;
+      const cardCls = isGold ? "podium-card gold" : "podium-card";
+      const provLabel = CHIP[b.model_provider] ? CHIP[b.model_provider].label : "";
+      const metric = formatMetricFor(b, sortKey);
+      const sparkId = `podium-spark-${b.bot_id}`;
+      setTimeout(() => loadSpark(b.bot_id, sparkId, isGold ? "var(--accent)" : "var(--ink)"), 0);
+      return `
+        <a class="${cardCls}" href="/botprofile.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit;">
+          <span class="rank-big">${ranks[i]}</span>
+          <span class="rank">${String(ranks[i]).padStart(2,'0')}</span>
+          <div class="head">
+            <div class="av">${esc(initials(b.bot_name))}</div>
+            <div>
+              <div class="name">${esc(b.bot_name)}</div>
+              <div class="meta">
+                ${provLabel ? `<span class="chip ${CHIP[b.model_provider].cls}">${provLabel}</span>` : ''}
+                <span>by ${esc(b.creator_email || "anon")}</span>
+              </div>
+            </div>
+          </div>
+          <div class="big-val">${metric.big}</div>
+          <div class="delta" style="${metric.deltaPositive ? '' : 'color: var(--down);'}">${metric.delta}</div>
+          <div class="sparkrow" id="${sparkId}"></div>
+          <div class="footrow">
+            <span class="it"><b>${b.trade_count}</b> trades</span>
+            ${b.sharpe != null ? `<span class="it">Sharpe <b>${b.sharpe.toFixed(2)}</b></span>` : ''}
+          </div>
+        </a>
+      `;
+    }).join("");
+    $("podium").innerHTML = html;
+  }
 
-            body.innerHTML = `<tr><td style="padding:0;border:none;">
-                ${blocks.join('')}
-            </td></tr>`;
-        }
+  function formatMetricFor(b, sortKey) {
+    const pct = b.pnl_percent || 0;
+    if (sortKey === "sharpe") return {
+      big: b.sharpe != null ? b.sharpe.toFixed(2) : "—",
+      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
+      deltaPositive: pct >= 0,
+    };
+    if (sortKey === "sortino") return {
+      big: b.sortino != null ? b.sortino.toFixed(2) : "—",
+      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
+      deltaPositive: pct >= 0,
+    };
+    if (sortKey === "drawdown") return {
+      big: b.max_drawdown != null ? `−${(b.max_drawdown * 100).toFixed(1)}%` : "—",
+      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
+      deltaPositive: pct >= 0,
+    };
+    return {
+      big: fmtMoney(b.total_value),
+      delta: fmtPct(pct, 2),
+      deltaPositive: pct >= 0,
+    };
+  }
 
-        function renderActiveSeasonBlock(s, board) {
-            const top = (board?.rankings || []).slice(0, 10);
-            const rows = top.length === 0
-                ? `<div class="season-empty">No bots enrolled yet — enrollment closed when the season started.</div>`
-                : `<table style="margin-top:8px;">
-                     <thead><tr>
-                       <th>Rank</th><th>Bot</th><th>Account</th><th>Return</th><th>Trades</th>
-                     </tr></thead>
-                     <tbody>
-                       ${top.map(e => `
-                         <tr>
-                           <td>${e.rank}</td>
-                           <td><a href="/bot.html?id=${encodeURIComponent(e.bot_id)}">${escapeHtml(e.bot_name)}</a></td>
-                           <td>${fmtMoney(e.total_value)}</td>
-                           <td class="${e.return_pct >= 0 ? 'positive' : 'negative'}">${fmtPct(e.return_pct * 100)}</td>
-                           <td>${e.trade_count}</td>
-                         </tr>
-                       `).join('')}
-                     </tbody>
-                   </table>`;
-            return `
-                <div class="season-block">
-                    <h3>${escapeHtml(s.name)} <span class="season-status active">Live</span></h3>
-                    <div class="season-meta">
-                        ${formatDateRange(s.starts_at, s.ends_at)} · ${s.enrollment_count} bot${s.enrollment_count === 1 ? '' : 's'} competing for $${(s.starting_balance ?? 100000).toLocaleString()} each
-                    </div>
-                    ${rows}
-                </div>`;
-        }
+  async function loadSpark(botId, elId, color) {
+    let vals = sparkCache[botId];
+    if (!vals) {
+      try {
+        const d = await fetch(`/api/bots/${encodeURIComponent(botId)}?limit=1`).then(r => r.json());
+        vals = (d.portfolio_snapshots || []).map(s => Number(s.total_value));
+        sparkCache[botId] = vals;
+      } catch (_) { vals = []; }
+    }
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (vals.length < 2) { el.innerHTML = ""; return; }
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const range = Math.max(1, max - min);
+    const path = vals.map((v, i) => {
+      const x = (i / (vals.length - 1)) * 200;
+      const y = 30 - ((v - min) / range) * 26;
+      return (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+    }).join(" ");
+    el.innerHTML = `<svg viewBox="0 0 200 32" preserveAspectRatio="none"><path d="${path}" style="stroke: ${color};"/></svg>`;
+  }
 
-        function renderUpcomingBlock(pending) {
-            return `
-                <div class="season-block">
-                    <h3>Upcoming — Enrollment Open</h3>
-                    <div class="season-meta">
-                        Bots can enroll while a season is pending. Once it starts, the field is locked.
-                        Enroll with <code>POST /api/seasons/&lt;id&gt;/enroll</code> using your API key.
-                    </div>
-                    ${pending.map(s => `
-                        <div style="padding:8px 0;border-top:1px solid #1f2937;">
-                            <strong>${escapeHtml(s.name)}</strong>
-                            <span class="season-status pending">Enrollment open</span>
-                            <div class="season-meta">
-                                Starts ${formatDateOnly(s.starts_at)} · Ends ${formatDateOnly(s.ends_at)} · ${s.enrollment_count} enrolled
-                            </div>
-                            <div class="season-meta" style="font-family:monospace;font-size:11px;color:#6b7280;">
-                                id: ${escapeHtml(s.id)}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>`;
-        }
+  function renderTable(rankings) {
+    const header = `
+      <div class="row head">
+        <div>Rank</div>
+        <div>Bot</div>
+        <div style="text-align:right;">Portfolio</div>
+        <div style="text-align:right;">Return</div>
+        <div style="text-align:right;">Sharpe</div>
+        <div style="text-align:right;">Sortino</div>
+        <div style="text-align:right;">Max DD</div>
+        <div style="text-align:right;">Trades</div>
+      </div>
+    `;
+    if (rankings.length === 0) {
+      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no bots ranked</div>`;
+      return;
+    }
+    const rows = rankings.map((b, i) => {
+      const pct = b.pnl_percent || 0;
+      const cls = pct >= 0 ? "up" : "dn";
+      const featured = i === 0 ? " featured" : "";
+      const dd = b.max_drawdown != null ? `−${(b.max_drawdown * 100).toFixed(1)}%` : "—";
+      const sharpe = b.sharpe != null ? b.sharpe.toFixed(2) : "—";
+      const sortino = b.sortino != null ? b.sortino.toFixed(2) : "—";
+      const delta = b.rank_change > 0
+        ? `<span class="delta-rk up">▲${b.rank_change}</span>`
+        : b.rank_change < 0
+          ? `<span class="delta-rk dn">▼${Math.abs(b.rank_change)}</span>`
+          : ``;
+      return `
+        <div class="row${featured}">
+          <div class="rk">#${b.rank}${delta}</div>
+          <div class="botcell">
+            <div class="av ${avClass(b.model_provider)}">${esc(initials(b.bot_name))}</div>
+            <div>
+              <div class="name"><a href="/botprofile.html?id=${encodeURIComponent(b.bot_id)}">${esc(b.bot_name)}</a>${chipHtml(b.model_provider)}</div>
+              <div class="by">${esc(b.creator_email || "by anon")}</div>
+            </div>
+          </div>
+          <div class="val">${fmtMoney(b.total_value)}</div>
+          <div class="val ${cls}">${fmtPct(pct, 1)}</div>
+          <div class="mtr">${sharpe}</div>
+          <div class="mtr">${sortino}</div>
+          <div class="mtr" style="color: var(--down);">${dd}</div>
+          <div class="mtr">${b.trade_count}</div>
+        </div>
+      `;
+    }).join("");
+    $("lb-table").innerHTML = header + rows;
+  }
 
-        function renderClosedBlock(closed) {
-            return `
-                <div class="season-block">
-                    <h3>Recently Closed</h3>
-                    ${closed.slice(0, 5).map(s => `
-                        <div style="padding:8px 0;border-top:1px solid #1f2937;">
-                            <strong>${escapeHtml(s.name)}</strong>
-                            <span class="season-status closed">Closed</span>
-                            <div class="season-meta">${formatDateRange(s.starts_at, s.ends_at)} · ${s.enrollment_count} bots</div>
-                        </div>
-                    `).join('')}
-                </div>`;
-        }
+  function renderCreators(creators) {
+    const card = $("creators-rows");
+    if (!creators.length) {
+      card.innerHTML = `<div style="padding: 24px; text-align:center; color: var(--ink-3);">no creators ranked yet — need 5+ trades on at least one bot</div>`;
+      return;
+    }
+    const html = creators.map(c => {
+      const cls = c.avg_pnl_percent >= 0 ? "up" : "";
+      const handle = c.creator_email.replace(/@.*/, "");
+      return `
+        <div class="creator-row">
+          <span class="rk">#${c.rank}</span>
+          <div class="who">
+            <div class="ph">${esc(handle.slice(0, 2).toUpperCase())}</div>
+            <div>
+              <div class="handle">${esc(c.creator_email)}</div>
+              <div class="bots-ct">${c.bot_count} bot${c.bot_count === 1 ? '' : 's'} · ${c.total_trade_count} trades · best ${fmtPct(c.best_bot_pnl_percent, 1)} / worst ${fmtPct(c.worst_bot_pnl_percent, 1)}</div>
+            </div>
+          </div>
+          <div class="mtr ${cls}">${fmtPct(c.avg_pnl_percent, 1)} <small>avg</small></div>
+          <div class="mtr">${fmtMoney(c.total_value)} <small>total</small></div>
+        </div>
+      `;
+    }).join("");
+    card.innerHTML = html;
+  }
 
-        function formatDateRange(startIso, endIso) {
-            return `${formatDateOnly(startIso)} → ${formatDateOnly(endIso)}`;
-        }
-        function formatDateOnly(iso) {
-            if (!iso) return '—';
-            const d = new Date(iso);
-            if (isNaN(d.getTime())) return iso;
-            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        }
+  function renderCreatorsMini(creators) {
+    const wrap = $("creators-mini");
+    if (!creators.length) {
+      wrap.innerHTML = `<div style="color: var(--ink-3); font-size:13px; padding: 8px 0;">no creators ranked yet</div>`;
+      return;
+    }
+    wrap.innerHTML = creators.slice(0, 5).map(c => {
+      const cls = c.avg_pnl_percent >= 0 ? "up" : "";
+      return `
+        <div class="creator-row" style="grid-template-columns: 30px 1fr auto;">
+          <span class="rk">#${c.rank}</span>
+          <div class="who">
+            <div>
+              <div class="handle" style="font-size:13px;">${esc(c.creator_email)}</div>
+              <div class="bots-ct">${c.bot_count} bot${c.bot_count === 1 ? '' : 's'}</div>
+            </div>
+          </div>
+          <div class="mtr ${cls}" style="font-size:13px;">${fmtPct(c.avg_pnl_percent, 1)}</div>
+        </div>
+      `;
+    }).join("");
+  }
 
-        function renderActiveTab() {
-            if (!cachedData) return;
-            document.getElementById('tab-hint').textContent = TAB_HINTS[activeTab];
+  function renderModelBars(rankings) {
+    const groups = {};
+    rankings.forEach(b => {
+      const k = b.model_provider;
+      if (!k || !CHIP[k]) return;
+      if (!groups[k]) groups[k] = { sum: 0, n: 0 };
+      groups[k].sum += Number(b.pnl_percent || 0);
+      groups[k].n += 1;
+    });
+    const arr = Object.keys(groups).map(k => ({
+      k, label: CHIP[k].label, cls: CHIP[k].cls,
+      avg: groups[k].sum / groups[k].n, n: groups[k].n,
+    })).sort((a, b) => b.avg - a.avg);
+    if (arr.length === 0) {
+      $("model-bars").innerHTML = `<div style="color: var(--ink-3); font-size:13px; padding: 20px 0; width: 100%; text-align:center;">no providers ranked</div>`;
+      $("model-wars-foot").textContent = "";
+      return;
+    }
+    const maxAbs = Math.max(1, ...arr.map(a => Math.abs(a.avg)));
+    const colorByCls = { anth: "var(--anth)", oai: "var(--oai)", goog: "var(--goog)", xai: "var(--ink)", meta: "var(--meta)" };
+    $("model-bars").innerHTML = arr.map(a => {
+      const h = Math.max(20, Math.abs(a.avg) / maxAbs * 200);
+      return `
+        <div class="mw-bar">
+          <div class="col" style="height: ${h.toFixed(0)}px; background: ${colorByCls[a.cls]};">${fmtPct(a.avg, 1)}</div>
+          <div class="label">${esc(a.label)}</div>
+          <div class="count">${a.n} bot${a.n === 1 ? '' : 's'}</div>
+        </div>
+      `;
+    }).join("");
+    const lead = arr[0];
+    $("model-wars-foot").innerHTML =
+      `${esc(lead.label)} leads with avg ${fmtPct(lead.avg, 1)} across ${lead.n} bot${lead.n === 1 ? '' : 's'}.`;
+  }
 
-            const noteEl = document.getElementById('hidden-note');
-            const hidden = cachedData.hidden_ineligible || 0;
-            const minTrades = cachedData.min_trades_required || 5;
-            if (activeTab !== 'value' && activeTab !== 'creators' && hidden > 0) {
-                noteEl.style.display = 'block';
-                noteEl.textContent = `${hidden} bot${hidden === 1 ? '' : 's'} hidden — need ${minTrades}+ trades and ${minTrades}+ snapshots to rank on this board.`;
-            } else {
-                noteEl.style.display = 'none';
-            }
+  $("metric-tabs").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-sort]");
+    if (!btn) return;
+    currentSort = btn.dataset.sort;
+    $("metric-tabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === btn));
+    load();
+  });
 
-            if (activeTab === 'creators') {
-                renderCreators(cachedData.creators || []);
-            } else {
-                renderBots(cachedData.rankings || [], activeTab);
-            }
-        }
-
-        function renderBots(rankings, tab) {
-            const head = document.getElementById('leaderboard-head');
-            const body = document.getElementById('leaderboard-body');
-
-            const cols = {
-                value:    ['Rank', 'Bot', 'Portfolio', 'P&L', 'Return %', 'Trades'],
-                sharpe:   ['Rank', 'Bot', 'Sharpe', 'Return %', 'Drawdown', 'Snapshots'],
-                sortino:  ['Rank', 'Bot', 'Sortino', 'Return %', 'Drawdown', 'Snapshots'],
-                drawdown: ['Rank', 'Bot', 'Drawdown', 'Return %', 'Sharpe', 'Snapshots'],
-            }[tab];
-
-            document.getElementById('chart-title').textContent =
-                'Top 10 — ' + ({value:'Total Value', sharpe:'Sharpe', sortino:'Sortino', drawdown:'Lowest Drawdown'}[tab]);
-
-            head.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
-
-            if (!rankings.length) {
-                body.innerHTML = `<tr><td colspan="${cols.length}" class="text-center text-muted p-32">No bots yet.</td></tr>`;
-                renderChart([], tab);
-                return;
-            }
-
-            body.innerHTML = rankings.map(b => {
-                const rankIndicator = rankMovement(b);
-                const ret = b.pnl_percent;
-                const returnCell = `<td class="${ret >= 0 ? 'positive' : 'negative'}">${fmtPct(ret)}</td>`;
-                const sharpeCell  = `<td>${formatMetric(b.sharpe, 2)}</td>`;
-                const sortinoCell = `<td>${formatMetric(b.sortino, 2)}</td>`;
-                const ddCell      = `<td>${formatPct(b.max_drawdown)}</td>`;
-                const snapCell    = `<td><span class="metric-pill">${b.snapshot_count}</span></td>`;
-
-                // On Total Value, surface ineligibility so a casual reader knows
-                // why a #1 bot might not appear on the Sharpe board.
-                const ineligibleBadge = (!b.eligible && tab === 'value')
-                    ? `<span class="ineligible-badge" title="Needs ${cachedData.min_trades_required}+ trades and snapshots before risk-adjusted ranking">unranked</span>`
-                    : '';
-                const nameCell = `<td><a href="/bot.html?id=${encodeURIComponent(b.bot_id)}">${escapeHtml(b.bot_name)}</a>${ineligibleBadge}</td>`;
-                const rankCell = `<td><div style="display:flex;align-items:center;">${b.rank}${rankIndicator}</div></td>`;
-
-                if (tab === 'value') {
-                    return `<tr>${rankCell}${nameCell}
-                        <td>${fmtMoney(b.total_value)}</td>
-                        <td class="${b.pnl >= 0 ? 'positive' : 'negative'}">${b.pnl >= 0 ? '+' : '-'}$${Math.abs(b.pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                        ${returnCell}<td>${b.trade_count}</td></tr>`;
-                }
-                if (tab === 'sharpe') {
-                    return `<tr>${rankCell}${nameCell}${sharpeCell}${returnCell}${ddCell}${snapCell}</tr>`;
-                }
-                if (tab === 'sortino') {
-                    return `<tr>${rankCell}${nameCell}${sortinoCell}${returnCell}${ddCell}${snapCell}</tr>`;
-                }
-                // drawdown
-                return `<tr>${rankCell}${nameCell}${ddCell}${returnCell}${sharpeCell}${snapCell}</tr>`;
-            }).join('');
-
-            renderChart(rankings.slice(0, 10), tab);
-        }
-
-        function renderCreators(creators) {
-            document.getElementById('chart-title').textContent = 'Top 10 — Creators (avg return per bot)';
-            const head = document.getElementById('leaderboard-head');
-            const body = document.getElementById('leaderboard-body');
-            head.innerHTML = '<tr><th>Rank</th><th>Creator</th><th>Bots</th><th>Avg Return</th><th>Best Bot</th><th>Worst Bot</th><th>Trades</th></tr>';
-
-            if (!creators.length) {
-                body.innerHTML = `<tr><td colspan="7" class="text-center text-muted p-32">No creators with verified bots yet.</td></tr>`;
-                renderChart([], 'creators');
-                return;
-            }
-
-            body.innerHTML = creators.map(c => `
-                <tr>
-                    <td>${c.rank}</td>
-                    <td>${escapeHtml(c.creator_email)}</td>
-                    <td>${c.bot_count}</td>
-                    <td class="${c.avg_pnl_percent >= 0 ? 'positive' : 'negative'}">${fmtPct(c.avg_pnl_percent)}</td>
-                    <td class="positive">${fmtPct(c.best_bot_pnl_percent)}</td>
-                    <td class="negative">${fmtPct(c.worst_bot_pnl_percent)}</td>
-                    <td>${c.total_trade_count}</td>
-                </tr>
-            `).join('');
-
-            renderChart(creators.slice(0, 10), 'creators');
-        }
-
-        function formatMetric(v, decimals) {
-            if (v == null) return '<span class="na">n/a</span>';
-            return v.toFixed(decimals);
-        }
-        function formatPct(v) {
-            if (v == null) return '<span class="na">n/a</span>';
-            return (v * 100).toFixed(2) + '%';
-        }
-
-        function rankMovement(b) {
-            if (b.rank_change > 0) {
-                const arrows = b.rank_change >= 5 ? '↑↑' : '↑';
-                return `<span style="color:#10b981;font-weight:600;margin-left:6px;" title="Up ${b.rank_change}">${arrows}</span>`;
-            }
-            if (b.rank_change < 0) {
-                return `<span style="color:#ef4444;font-weight:600;margin-left:6px;" title="Down ${Math.abs(b.rank_change)}">↓</span>`;
-            }
-            if (b.previous_rank > 0) {
-                return `<span style="color:#9ca3af;margin-left:6px;">→</span>`;
-            }
-            return '';
-        }
-
-        function renderChart(rows, tab) {
-            const canvas = document.getElementById('leaderboard-chart');
-            if (!canvas) return;
-            if (chartInstance) chartInstance.destroy();
-
-            let labels = [], data = [], suffix = '';
-            if (tab === 'seasons') {
-                labels = rows.map(e => e.bot_name);
-                // Chart on real account value, not return %, since the
-                // tournament-account dollar amount is what people screenshot.
-                data   = rows.map(e => e.total_value ?? 0);
-                suffix = '';
-            } else if (tab === 'creators') {
-                labels = rows.map(c => c.creator_email);
-                data   = rows.map(c => c.avg_pnl_percent);
-                suffix = '%';
-            } else if (tab === 'value') {
-                labels = rows.map(r => r.bot_name);
-                data   = rows.map(r => r.pnl_percent);
-                suffix = '%';
-            } else if (tab === 'drawdown') {
-                labels = rows.map(r => r.bot_name);
-                data   = rows.map(r => (r.max_drawdown ?? 0) * 100);
-                suffix = '%';
-            } else { // sharpe / sortino
-                labels = rows.map(r => r.bot_name);
-                data   = rows.map(r => (tab === 'sharpe' ? r.sharpe : r.sortino) ?? 0);
-                suffix = '';
-            }
-
-            const positiveIsGood = tab !== 'drawdown';
-            const colorFor = v => {
-                // Seasons: green if account is above the $100k starting line.
-                if (tab === 'seasons') {
-                    return v >= 100000 ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)';
-                }
-                const good = positiveIsGood ? v >= 0 : v <= 0;
-                return good ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)';
-            };
-
-            chartInstance = new Chart(canvas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{
-                        data,
-                        backgroundColor: data.map(colorFor),
-                        borderWidth: 0,
-                        borderRadius: 6,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                            titleColor: '#e5e5e5',
-                            bodyColor: '#e5e5e5',
-                            borderColor: '#374151',
-                            borderWidth: 1,
-                            padding: 12,
-                            displayColors: false,
-                            callbacks: {
-                                label: ctx => tab === 'seasons'
-                                    ? fmtMoney(ctx.parsed.x)
-                                    : `${ctx.parsed.x.toFixed(2)}${suffix}`
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: {
-                                color: '#9ca3af',
-                                callback: v => tab === 'seasons' ? '$' + Math.round(v).toLocaleString() : v + suffix
-                            }
-                        },
-                        y: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 13, weight: '500' } } }
-                    }
-                }
-            });
-        }
-
-        // Tab wiring
-        document.getElementById('tabs').addEventListener('click', e => {
-            const btn = e.target.closest('.tab-btn');
-            if (!btn) return;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            activeTab = btn.dataset.tab;
-            loadLeaderboard();
-        });
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadLeaderboard);
-        } else {
-            loadLeaderboard();
-        }
-        setInterval(loadLeaderboard, 30000);
-    </script>
+  load();
+  setInterval(load, 60000);
+})();
+</script>
 </body>
 </html>

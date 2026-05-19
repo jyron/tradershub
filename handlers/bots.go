@@ -212,12 +212,23 @@ func GetBotDetails(c *fiber.Ctx) error {
 	trades := []models.Trade{}
 	for rows.Next() {
 		var trade models.Trade
+		// reasoning is nullable; executed_at is SQLite TEXT and modernc.org/sqlite
+		// hands it back as a string, so we scan it as one and parse it ourselves
+		// rather than letting database/sql reject the row silently.
+		var reasoning sqlNullString
+		var executedAtStr string
 		err := rows.Scan(
 			&trade.ID, &trade.Symbol, &trade.TradeType, &trade.Side,
-			&trade.Quantity, &trade.Price, &trade.TotalValue, &trade.Reasoning, &trade.ExecutedAt,
+			&trade.Quantity, &trade.Price, &trade.TotalValue, &reasoning, &executedAtStr,
 		)
 		if err != nil {
 			continue
+		}
+		trade.Reasoning = reasoning.String
+		if t, perr := time.Parse("2006-01-02 15:04:05", executedAtStr); perr == nil {
+			trade.ExecutedAt = t
+		} else if t, perr := time.Parse(time.RFC3339, executedAtStr); perr == nil {
+			trade.ExecutedAt = t
 		}
 		trades = append(trades, trade)
 	}
@@ -239,10 +250,18 @@ func GetBotDetails(c *fiber.Ctx) error {
 	if errSnap == nil && snapshotRows != nil {
 		defer snapshotRows.Close()
 		for snapshotRows.Next() {
-			var snapshotAt time.Time
+			// snapshot_at is SQLite TEXT; see note in the trade loop above for
+			// why we don't scan straight into time.Time.
+			var snapshotAtStr string
 			var totalValue float64
-			if err := snapshotRows.Scan(&snapshotAt, &totalValue); err != nil {
+			if err := snapshotRows.Scan(&snapshotAtStr, &totalValue); err != nil {
 				continue
+			}
+			var snapshotAt time.Time
+			if t, perr := time.Parse("2006-01-02 15:04:05", snapshotAtStr); perr == nil {
+				snapshotAt = t
+			} else if t, perr := time.Parse(time.RFC3339, snapshotAtStr); perr == nil {
+				snapshotAt = t
 			}
 			portfolioSnapshots = append(portfolioSnapshots, fiber.Map{
 				"snapshot_at": snapshotAt,
