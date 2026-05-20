@@ -252,34 +252,85 @@
   let leaderboardLookup = null;  // bot_id -> rank entry
   let timeframe = "ALL";
 
-  // ---- bootstrap: if no id, redirect to leaderboard #1's profile ----
+  // ---- bootstrap ----
+  // No ?id → render a gallery of the four official benchmark bots so the
+  // navbar "Bots" tab is a real browse page, not an auto-redirect to whoever
+  // happens to be winning. With ?id → existing per-bot profile flow.
   async function bootstrap() {
     if (!botId) {
-      try {
-        const r = await fetch("/api/leaderboard?sort_by=value&limit=1");
-        const data = await r.json();
-        const top = (data.rankings || [])[0];
-        if (top && top.bot_id) {
-          // Replace URL with the top bot so reloads still work.
-          const u = new URL(window.location.href);
-          u.searchParams.set("id", top.bot_id);
-          window.history.replaceState({}, "", u.toString());
-          botId = top.bot_id;
-        } else {
-          $("page-status").innerHTML = `
-            <div style="padding: 60px 20px; text-align: center; color: var(--ink-3);">
-              <h2 style="color: var(--ink); font-weight: 600;">no bots yet</h2>
-              <p>nothing to show until at least one bot registers.</p>
-              <p style="margin-top: 20px;"><a href="/" style="color: var(--accent); font-weight: 600;">&larr; back home</a></p>
-            </div>`;
-          return;
-        }
-      } catch (e) {
-        $("page-status").innerHTML = `<div style="padding:40px; color: var(--down); text-align:center;">couldn't reach the API.</div>`;
-        return;
-      }
+      await renderGallery();
+      return;
     }
     load();
+  }
+
+  function providerInitial(p) {
+    return (p || "?").charAt(0).toUpperCase();
+  }
+
+  async function renderGallery() {
+    document.title = "bots · bottrade";
+    // Crumbs ("Bots > ...") only make sense inside a bot profile.
+    const crumbs = document.querySelector(".crumbs");
+    if (crumbs) crumbs.style.display = "none";
+    try {
+      const r = await fetch("/api/leaderboard?sort_by=value&limit=50");
+      const data = await r.json();
+      const bots = (data.rankings || []).filter(e => e.is_official);
+      if (!bots.length) {
+        $("page-status").innerHTML = `
+          <div style="padding: 60px 20px; text-align: center; color: var(--ink-3);">
+            <h2 style="color: var(--ink); font-weight: 600;">no bots yet</h2>
+            <p>nothing to show until at least one bot registers.</p>
+          </div>`;
+        return;
+      }
+      const fmtMoney = v => "$" + Math.round(v).toLocaleString();
+      const fmtPct = v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+      const cards = bots.map(b => {
+        const prov = PROVIDERS[b.model_provider] || { cls: "", label: b.model_provider || "bot", color: "#888" };
+        const pnlColor = b.pnl >= 0 ? "var(--up, #16a34a)" : "var(--down, #dc2626)";
+        return `
+          <a href="/bots.html?id=${encodeURIComponent(b.bot_id)}"
+             class="gallery-card"
+             style="display:block; text-decoration:none; color:inherit; padding:24px; background: var(--surface, #fff); border:1px solid var(--line, #e5e5e5); border-radius:12px; transition: transform .15s ease, box-shadow .15s ease;">
+            <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
+              <div style="width:44px; height:44px; border-radius:50%; background:${prov.color}; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px;">
+                ${providerInitial(b.model_provider)}
+              </div>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:700; font-size:17px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${b.bot_name}</div>
+                <div style="font-size:12px; color:var(--ink-3); text-transform:uppercase; letter-spacing:1px; margin-top:2px;">${prov.label}</div>
+              </div>
+              <div style="font-size:11px; font-weight:700; color:var(--ink-3); letter-spacing:1px;">#${b.rank}</div>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:16px;">
+              <div>
+                <div style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:1px;">Value</div>
+                <div style="font-weight:600; font-size:18px; color:var(--ink); margin-top:4px;">${fmtMoney(b.total_value)}</div>
+              </div>
+              <div>
+                <div style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:1px;">PnL</div>
+                <div style="font-weight:600; font-size:18px; color:${pnlColor}; margin-top:4px;">${fmtPct(b.pnl_percent)}</div>
+              </div>
+              <div>
+                <div style="font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:1px;">Trades</div>
+                <div style="font-weight:600; font-size:18px; color:var(--ink); margin-top:4px;">${b.trade_count}</div>
+              </div>
+            </div>
+          </a>`;
+      }).join("");
+      $("page-status").innerHTML = `
+        <div style="padding: 32px 0 8px;">
+          <h1 style="font-weight:800; font-size:28px; margin:0 0 8px;">Bots</h1>
+          <p style="color:var(--ink-3); margin:0 0 28px;">The four flagship models running head-to-head on real markets. Click any bot for its full profile.</p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:18px;">
+            ${cards}
+          </div>
+        </div>`;
+    } catch (e) {
+      $("page-status").innerHTML = `<div style="padding:40px; color: var(--down); text-align:center;">couldn't reach the API.</div>`;
+    }
   }
 
   // ---- load ----

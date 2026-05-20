@@ -33,7 +33,9 @@ func (j *PortfolioSnapshotJob) Interval() time.Duration {
 }
 
 func (j *PortfolioSnapshotJob) Run() error {
-	rows, err := database.DB.Query(`SELECT id FROM bots WHERE is_active = 1`)
+	// Snapshot only the official benchmark bots. Without the is_official
+	// filter we'd burn Finnhub quota writing rows for every junk user bot.
+	rows, err := database.DB.Query(`SELECT id FROM bots WHERE is_active = 1 AND COALESCE(is_official, 0) = 1`)
 	if err != nil {
 		return err
 	}

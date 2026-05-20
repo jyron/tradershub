@@ -12,6 +12,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// loadEntries used to recompute each bot's portfolio live by calling
+// GetPortfolio() in an N+1 loop — that meant 40+ Finnhub round-trips per
+// leaderboard render and ~5.6s response times. We now read the latest
+// portfolio_snapshot per bot in one SQL query and trust the hourly
+// PortfolioSnapshotJob to keep snapshots fresh. Per-bot detail pages still
+// recompute live for accuracy.
+
 // startingBalance is the cash every bot is seeded with. Used to normalize
 // returns into percentages.
 const startingBalance = 100000.0
@@ -141,85 +148,124 @@ func loadEntries() ([]LeaderboardEntry, error) {
 			COALESCE(b.creator_email, ''),
 			COALESCE(b.model_provider, ''),
 			COALESCE(b.is_official, 0),
-			COALESCE(COUNT(t.id), 0) AS trade_count
+			COALESCE(b.cash_balance, ?1) AS cash_balance,
+			COALESCE(COUNT(DISTINCT t.id), 0) AS trade_count,
+			(SELECT total_value FROM portfolio_snapshots
+			 WHERE bot_id = b.id AND season_id IS NULL
+			 ORDER BY snapshot_at DESC LIMIT 1) AS latest_total_value
 		FROM bots b
 		LEFT JOIN trades t ON b.id = t.bot_id AND t.season_id IS NULL
-		WHERE b.is_active = 1
-		GROUP BY b.id, b.name, b.creator_email, b.model_provider, b.is_official
-	`)
+		WHERE b.is_active = 1 AND COALESCE(b.is_official, 0) = 1
+		GROUP BY b.id, b.name, b.creator_email, b.model_provider, b.is_official, b.cash_balance
+	`, startingBalance)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	portfolioService := services.NewPortfolioService()
-	var entries []LeaderboardEntry
-
+	var rowsOut []entryRow
 	for rows.Next() {
 		var idStr, name, email, modelProvider string
 		var isOfficial, tradeCount int
-		if err := rows.Scan(&idStr, &name, &email, &modelProvider, &isOfficial, &tradeCount); err != nil {
+		var cashBalance float64
+		var latestTotal *float64
+		if err := rows.Scan(&idStr, &name, &email, &modelProvider, &isOfficial, &cashBalance, &tradeCount, &latestTotal); err != nil {
 			continue
 		}
 		botID, err := uuid.Parse(idStr)
 		if err != nil {
 			continue
 		}
-		portfolio, err := portfolioService.GetPortfolio(botID)
-		if err != nil {
-			continue
+
+		// Snapshot is the source of truth; fall back to current cash for
+		// freshly-registered bots that haven't had a snapshot written yet.
+		totalValue := cashBalance
+		if latestTotal != nil {
+			totalValue = *latestTotal
+		}
+		pnl := totalValue - startingBalance
+		pnlPct := 0.0
+		if startingBalance > 0 {
+			pnlPct = (pnl / startingBalance) * 100
 		}
 
-		entry := LeaderboardEntry{
-			BotID:         botID.String(),
-			BotName:       name,
-			CreatorEmail:  email,
-			ModelProvider: modelProvider,
-			IsOfficial:    isOfficial != 0,
-			TotalValue:    portfolio.TotalValue,
-			PnL:           portfolio.TotalPnL,
-			PnLPercent:    portfolio.TotalPnLPct,
-			TradeCount:    tradeCount,
-		}
+		rowsOut = append(rowsOut, entryRow{
+			entry: LeaderboardEntry{
+				BotID:         botID.String(),
+				BotName:       name,
+				CreatorEmail:  email,
+				ModelProvider: modelProvider,
+				IsOfficial:    isOfficial != 0,
+				TotalValue:    totalValue,
+				PnL:           pnl,
+				PnLPercent:    pnlPct,
+				TradeCount:    tradeCount,
+			},
+			botID: botID,
+		})
+	}
 
-		values := loadSnapshotValues(botID)
-		entry.SnapshotCount = len(values)
+	// Batch-fetch all snapshot value series in one query rather than N round
+	// trips to Turso. Group in Go by bot_id, preserving snapshot order.
+	history := loadSnapshotHistoryByBot(rowsOut)
+
+	entries := make([]LeaderboardEntry, 0, len(rowsOut))
+	for _, r := range rowsOut {
+		e := r.entry
+		values := history[r.botID.String()]
+		e.SnapshotCount = len(values)
 		metrics := services.ComputeMetrics(values)
-		// Eligibility requires *both* a real track record (enough trades to
-		// not be a one-shot lucky run) and enough datapoints for the math
-		// to mean anything.
-		entry.Eligible = tradeCount >= MinTradesForRanking && metrics.Valid
-		if entry.Eligible {
+		e.Eligible = e.TradeCount >= MinTradesForRanking && metrics.Valid
+		if e.Eligible {
 			s, so, dd := metrics.Sharpe, metrics.Sortino, metrics.MaxDrawdown
-			entry.Sharpe = &s
-			entry.Sortino = &so
-			entry.MaxDrawdown = &dd
+			e.Sharpe = &s
+			e.Sortino = &so
+			e.MaxDrawdown = &dd
 		}
-		entries = append(entries, entry)
+		entries = append(entries, e)
 	}
 	return entries, nil
 }
 
-func loadSnapshotValues(botID uuid.UUID) []float64 {
-	rows, err := database.DB.Query(
-		`SELECT total_value FROM portfolio_snapshots
-		 WHERE bot_id = ?1 AND season_id IS NULL
-		 ORDER BY snapshot_at ASC`,
-		botID.String(),
-	)
-	if err != nil {
+// loadSnapshotHistoryByBot pulls every (bot_id, total_value) pair for the
+// given bots in one query and groups in memory. Ordering by bot_id then
+// snapshot_at means values come out in chronological order per bot, which is
+// what ComputeMetrics expects.
+type entryRow struct {
+	entry LeaderboardEntry
+	botID uuid.UUID
+}
+
+func loadSnapshotHistoryByBot(rows []entryRow) map[string][]float64 {
+	if len(rows) == 0 {
 		return nil
 	}
-	defer rows.Close()
-
-	var values []float64
-	for rows.Next() {
+	ids := make([]interface{}, len(rows))
+	placeholders := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.botID.String()
+		placeholders[i] = "?"
+	}
+	q := fmt.Sprintf(
+		`SELECT bot_id, total_value FROM portfolio_snapshots
+		 WHERE season_id IS NULL AND bot_id IN (%s)
+		 ORDER BY bot_id, snapshot_at ASC`,
+		strings.Join(placeholders, ","),
+	)
+	out := make(map[string][]float64, len(rows))
+	dbRows, err := database.DB.Query(q, ids...)
+	if err != nil {
+		return out
+	}
+	defer dbRows.Close()
+	for dbRows.Next() {
+		var botID string
 		var v float64
-		if err := rows.Scan(&v); err == nil {
-			values = append(values, v)
+		if err := dbRows.Scan(&botID, &v); err == nil {
+			out[botID] = append(out[botID], v)
 		}
 	}
-	return values
+	return out
 }
 
 // sortEntries orders the slice based on the requested view. Entries missing a

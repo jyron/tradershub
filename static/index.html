@@ -176,15 +176,6 @@
   let providerStats = {};   // key -> { count, avgPct, top, totalValue }
   let timeframe = "3M";
 
-  // ----- top-bot-id cache used by the Bots nav link -----
-  function updateBotsNav() {
-    if (leaderboard.length > 0) {
-      const top = leaderboard[0];
-      const link = $("nav-bots");
-      if (link && top.bot_id) link.href = "/bots.html?id=" + encodeURIComponent(top.bot_id);
-    }
-  }
-
   // ----- load --------------------------------------------------------------
   async function load() {
     try {
@@ -196,7 +187,6 @@
       const stats = statsRes || {};
 
       computeProviderStats();
-      updateBotsNav();
       renderRaceWindow();
       renderScoreboard();
       renderHeroMeta(stats);

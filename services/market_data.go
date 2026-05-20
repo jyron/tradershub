@@ -50,8 +50,12 @@ type finnhubQuote struct {
 	Timestamp     int64   `json:"t"`  // UNIX timestamp
 }
 
+// quoteCacheTTL governs how long a Finnhub quote is reused. 5 minutes is a
+// fine staleness window for a paper-trading leaderboard and keeps individual
+// bot detail pages well under Finnhub's 60-req/min free tier.
+const quoteCacheTTL = 5 * time.Minute
+
 func (s *MarketDataService) GetQuote(symbol string) (*models.Quote, error) {
-	// Check cache first (cache for 15 seconds to stay within rate limits)
 	s.mu.RLock()
 	if cached, ok := s.cache[symbol]; ok && time.Now().Before(cached.expiresAt) {
 		s.mu.RUnlock()
@@ -96,11 +100,10 @@ func (s *MarketDataService) GetQuote(symbol string) (*models.Quote, error) {
 	// Parse the response
 	quote := s.parseFinnhubQuote(symbol, fhQuote)
 
-	// Cache the quote for 15 seconds
 	s.mu.Lock()
 	s.cache[symbol] = &cachedQuote{
 		quote:     *quote,
-		expiresAt: time.Now().Add(15 * time.Second),
+		expiresAt: time.Now().Add(quoteCacheTTL),
 	}
 	s.mu.Unlock()
 

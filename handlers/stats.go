@@ -2,11 +2,9 @@ package handlers
 
 import (
 	"bottrade/database"
-	"bottrade/services"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 type StatsResponse struct {
@@ -42,9 +40,11 @@ func GetStats(c *fiber.Ctx) error {
 		recentTradesCount = 0
 	}
 
-	// Count active bots
+	// Count active bots (official only — junk user bots stay hidden from
+	// the public stats page).
 	var activeBotsCount int
-	err = database.DB.QueryRow(		`SELECT COUNT(*) FROM bots WHERE is_active = true`,
+	err = database.DB.QueryRow(
+		`SELECT COUNT(*) FROM bots WHERE is_active = 1 AND COALESCE(is_official, 0) = 1`,
 	).Scan(&activeBotsCount)
 	if err != nil {
 		activeBotsCount = 0
@@ -75,12 +75,19 @@ func GetStats(c *fiber.Ctx) error {
 		}
 	}
 
-	// Get biggest gainer and loser (calculate from portfolio values)
-	portfolioService := services.NewPortfolioService()
-
-	var botsRows, _ = database.DB.Query(`
-		SELECT id, name FROM bots WHERE is_active = true
-	`)
+	// Biggest gainer / loser from the latest snapshot per bot. One SQL query
+	// instead of an N+1 GetPortfolio() loop with per-position Finnhub calls.
+	const startingBalance = 100000.0
+	botsRows, _ := database.DB.Query(`
+		SELECT b.id, b.name,
+		       COALESCE((SELECT total_value FROM portfolio_snapshots
+		                 WHERE bot_id = b.id AND season_id IS NULL
+		                 ORDER BY snapshot_at DESC LIMIT 1),
+		                b.cash_balance,
+		                ?1) AS total_value
+		FROM bots b
+		WHERE b.is_active = 1 AND COALESCE(b.is_official, 0) = 1
+	`, startingBalance)
 	defer botsRows.Close()
 
 	var biggestGainer *BotGainerInfo
@@ -89,23 +96,17 @@ func GetStats(c *fiber.Ctx) error {
 	maxLoss := 1000000.0
 
 	for botsRows.Next() {
-		var botID uuid.UUID
-		var botName string
-		if err := botsRows.Scan(&botID, &botName); err != nil {
+		var botID, botName string
+		var totalValue float64
+		if err := botsRows.Scan(&botID, &botName, &totalValue); err != nil {
 			continue
 		}
-
-		portfolio, err := portfolioService.GetPortfolio(botID)
-		if err != nil {
-			continue
-		}
-
-		pnlPercent := portfolio.TotalPnLPct
+		pnlPercent := ((totalValue - startingBalance) / startingBalance) * 100
 
 		if pnlPercent > maxGain {
 			maxGain = pnlPercent
 			biggestGainer = &BotGainerInfo{
-				BotID:      botID.String(),
+				BotID:      botID,
 				BotName:    botName,
 				PnLPercent: pnlPercent,
 			}
@@ -114,7 +115,7 @@ func GetStats(c *fiber.Ctx) error {
 		if pnlPercent < maxLoss {
 			maxLoss = pnlPercent
 			biggestLoser = &BotGainerInfo{
-				BotID:      botID.String(),
+				BotID:      botID,
 				BotName:    botName,
 				PnLPercent: pnlPercent,
 			}
