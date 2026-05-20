@@ -94,6 +94,13 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		limit = 200
 	}
 
+	// In-memory cache keyed by (period, sort_by, limit). 30s TTL is invisible
+	// to users since values only change when the hourly snapshot job runs.
+	cacheKey := fmt.Sprintf("%s|%s|%d", period, sortBy, limit)
+	if cached, ok := leaderboardCache.get(cacheKey); ok {
+		return c.JSON(cached)
+	}
+
 	entries, err := loadEntries()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -130,14 +137,16 @@ func GetLeaderboard(c *fiber.Ctx) error {
 
 	creators := buildCreatorRankings(entries)
 
-	return c.JSON(LeaderboardResponse{
+	resp := LeaderboardResponse{
 		Period:            period,
 		SortBy:            sortBy,
 		Rankings:          visible,
 		Creators:          creators,
 		HiddenIneligible:  hidden,
 		MinTradesRequired: MinTradesForRanking,
-	})
+	}
+	leaderboardCache.put(cacheKey, resp)
+	return c.JSON(resp)
 }
 
 func loadEntries() ([]LeaderboardEntry, error) {

@@ -28,6 +28,10 @@ type BotGainerInfo struct {
 }
 
 func GetStats(c *fiber.Ctx) error {
+	if cached, ok := statsCache.get("global"); ok {
+		return c.JSON(cached)
+	}
+
 	now := time.Now()
 	oneHourAgo := now.Add(-1 * time.Hour)
 
@@ -122,11 +126,13 @@ func GetStats(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.JSON(StatsResponse{
+	resp := StatsResponse{
 		RecentTradesCount: recentTradesCount,
 		ActiveBotsCount:   activeBotsCount,
 		PopularSymbols:    popularSymbols,
 		BiggestGainer:     biggestGainer,
 		BiggestLoser:      biggestLoser,
-	})
+	}
+	statsCache.put("global", resp)
+	return c.JSON(resp)
 }
