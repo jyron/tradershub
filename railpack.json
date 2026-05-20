@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "go",
+  "packages": {
+    "python": "3.11"
+  },
+  "steps": {
+    "install": {
+      "commands": [
+        "...",
+        "python3 -m pip install --no-cache-dir -r requirements.txt"
+      ]
+    }
+  }
+}
