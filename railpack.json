@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.railpack.com",
-  "provider": "go",
+  "provider": "golang",
   "packages": {
     "python": "3.11"
   }
