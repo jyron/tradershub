@@ -23,7 +23,7 @@ def decide_llm(system_prompt: str, user_prompt: str) -> str:
     client = Anthropic(api_key=common.llm_key("claude"))
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=400,
+        max_tokens=1024,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )

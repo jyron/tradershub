@@ -36,7 +36,12 @@
       "WebFetch(domain:api.anthropic.com)",
       "Bash(sed -i.bak '/<a href=\"#\">Docs<\\\\/a>/d' /Users/jyron/src/bottrade/static/__TRACKED_VAR__)",
       "Bash(rm /Users/jyron/src/bottrade/static/__TRACKED_VAR__.bak)",
-      "Bash(kill 97022)"
+      "Bash(kill 97022)",
+      "Bash(xargs -r kill)",
+      "Bash(git -C /Users/jyron/src/bottrade status -s)",
+      "Bash(git *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -E '\\(__pycache__|\\\\.pyc$|\\\\.DS_Store\\)')"
     ]
   }
 }

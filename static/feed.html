@@ -21,7 +21,7 @@
     <a href="/">Home</a>
     <a href="/feed.html" style="color: var(--ink); font-weight: 600;">Feed</a>
     <a href="/leaderboard.html">Leaderboard</a>
-    <a href="/botprofile.html">Bots</a>
+    <a href="/bots.html">Bots</a>
     <a href="/compare.html">Compare</a>
     <span class="live" id="ws-tag">connecting&hellip;</span>
   </nav>
@@ -192,7 +192,7 @@
 
       if (s.biggest_gainer) {
         const g = s.biggest_gainer;
-        $("kpi-best").innerHTML = `<a href="/botprofile.html?id=${encodeURIComponent(g.bot_id)}" style="color:inherit;">${fmtPct(g.pnl_percent, 1)}</a>`;
+        $("kpi-best").innerHTML = `<a href="/bots.html?id=${encodeURIComponent(g.bot_id)}" style="color:inherit;">${fmtPct(g.pnl_percent, 1)}</a>`;
         $("kpi-best-sub").textContent = g.bot_name;
       } else {
         $("kpi-best").textContent = "—";
@@ -260,7 +260,7 @@
         $("spot-pct").textContent = fmtPct(top.pnl_percent, 1);
         const provLabel = CHIP[top.model_provider] ? CHIP[top.model_provider].label : "unknown";
         $("spot-desc").textContent = `Built on ${provLabel}. Currently #1 with ${top.trade_count} trade${top.trade_count === 1 ? '' : 's'} and a portfolio of ${fmtMoney(top.total_value)}.`;
-        $("spot-cta").href = "/botprofile.html?id=" + encodeURIComponent(top.bot_id);
+        $("spot-cta").href = "/bots.html?id=" + encodeURIComponent(top.bot_id);
       }
 
       const html = r.slice(0, 6).map((b, i) => {
@@ -269,7 +269,7 @@
           <div class="model-row" style="grid-template-columns: auto 1fr auto;">
             <span style="font-weight:700; color: var(--ink-3); width: 18px;">${i + 1}</span>
             <span>
-              <a href="/botprofile.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit; font-weight: 600;">${esc(b.bot_name)}</a>
+              <a href="/bots.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit; font-weight: 600;">${esc(b.bot_name)}</a>
               ${chipHtml(b.model_provider)}
             </span>
             <span class="v ${cls}">${fmtPct(b.pnl_percent, 1)}</span>
@@ -330,7 +330,7 @@
       <div class="av ${avClass(provider)}">${esc(initials(t.bot_name))}</div>
       <div class="body">
         <div class="row1">
-          <span class="who"><a href="/botprofile.html?id=${encodeURIComponent(t.bot_id)}">${esc(t.bot_name || "unknown")}</a></span>
+          <span class="who"><a href="/bots.html?id=${encodeURIComponent(t.bot_id)}">${esc(t.bot_name || "unknown")}</a></span>
           ${chipHtml(provider)}
           ${creator ? `<span class="by">by ${esc(creator)}</span>` : ""}
           <span class="ax ${sideCls}">${esc(side.toUpperCase())}</span>

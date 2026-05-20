@@ -1,7 +1,7 @@
 # Official Benchmark Bots
 
 This directory contains the four canonical "official" bots that drive the
-`/showdown.html` page — one per LLM provider, all running the same prompt
+`/compare.html` page — one per LLM provider, all running the same prompt
 and rules so the only variable is the model.
 
 ```
@@ -51,7 +51,7 @@ make seed-official
 make replay-bots
 #    or one at a time:  make replay-claude
 
-# 6. Open http://localhost:3000/showdown.html
+# 6. Open http://localhost:3000/compare.html
 ```
 
 ---
@@ -65,19 +65,27 @@ The replay loop walks the last `N` trading days, and **for each day**:
 1. Fetches that day's closing prices for ~15 large-cap US symbols via Alpaca.
 2. Reconstructs the bot's portfolio from its prior trades (cash + positions,
    marked to that day's prices).
-3. Calls the LLM with a market snapshot prompt asking for one action
-   (buy/sell/hold + symbol + qty + reasoning).
-4. Parses the JSON response, clips it for sanity (≤25% position size, no
-   selling what you don't own, can't overdraw cash).
-5. Writes the trade to SQLite **with that day's historical timestamp**.
+3. Calls the LLM with a market snapshot prompt asking for **up to 3 actions**
+   per day (buys, sells, or holds — as a JSON array).
+4. Parses the JSON response, clips each decision for sanity (≤25% position size
+   per trade, no selling what you don't own, can't overdraw cash). Duplicate
+   symbols within the same day are skipped.
+5. Writes each trade to SQLite **with that day's historical timestamp** (staggered
+   by 1 minute: 15:30, 15:31, 15:32). Portfolio state is re-fetched between
+   trades within the same day so cash and positions stay consistent.
 6. Records an end-of-day portfolio snapshot.
 
 The LLM never knows it's replay vs live — the snapshot looks identical
 either way. Re-running replay wipes the bot's prior state and starts clean,
 so it's idempotent.
 
-**Cost:** ~90 LLM calls per provider per replay run. Cheap models cost
-pennies; flagship models can be a few dollars. You're the one paying.
+**Parallelism:** `make replay-bots` runs all four providers simultaneously via
+`scripts/replay_parallel.sh`. One provider failing does not abort the others.
+Logs are prefixed `[claude]`, `[gpt]`, etc.
+
+**Cost:** up to ~90 LLM calls per provider per replay run (fewer if the bot
+holds some days). Cheap models cost pennies; flagship models can be a few
+dollars. You're the one paying.
 
 ### Live mode (`--live`)
 
@@ -85,8 +93,8 @@ One LLM call against the current market via the public API:
 
 1. Fetches the latest Alpaca quotes.
 2. Pulls the bot's current portfolio from `GET /api/portfolio`.
-3. Calls the LLM with the same prompt shape as replay.
-4. Posts the result to `POST /api/trade/stock` with the bot's `X-API-Key`.
+3. Calls the LLM with the same prompt shape as replay (up to 3 actions).
+4. Posts each non-hold decision to `POST /api/trade/stock` with the bot's `X-API-Key`.
 
 This is what you'd put on a cron, e.g. once per trading day at market open.
 
@@ -159,7 +167,7 @@ That's it. Run your script on a loop, on a cron, on a Lambda, whatever.
 
 ### `model_provider` values
 
-Used by the UI to render the colored chip and group bots on the showdown
+Used by the UI to render the colored chip and group bots on the compare
 page. Accepts: `claude`, `gpt`, `gemini`, `grok`, `meta`. Anything else is
 silently dropped (your bot still works, just won't render a chip).
 
@@ -193,9 +201,10 @@ No. Alpaca's daily bars exclude weekends + market holidays, so the replay
 loop only fires on real trading days. Same in live mode.
 
 **Why does the LLM sometimes "hold" forever?**
-The prompt allows holding. If your provider's model is conservative, that's
-just the model's choice. You can edit `SYSTEM_PROMPT` in `common.py` to
-push it harder.
+The prompt pushes bots to deploy capital in the first 5 days and targets
+4–8 open positions. If a bot still holds excessively, you can tune
+`SYSTEM_PROMPT` in `common.py` further. Re-run `make replay-<provider>`
+after any prompt change — replay wipes that bot's history and starts clean.
 
 **One provider is rate-limited mid-replay — restart from scratch?**
 No, `make replay-claude` (etc.) re-wipes that provider and re-runs. Other

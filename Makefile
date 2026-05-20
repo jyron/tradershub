@@ -92,8 +92,9 @@ clean: stop
 
 # Official-bot showdown ----------------------------------------------
 # `seed-official` is safe to run repeatedly: it skips providers whose bot
-# already exists. `replay-bots` runs each provider serially so you can see
-# errors and Ctrl-C cleanly.
+# already exists. `replay-bots` runs all 4 providers in parallel — each bot's
+# output is prefixed with [provider] so interleaved logs stay readable. One
+# provider failing does not abort the others.
 
 REPLAY_DAYS ?= 90
 
@@ -101,16 +102,16 @@ seed-official:
 	@BASE_URL=$(BASE_URL) python3 scripts/seed_official_bots.py
 
 replay-claude:
-	@python3 -m bots.claude_bot --replay $(REPLAY_DAYS)
+	@python3 -u -m bots.claude_bot --replay $(REPLAY_DAYS) --verbose
 
 replay-gpt:
-	@python3 -m bots.gpt_bot --replay $(REPLAY_DAYS)
+	@python3 -u -m bots.gpt_bot --replay $(REPLAY_DAYS) --verbose
 
 replay-gemini:
-	@python3 -m bots.gemini_bot --replay $(REPLAY_DAYS)
+	@python3 -u -m bots.gemini_bot --replay $(REPLAY_DAYS) --verbose
 
 replay-grok:
-	@python3 -m bots.grok_bot --replay $(REPLAY_DAYS)
+	@python3 -u -m bots.grok_bot --replay $(REPLAY_DAYS) --verbose
 
-replay-bots: replay-claude replay-gpt replay-gemini replay-grok
-	@echo "✓ all 4 providers replayed"
+replay-bots:
+	@scripts/replay_parallel.sh $(REPLAY_DAYS)

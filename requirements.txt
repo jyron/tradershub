@@ -1,12 +1,8 @@
-# Snapshot generator and historical data scripts
 alpaca-py
-psycopg2-binary
 python-dotenv
-pytz
 requests
 
-# Official benchmark bot scripts (bots/*.py) — one SDK per provider.
-# All optional: install only the providers you have keys for.
+# Official benchmark bot scripts — install only the providers you have keys for
 anthropic
 openai
 google-generativeai

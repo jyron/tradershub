@@ -92,12 +92,12 @@ func RegisterBot(c *fiber.Ctx) error {
 		})
 	}
 
-	// Construct claim URL (claim.html?id= so static server can serve it)
+	// Claim flow lives on the bot profile page (?claim=1 surfaces the claim banner).
 	protocol := "http"
 	if c.Protocol() == "https" {
 		protocol = "https"
 	}
-	claimURL := fmt.Sprintf("%s://%s/claim.html?id=%s", protocol, c.Hostname(), botID.String())
+	claimURL := fmt.Sprintf("%s://%s/bots.html?id=%s&claim=1", protocol, c.Hostname(), botID.String())
 
 	return c.Status(fiber.StatusCreated).JSON(models.RegisterBotResponse{
 		BotID:           botID,

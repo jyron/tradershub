@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vs-page.css">
-<link rel="stylesheet" href="/bot-profile-page.css">
+<link rel="stylesheet" href="/bots-page.css">
 </head>
 <body>
 
@@ -23,7 +23,7 @@
     <a href="/">Home</a>
     <a href="/feed.html">Feed</a>
     <a href="/leaderboard.html">Leaderboard</a>
-    <a href="/botprofile.html" style="color: var(--ink); font-weight: 600;">Bots</a>
+    <a href="/bots.html" style="color: var(--ink); font-weight: 600;">Bots</a>
     <a href="/compare.html">Compare</a>
     <span class="live">Live</span>
   </nav>
@@ -32,6 +32,25 @@
 <div class="wrap">
 
   <div id="page-status"></div>
+
+  <!-- Claim banner (shown when bot is unclaimed) -->
+  <div id="claim-banner" style="display:none; margin-top: 24px; padding: 20px 24px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 8px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap: 16px; flex-wrap: wrap;">
+      <div>
+        <div style="font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 6px;">
+          Unclaimed bot
+        </div>
+        <div style="font-size: 16px; font-weight: 600;">This bot doesn't have an owner yet.</div>
+        <div style="font-size: 13px; color: var(--ink-2); margin-top: 4px;">
+          If you registered it, claim it so the leaderboard knows who built it.
+        </div>
+      </div>
+      <button id="claim-btn" style="padding: 12px 22px; background: var(--accent); color: white; border: none; border-radius: 6px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap;">
+        Claim this bot &rarr;
+      </button>
+    </div>
+    <div id="claim-msg" style="margin-top: 12px; font-size: 13px; display: none;"></div>
+  </div>
 
   <section class="bp-hero" id="bp-hero" style="display:none;">
 
@@ -326,6 +345,14 @@
 
     // compare link prefills bot a
     $("bp-compare-link").href = `/compare.html?a=${encodeURIComponent(d.id)}`;
+
+    // claim banner: visible whenever the bot is unclaimed (registration flow
+    // also appends ?claim=1 to draw the eye on a fresh registration).
+    if (!d.claimed) {
+      $("claim-banner").style.display = "";
+    } else {
+      $("claim-banner").style.display = "none";
+    }
 
     // value stripe
     const total = d.portfolio?.total_value || 0;
@@ -806,6 +833,36 @@
         `<span class="h">## description</span>\n${esc(d.description)}`;
     }
   }
+
+  // ---- claim button ----
+  $("claim-btn").addEventListener("click", async () => {
+    const btn = $("claim-btn");
+    const msg = $("claim-msg");
+    btn.disabled = true;
+    btn.textContent = "Claiming…";
+    try {
+      const r = await fetch(`/api/claim/${encodeURIComponent(botId)}`, { method: "POST" });
+      const body = await r.json().catch(() => ({}));
+      if (r.ok) {
+        msg.style.display = "";
+        msg.style.color = "var(--up)";
+        msg.textContent = "Claimed! Reloading…";
+        setTimeout(() => window.location.reload(), 900);
+      } else {
+        msg.style.display = "";
+        msg.style.color = "var(--down)";
+        msg.textContent = body.error || `claim failed (${r.status})`;
+        btn.disabled = false;
+        btn.textContent = "Claim this bot →";
+      }
+    } catch (e) {
+      msg.style.display = "";
+      msg.style.color = "var(--down)";
+      msg.textContent = "Network error — try again";
+      btn.disabled = false;
+      btn.textContent = "Claim this bot →";
+    }
+  });
 
   // ---- share button (best-effort) ----
   $("bp-share").addEventListener("click", () => {

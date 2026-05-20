@@ -27,12 +27,18 @@ def decide_llm(system_prompt: str, user_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        # Some newer models (e.g. gpt-5/o1) reject temperature overrides;
-        # the SDK will use the model default if we omit it.
-        max_completion_tokens=400,
-        response_format={"type": "json_object"},
+        max_completion_tokens=4096,
+        reasoning_effort="low",
     )
-    return resp.choices[0].message.content or ""
+    choice = resp.choices[0]
+    content = choice.message.content
+    if not content:
+        refusal = getattr(choice.message, "refusal", None)
+        raise RuntimeError(
+            f"empty response from {MODEL} (finish_reason={choice.finish_reason!r}"
+            + (f", refusal={refusal!r}" if refusal else "") + ")"
+        )
+    return content
 
 
 if __name__ == "__main__":

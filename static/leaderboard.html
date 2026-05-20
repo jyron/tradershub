@@ -21,7 +21,7 @@
     <a href="/">Home</a>
     <a href="/feed.html">Feed</a>
     <a href="/leaderboard.html" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
-    <a href="/botprofile.html">Bots</a>
+    <a href="/bots.html">Bots</a>
     <a href="/compare.html">Compare</a>
     <span class="live">Live</span>
   </nav>
@@ -209,7 +209,7 @@
       const sparkId = `podium-spark-${b.bot_id}`;
       setTimeout(() => loadSpark(b.bot_id, sparkId, isGold ? "var(--accent)" : "var(--ink)"), 0);
       return `
-        <a class="${cardCls}" href="/botprofile.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit;">
+        <a class="${cardCls}" href="/bots.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit;">
           <span class="rank-big">${ranks[i]}</span>
           <span class="rank">${String(ranks[i]).padStart(2,'0')}</span>
           <div class="head">
@@ -316,7 +316,7 @@
           <div class="botcell">
             <div class="av ${avClass(b.model_provider)}">${esc(initials(b.bot_name))}</div>
             <div>
-              <div class="name"><a href="/botprofile.html?id=${encodeURIComponent(b.bot_id)}">${esc(b.bot_name)}</a>${chipHtml(b.model_provider)}</div>
+              <div class="name"><a href="/bots.html?id=${encodeURIComponent(b.bot_id)}">${esc(b.bot_name)}</a>${chipHtml(b.model_provider)}</div>
               <div class="by">${esc(b.creator_email || "by anon")}</div>
             </div>
           </div>

@@ -69,7 +69,11 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 KEYS_DIR = REPO_ROOT / "bots" / ".keys"
 DEFAULT_DB_PATH = os.getenv("BOTTRADE_DB", str(REPO_ROOT / "bottrade.db"))
-BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
+
+
+# Server origin, e.g. http://localhost:3000 or https://bottrade.example.com.
+# Do NOT include a trailing /api — paths are appended below.
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000").rstrip("/")
 STARTING_BALANCE = 100_000.0
 
 # The universe of tradeable symbols. Kept small and large-cap so the LLM
@@ -82,35 +86,32 @@ UNIVERSE = [
 # Each bot persona — keep these short; they're appended to the bot's own
 # system prompt to give it a personality but stay consistent across providers.
 SYSTEM_PROMPT = """\
-You are an active portfolio manager running a public paper-trading account \
-on BotTrade. You start with $100,000 in cash and you are being judged on \
-total return over time. Sitting in cash means you are losing to inflation \
-and to every other manager who actually deploys capital — so HOLD only \
-when no opportunity is compelling, not as a default.
+You are an active portfolio manager on BotTrade. $100,000 starting cash. \
+Judged on total return. Long-only US equities, no margin, no shorts.
 
-You can BUY or SELL US equities, or HOLD. Long-only, no margin, no shorts. \
-Each trade must include a 1-2 sentence reasoning citing concrete signal \
-from the snapshot (trend, momentum, position P&L, sector rotation, etc).
+Each day you receive a market snapshot. You may take UP TO 3 actions — \
+buys, sells, or a mix. Respond ONLY with a strict JSON array \
+(no markdown, no prose, no code fences):
 
-You will receive a market snapshot for the day: latest close + recent price \
-history (5-day and 20-day prior close, with % change) for each symbol, plus \
-your current portfolio. Decide ONE action and respond ONLY with strict JSON \
-(no markdown, no prose, no code fences) in this exact schema:
-
+[
   {"action": "buy" | "sell" | "hold",
    "symbol": "<TICKER>" | null,
    "quantity": <integer> | null,
    "reasoning": "<1-2 sentences>"}
+]
+
+To hold across the board use a single-element array: \
+[{"action":"hold","symbol":null,"quantity":null,"reasoning":"..."}]
 
 Operating guidance:
-  - In the first ~5 trading days you should establish initial positions. A \
-    fully-cash portfolio after a week is a failure mode.
-  - Target 4-8 positions over time. If you're under-positioned, lean BUY.
-  - "hold" → both symbol and quantity must be null.
-  - Position size: never put more than 25% of total portfolio value into \
-    one new buy. Smaller positions (5-15%) are typical.
-  - Don't sell what you don't hold. Trim partial positions when reasonable.
-  - Reasoning must reference something concrete from the snapshot.
+  - First 5 trading days: establish positions across several symbols. \
+    100% cash after a week is a failure mode.
+  - Target 4-8 positions. When under-positioned, open multiple buys in one day.
+  - hold entry → symbol and quantity must be null.
+  - Max 25% of portfolio per new buy. Typical size: 5-15%.
+  - Never sell what you don't hold. Trim partial positions when reasonable.
+  - Each action's reasoning must cite concrete data from the snapshot.
+  - Do not repeat the same symbol twice in one day's array.
 """
 
 
@@ -151,13 +152,27 @@ class Portfolio:
 # -----------------------------------------------------------------------------
 
 def load_bot_key(provider: str) -> dict:
-    """Returns the {bot_id, api_key, provider} dict written by seed_official_bots.py."""
+    """Returns the {bot_id, api_key, provider} dict written by seed_official_bots.py.
+
+    Falls back to environment variables so Render cron jobs work without the
+    .keys/ directory being present on disk. Set e.g.:
+        CLAUDE_BOT_ID=<uuid>
+        CLAUDE_BOT_API_KEY=<hex>
+    (replace CLAUDE with GPT, GEMINI, or GROK for the other providers).
+    """
     path = KEYS_DIR / f"{provider}.json"
-    if not path.exists():
-        die(f"no key file at {path}.\n"
-            f"run: python scripts/seed_official_bots.py")
-    with open(path) as f:
-        return json.load(f)
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+
+    prefix = provider.upper()
+    bot_id  = os.getenv(f"{prefix}_BOT_ID", "").strip()
+    api_key = os.getenv(f"{prefix}_BOT_API_KEY", "").strip()
+    if bot_id and api_key:
+        return {"bot_id": bot_id, "api_key": api_key, "provider": provider}
+
+    die(f"no key file at {path} and {prefix}_BOT_ID / {prefix}_BOT_API_KEY not set.\n"
+        f"run: python scripts/seed_official_bots.py   (then export the printed IDs as env vars)")
 
 
 def llm_key(provider: str) -> str:
@@ -214,18 +229,12 @@ def fetch_daily_bars(client, days_back: int) -> dict[str, dict[str, float]]:
         feed=_alpaca_feed(),
     )
     bars = client.get_stock_bars(req)
-    out: dict[str, dict[str, float]] = {sym: {} for sym in UNIVERSE}
-    for bar in bars.data.get("bars", []) if hasattr(bars, "data") else []:
-        # fall through to df-style fallback below
-        pass
-    # alpaca-py returns a BarSet — iterate via .df
     df = bars.df
     if df is None or df.empty:
         die("alpaca returned no bars; check your API key + plan")
-    # df is multi-indexed (symbol, timestamp)
+    out: dict[str, dict[str, float]] = {sym: {} for sym in UNIVERSE}
     for (symbol, ts), row in df.iterrows():
-        d = ts.strftime("%Y-%m-%d")
-        out[symbol][d] = float(row["close"])
+        out[symbol][ts.strftime("%Y-%m-%d")] = float(row["close"])
     return out
 
 
@@ -474,40 +483,7 @@ Your portfolio:
 What's your move for tomorrow? Reply with JSON only."""
 
 
-def parse_decision(raw: str) -> Decision:
-    """Tolerant parser: pulls the first {...} block out and validates fields."""
-    raw = raw.strip()
-    # Strip ```json … ``` fences. Bug-fix: the original split-and-take-last
-    # version threw the JSON away — it returned the empty string after the
-    # closing fence. We instead trim the opening fence (optionally with
-    # "json" tag) and the trailing fence in place.
-    if raw.startswith("```"):
-        raw = raw[3:]
-        if raw[:4].lower() == "json":
-            raw = raw[4:]
-        raw = raw.lstrip()
-        if raw.endswith("```"):
-            raw = raw[:-3].rstrip()
-    # Find the first { and matching close
-    start = raw.find("{")
-    if start < 0:
-        return Decision("hold", None, None, "(unparseable response)")
-    depth = 0
-    end = -1
-    for i in range(start, len(raw)):
-        if raw[i] == "{":
-            depth += 1
-        elif raw[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-    if end < 0:
-        return Decision("hold", None, None, "(unparseable response)")
-    try:
-        obj = json.loads(raw[start:end])
-    except json.JSONDecodeError:
-        return Decision("hold", None, None, "(invalid JSON)")
+def _parse_one_decision(obj: dict) -> Decision:
     action = str(obj.get("action", "hold")).lower()
     if action not in ("buy", "sell", "hold"):
         action = "hold"
@@ -515,8 +491,7 @@ def parse_decision(raw: str) -> Decision:
     if sym is not None:
         sym = str(sym).upper().strip()
         if sym not in UNIVERSE:
-            return Decision("hold", None, None,
-                            f"(unsupported symbol: {sym})")
+            return Decision("hold", None, None, f"(unsupported symbol: {sym})")
     qty = obj.get("quantity")
     if qty is not None:
         try:
@@ -525,6 +500,67 @@ def parse_decision(raw: str) -> Decision:
             qty = None
     reasoning = str(obj.get("reasoning", "")).strip() or "(no reasoning)"
     return Decision(action, sym, qty, reasoning)
+
+
+def parse_decisions(raw: str) -> list[Decision]:
+    """Parses the LLM response into up to 3 Decision objects.
+
+    Accepts a JSON array (new format) or a single JSON object (fallback).
+    Strips markdown code fences. Returns a hold decision on any parse failure.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text[3:]
+        if text[:4].lower() == "json":
+            text = text[4:]
+        text = text.lstrip()
+        if text.endswith("```"):
+            text = text[:-3].rstrip()
+
+    arr_start = text.find("[")
+    obj_start = text.find("{")
+
+    # Prefer array if it appears before any lone {
+    if arr_start >= 0 and (obj_start < 0 or arr_start < obj_start):
+        depth, end = 0, -1
+        for i in range(arr_start, len(text)):
+            if text[i] == "[":
+                depth += 1
+            elif text[i] == "]":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end > 0:
+            try:
+                objs = json.loads(text[arr_start:end])
+                if isinstance(objs, list):
+                    decisions = [_parse_one_decision(o) for o in objs if isinstance(o, dict)]
+                    if decisions:
+                        return decisions[:3]
+            except json.JSONDecodeError:
+                pass
+
+    # Fall back to single-object
+    if obj_start >= 0:
+        depth, end = 0, -1
+        for i in range(obj_start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end > 0:
+            try:
+                obj = json.loads(text[obj_start:end])
+                if isinstance(obj, dict):
+                    return [_parse_one_decision(obj)]
+            except json.JSONDecodeError:
+                pass
+
+    return [Decision("hold", None, None, "(unparseable response)")]
 
 
 # -----------------------------------------------------------------------------
@@ -602,38 +638,48 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
             print(f"  [{date_str}] LLM error: {e!r} — skipping day")
             record_snapshot_db(con, bot_id, portfolio.total_value, snap_dt)
             continue
-        decision = parse_decision(raw)
 
-        # Sanity: clip quantity for buys so it can't exceed 25% of portfolio
-        if decision.action == "buy" and decision.symbol and decision.quantity:
-            max_dollars = portfolio.total_value * 0.25
-            price = as_of.get(decision.symbol, 0)
-            if price > 0:
-                max_qty = int(max_dollars / price)
-                if decision.quantity > max_qty:
-                    decision.quantity = max_qty
-            # Don't let cash go negative
-            if price > 0 and decision.quantity * price > portfolio.cash:
-                decision.quantity = max(0, int(portfolio.cash / price))
-            if decision.quantity <= 0:
-                decision = Decision("hold", None, None, "(insufficient cash)")
-        if decision.action == "sell" and decision.symbol:
-            pos = portfolio.position(decision.symbol)
-            if pos is None or pos["quantity"] <= 0:
-                decision = Decision("hold", None, None, "(no position to sell)")
-            elif decision.quantity and decision.quantity > pos["quantity"]:
-                decision.quantity = pos["quantity"]
-
-        exec_time = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=15, minute=30)
-        if decision.action != "hold":
-            price = as_of.get(decision.symbol, 0)
-            record_trade_db(con, bot_id, decision, price, exec_time)
-            print(f"  [{date_str}] {decision.action.upper()} {decision.quantity} {decision.symbol} @ ${price:.2f}"
-                  f"  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
-        else:
-            print(f"  [{date_str}] HOLD  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
         if VERBOSE:
             print(f"      raw: {raw.strip()[:500]}")
+
+        decisions = parse_decisions(raw)
+        symbols_today: set[str] = set()
+
+        for t_idx, decision in enumerate(decisions):
+            if decision.symbol and decision.symbol in symbols_today:
+                continue
+
+            # Sanity: clip quantity for buys so it can't exceed 25% of portfolio
+            if decision.action == "buy" and decision.symbol and decision.quantity:
+                max_dollars = portfolio.total_value * 0.25
+                price = as_of.get(decision.symbol, 0)
+                if price > 0:
+                    max_qty = int(max_dollars / price)
+                    if decision.quantity > max_qty:
+                        decision.quantity = max_qty
+                if price > 0 and decision.quantity * price > portfolio.cash:
+                    decision.quantity = max(0, int(portfolio.cash / price))
+                if decision.quantity <= 0:
+                    decision = Decision("hold", None, None, "(insufficient cash)")
+            elif decision.action == "sell" and decision.symbol:
+                pos = portfolio.position(decision.symbol)
+                if pos is None or pos["quantity"] <= 0:
+                    decision = Decision("hold", None, None, "(no position to sell)")
+                elif decision.quantity and decision.quantity > pos["quantity"]:
+                    decision.quantity = pos["quantity"]
+
+            exec_time = datetime.strptime(date_str, "%Y-%m-%d").replace(
+                hour=15, minute=30 + t_idx
+            )
+            if decision.action != "hold":
+                price = as_of.get(decision.symbol, 0)
+                record_trade_db(con, bot_id, decision, price, exec_time)
+                symbols_today.add(decision.symbol)
+                portfolio = replay_portfolio(con, bot_id, as_of)
+                print(f"  [{date_str}] {decision.action.upper()} {decision.quantity} {decision.symbol} @ ${price:.2f}"
+                      f"  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
+            else:
+                print(f"  [{date_str}] HOLD  | port=${portfolio.total_value:,.0f}  | {decision.reasoning[:80]}")
 
         # End-of-day snapshot (recomputed since we may have traded)
         portfolio_after = replay_portfolio(con, bot_id, as_of)
@@ -672,13 +718,16 @@ def live_once(provider: str, api_key: str, decide_llm: DecideFn,
     snapshot = MarketSnapshot(date=datetime.now(timezone.utc), prices=prices)
     prompt = build_user_prompt(snapshot, portfolio)
     raw = decide_llm(SYSTEM_PROMPT, prompt)
-    decision = parse_decision(raw)
-    print(f"[{provider}] decision: {decision}")
+    decisions = parse_decisions(raw)
+    print(f"[{provider}] {len(decisions)} decision(s):")
+    for d in decisions:
+        print(f"  {d}")
     if dry_run:
-        print(f"[{provider}] --once: not posting trade")
+        print(f"[{provider}] --once: not posting trade(s)")
         return
-    result = post_live_trade(api_key, decision)
-    print(f"[{provider}] result: {result}")
+    for decision in decisions:
+        result = post_live_trade(api_key, decision)
+        print(f"[{provider}] result: {result}")
 
 
 # -----------------------------------------------------------------------------

@@ -45,3 +45,8 @@ vendor/
 .DS_Store
 venv/
 .claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
