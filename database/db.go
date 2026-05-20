@@ -43,8 +43,38 @@ func Connect(databaseURL, authToken string) error {
 		return fmt.Errorf("unable to ping database: %w", err)
 	}
 
+	if isLocalURL(databaseURL) {
+		if err := applyLocalPragmas(db); err != nil {
+			return fmt.Errorf("unable to apply SQLite pragmas: %w", err)
+		}
+	}
+
 	DB = db
 	log.Printf("Database connection established (%s)", redactURL(databaseURL))
+	return nil
+}
+
+// applyLocalPragmas tunes the embedded SQLite for concurrent use by the Go
+// server alongside Python bot scripts that open the same file.
+//
+//   - journal_mode=WAL lets readers and writers proceed without blocking each
+//     other (default `delete` mode takes an exclusive lock per transaction).
+//     The setting is persisted in the DB file, but re-applying is cheap.
+//   - busy_timeout=5000 makes contended writes wait up to 5s for the lock
+//     instead of immediately failing with SQLITE_BUSY (default 0).
+//   - synchronous=NORMAL is the documented companion to WAL — full fsync per
+//     commit isn't needed when WAL already journals durably.
+func applyLocalPragmas(db *sql.DB) error {
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA synchronous = NORMAL",
+	}
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+	}
 	return nil
 }
 

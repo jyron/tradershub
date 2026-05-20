@@ -293,8 +293,11 @@ def _open_db() -> sqlite3.Connection:
     if not Path(DEFAULT_DB_PATH).exists():
         die(f"database not found at {DEFAULT_DB_PATH}.\n"
             f"start the server once (go run main.go) so migrations create it, then re-run.")
-    con = sqlite3.connect(DEFAULT_DB_PATH, isolation_level=None)
+    con = sqlite3.connect(DEFAULT_DB_PATH, isolation_level=None, timeout=5.0)
     con.row_factory = sqlite3.Row
+    # Wait up to 5s for a contended write lock instead of failing immediately.
+    # WAL mode is set by the Go server on startup and persists in the file.
+    con.execute("PRAGMA busy_timeout = 5000")
     return con
 
 

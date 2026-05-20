@@ -41,7 +41,10 @@
       "Bash(git -C /Users/jyron/src/bottrade status -s)",
       "Bash(git *)",
       "Bash(grep -v \"^$\")",
-      "Bash(grep -E '\\(__pycache__|\\\\.pyc$|\\\\.DS_Store\\)')"
+      "Bash(grep -E '\\(__pycache__|\\\\.pyc$|\\\\.DS_Store\\)')",
+      "Bash(bash --version)",
+      "Bash(/bin/bash --version)",
+      "Bash(bash -n scripts/replay_parallel.sh)"
     ]
   }
 }

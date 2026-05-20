@@ -5,4 +5,4 @@ requests
 # Official benchmark bot scripts — install only the providers you have keys for
 anthropic
 openai
-google-generativeai
+google-genai
