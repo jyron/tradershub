@@ -83,36 +83,11 @@ UNIVERSE = [
     "AMD", "NFLX", "SPY", "QQQ", "JPM", "XOM", "DIS", "PLTR",
 ]
 
-# Each bot persona — keep these short; they're appended to the bot's own
-# system prompt to give it a personality but stay consistent across providers.
-SYSTEM_PROMPT = """\
-You are an active portfolio manager on BotTrade. $100,000 starting cash. \
-Judged on total return. Long-only US equities, no margin, no shorts.
-
-Each day you receive a market snapshot. You may take UP TO 3 actions — \
-buys, sells, or a mix. Respond ONLY with a strict JSON array \
-(no markdown, no prose, no code fences):
-
-[
-  {"action": "buy" | "sell" | "hold",
-   "symbol": "<TICKER>" | null,
-   "quantity": <integer> | null,
-   "reasoning": "<1-2 sentences>"}
-]
-
-To hold across the board use a single-element array: \
-[{"action":"hold","symbol":null,"quantity":null,"reasoning":"..."}]
-
-Operating guidance:
-  - First 5 trading days: establish positions across several symbols. \
-    100% cash after a week is a failure mode.
-  - Target 4-8 positions. When under-positioned, open multiple buys in one day.
-  - hold entry → symbol and quantity must be null.
-  - Max 25% of portfolio per new buy. Typical size: 5-15%.
-  - Never sell what you don't hold. Trim partial positions when reasonable.
-  - Each action's reasoning must cite concrete data from the snapshot.
-  - Do not repeat the same symbol twice in one day's array.
-"""
+# The canonical system prompt is stored in bots/system_prompt.txt so that
+# methodology.html, the API endpoint, and every bot run against the *same*
+# bytes. Editing it here would silently desync the published methodology
+# from what the bots actually receive.
+SYSTEM_PROMPT = (REPO_ROOT / "bots" / "system_prompt.txt").read_text().strip() + "\n"
 
 
 # -----------------------------------------------------------------------------
@@ -154,12 +129,25 @@ class Portfolio:
 def load_bot_key(provider: str) -> dict:
     """Returns the {bot_id, api_key, provider} dict written by seed_official_bots.py.
 
-    Falls back to environment variables so Render cron jobs work without the
-    .keys/ directory being present on disk. Set e.g.:
-        CLAUDE_BOT_ID=<uuid>
-        CLAUDE_BOT_API_KEY=<hex>
-    (replace CLAUDE with GPT, GEMINI, or GROK for the other providers).
+    Resolution order:
+      1. BOT_ID env — set by the Go dynamic_bot_runner for hosted submissions.
+         Looks up the bot's BotTrade api_key directly from SQLite.
+      2. bots/.keys/<provider>.json — written by seed_official_bots.py.
+      3. <PROVIDER>_BOT_ID + <PROVIDER>_BOT_API_KEY env — legacy cron path.
     """
+    bot_id_env = os.getenv("BOT_ID", "").strip()
+    if bot_id_env:
+        con = _open_db()
+        try:
+            row = con.execute(
+                "SELECT api_key FROM bots WHERE id = ?", (bot_id_env,),
+            ).fetchone()
+        finally:
+            con.close()
+        if row is None:
+            die(f"BOT_ID {bot_id_env} not found in bots table")
+        return {"bot_id": bot_id_env, "api_key": row["api_key"], "provider": provider}
+
     path = KEYS_DIR / f"{provider}.json"
     if path.exists():
         with open(path) as f:
@@ -173,6 +161,49 @@ def load_bot_key(provider: str) -> dict:
 
     die(f"no key file at {path} and {prefix}_BOT_ID / {prefix}_BOT_API_KEY not set.\n"
         f"run: python scripts/seed_official_bots.py   (then export the printed IDs as env vars)")
+
+
+# Guardrail counter writes (mirror services/guardrails.go). Hosted bots
+# call these so the same caps apply to replay and live runs.
+def _increment_llm_call(bot_id: str) -> None:
+    try:
+        con = _open_db()
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            con.execute(
+                """INSERT INTO bot_usage_daily (bot_id, usage_date, llm_calls)
+                   VALUES (?, ?, 1)
+                   ON CONFLICT(bot_id, usage_date)
+                   DO UPDATE SET llm_calls = bot_usage_daily.llm_calls + 1""",
+                (bot_id, today),
+            )
+        finally:
+            con.close()
+    except Exception as e:
+        # Counter failures are non-fatal — they shouldn't block a real trade.
+        print(f"  (guardrail counter write failed: {e!r})", file=sys.stderr)
+
+
+def _update_backfill_progress(job_id: str, days_done: int, status: str = "running") -> None:
+    if not job_id:
+        return
+    try:
+        con = _open_db()
+        try:
+            if status == "running" and days_done == 1:
+                con.execute(
+                    "UPDATE backfill_jobs SET status = 'running', started_at = ?, days_done = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), days_done, job_id),
+                )
+            else:
+                con.execute(
+                    "UPDATE backfill_jobs SET days_done = ? WHERE id = ?",
+                    (days_done, job_id),
+                )
+        finally:
+            con.close()
+    except Exception as e:
+        print(f"  (backfill progress write failed: {e!r})", file=sys.stderr)
 
 
 def llm_key(provider: str) -> str:
@@ -617,12 +648,22 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
     print(f"[{provider}] {len(dates)} trading days: {dates[0]} → {dates[-1]}")
 
     con = _open_db()
+    # Safeguard: refuse to write trades into a SQLite file that doesn't know
+    # this bot. Catches the common mistake of running a replay against the
+    # repo-default DB when the server is on a different file (or Turso).
+    row = con.execute("SELECT 1 FROM bots WHERE id = ?", (bot_id,)).fetchone()
+    if row is None:
+        die(f"bot_id {bot_id} does not exist in {DEFAULT_DB_PATH!r}.\n"
+            f"set BOTTRADE_DB to the SQLite file the server is using.")
     # Reset the bot to a clean state so re-runs are idempotent
-    print(f"[{provider}] wiping prior trades/positions/snapshots for this bot…")
+    print(f"[{provider}] wiping prior trades/positions/snapshots for this bot in {DEFAULT_DB_PATH}…")
     con.execute("DELETE FROM trades WHERE bot_id = ? AND season_id IS NULL", (bot_id,))
     con.execute("DELETE FROM positions WHERE bot_id = ? AND season_id IS NULL", (bot_id,))
     con.execute("DELETE FROM portfolio_snapshots WHERE bot_id = ? AND season_id IS NULL", (bot_id,))
     con.execute("UPDATE bots SET cash_balance = ? WHERE id = ?", (STARTING_BALANCE, bot_id))
+
+    backfill_job_id = os.getenv("BACKFILL_JOB_ID", "").strip()
+    days_completed = 0
 
     for i, date_str in enumerate(dates):
         # Today's prices = bars[symbol][date_str] (close)
@@ -637,9 +678,12 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
         prompt = build_user_prompt(snapshot, portfolio)
         try:
             raw = decide_llm(SYSTEM_PROMPT, prompt)
+            _increment_llm_call(bot_id)
         except Exception as e:
             print(f"  [{date_str}] LLM error: {e!r} — skipping day")
             record_snapshot_db(con, bot_id, portfolio.total_value, snap_dt)
+            days_completed += 1
+            _update_backfill_progress(backfill_job_id, days_completed)
             continue
 
         if VERBOSE:
@@ -687,6 +731,8 @@ def replay_loop(provider: str, bot_id: str, decide_llm: DecideFn,
         # End-of-day snapshot (recomputed since we may have traded)
         portfolio_after = replay_portfolio(con, bot_id, as_of)
         record_snapshot_db(con, bot_id, portfolio_after.total_value, snap_dt)
+        days_completed += 1
+        _update_backfill_progress(backfill_job_id, days_completed)
 
     final = replay_portfolio(con, bot_id, as_of)
     print(f"\n[{provider}] REPLAY DONE.")
@@ -721,6 +767,12 @@ def live_once(provider: str, api_key: str, decide_llm: DecideFn,
     snapshot = MarketSnapshot(date=datetime.now(timezone.utc), prices=prices)
     prompt = build_user_prompt(snapshot, portfolio)
     raw = decide_llm(SYSTEM_PROMPT, prompt)
+    # BOT_ID is set by the dynamic runner for hosted bots; legacy cron-style
+    # invocations also have a bot_id in the keyrec but reach this function
+    # without it threaded through, so we read from env here.
+    bot_id_env = os.getenv("BOT_ID", "").strip()
+    if bot_id_env:
+        _increment_llm_call(bot_id_env)
     decisions = parse_decisions(raw)
     print(f"[{provider}] {len(decisions)} decision(s):")
     for d in decisions:

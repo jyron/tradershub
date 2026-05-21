@@ -37,9 +37,28 @@ func main() {
 		log.Println("✓ Market data: Finnhub.io (real-time stock quotes)")
 	}
 
+	if err := services.InitKeyVault(cfg.MasterKey, cfg.MasterKeyVersions); err != nil {
+		// Submission flow won't work without the master key. Log loudly but
+		// don't abort the server — read-only traffic should still serve.
+		log.Printf("⚠️  Keyvault: %v — /api/bots/submit will return 503", err)
+	} else {
+		log.Println("✓ Keyvault: master key loaded (hosted-bot submissions enabled)")
+		// Catch removed-version-with-orphaned-rows situations at boot
+		// rather than when the first submission tries to decrypt.
+		if err := services.VerifyAllCredentialsDecrypt(); err != nil {
+			log.Fatalf("✗ Keyvault preflight: %v", err)
+		}
+	}
+
 	scheduler := jobs.NewScheduler()
 	scheduler.AddJob(jobs.NewPortfolioSnapshotJob())
 	scheduler.AddJob(jobs.NewSeasonManagerJob())
+	if services.Vault() != nil {
+		// Only schedule the hosted-bot runners when the vault is up; without
+		// the master key they couldn't decrypt anything anyway.
+		scheduler.AddJob(jobs.NewBackfillRunner())
+		scheduler.AddJob(jobs.NewDynamicBotRunner())
+	}
 
 	if cfg.AlpacaAPIKey != "" && cfg.AlpacaSecretKey != "" {
 		if err := services.InitAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaSecretKey, cfg.AlpacaPaperMode); err != nil {
@@ -89,10 +108,28 @@ func main() {
 		},
 	})
 
+	// Rate limiter for hosted-bot submissions - 3 per hour per IP.
+	// Tighter than register because each submission spawns a python child.
+	submissionLimiter := limiter.New(limiter.Config{
+		Max:        3,
+		Expiration: 1 * time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Too many submission attempts. Please try again later.",
+			})
+		},
+	})
+
 	api := app.Group("/api")
 
 	api.Post("/bots/register", registrationLimiter, handlers.RegisterBot)
+	api.Post("/bots/submit", submissionLimiter, handlers.SubmitBot)
 	api.Get("/bots/:bot_id", handlers.GetBotDetails)
+	api.Get("/bots/:bot_id/backfill", handlers.GetBotBackfill)
+	api.Get("/backfill/:job_id", handlers.GetBackfillJob)
 	api.Post("/claim/:bot_id", claimLimiter, handlers.ClaimBot)
 
 	api.Get("/market/quote/:symbol", handlers.GetQuote)
@@ -119,6 +156,10 @@ func main() {
 	api.Post("/admin/seasons", handlers.RequireAdminSecret, handlers.CreateSeason)
 	api.Post("/admin/seasons/:id/start", handlers.RequireAdminSecret, handlers.ForceStartSeason)
 	api.Post("/admin/seasons/:id/close", handlers.RequireAdminSecret, handlers.ForceCloseSeason)
+	api.Post("/admin/bots/:id/tier", handlers.RequireAdminSecret, handlers.PromoteBotTier)
+
+	api.Get("/methodology", handlers.GetMethodology)
+	api.Get("/methodology/prompt", handlers.GetMethodologyPrompt)
 
 	// WebSocket endpoint
 	app.Use("/ws", handlers.WebSocketUpgrade)

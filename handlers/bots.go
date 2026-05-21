@@ -80,10 +80,18 @@ func RegisterBot(c *fiber.Ctx) error {
 	// (legacy / user-registered bots without a provider hint).
 	provider := normalizeProvider(req.ModelProvider)
 
+	// Baselines and officials are seeded with tier='official' so they appear
+	// on the main board immediately, exempt from the per-day trade cap, and
+	// don't have to go through the challenger → verified promotion path.
+	tier := "challenger"
+	if req.IsOfficial || req.IsBaseline {
+		tier = "official"
+	}
 	_, err = database.DB.Exec(
-		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test, model_provider, is_official)
-		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
-		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail, req.IsTest, nullIfEmpty(provider), boolToInt(req.IsOfficial),
+		`INSERT INTO bots (id, name, api_key, description, creator_email, is_test, model_provider, is_official, is_baseline, tier)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+		botID.String(), req.Name, apiKey, req.Description, req.CreatorEmail,
+		req.IsTest, nullIfEmpty(provider), boolToInt(req.IsOfficial), boolToInt(req.IsBaseline), tier,
 	)
 
 	if err != nil {

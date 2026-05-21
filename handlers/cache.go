@@ -41,6 +41,15 @@ func (c *responseCache) put(key string, v interface{}) {
 	c.hit[key] = cacheEntry{payload: v, expiresAt: time.Now().Add(c.ttl)}
 }
 
+// clear drops every entry so callers see the next write immediately.
+// Used after admin mutations (tier promotion etc.) that the user expects
+// to reflect on the next page load.
+func (c *responseCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.hit = make(map[string]cacheEntry)
+}
+
 var (
 	leaderboardCache = newResponseCache(30 * time.Second)
 	statsCache       = newResponseCache(30 * time.Second)

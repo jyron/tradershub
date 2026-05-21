@@ -33,9 +33,10 @@ func (j *PortfolioSnapshotJob) Interval() time.Duration {
 }
 
 func (j *PortfolioSnapshotJob) Run() error {
-	// Snapshot only the official benchmark bots. Without the is_official
-	// filter we'd burn Finnhub quota writing rows for every junk user bot.
-	rows, err := database.DB.Query(`SELECT id FROM bots WHERE is_active = 1 AND COALESCE(is_official, 0) = 1`)
+	// Snapshot bots on the public boards (verified + official). Challenger
+	// bots are excluded until their backfill lands and promotes them, so we
+	// don't burn Finnhub quota on in-flight submissions.
+	rows, err := database.DB.Query(`SELECT id FROM bots WHERE is_active = 1 AND COALESCE(tier,'') IN ('verified','official')`)
 	if err != nil {
 		return err
 	}

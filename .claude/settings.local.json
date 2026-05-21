@@ -101,7 +101,9 @@
       "WebFetch(domain:finnhub.io)",
       "WebFetch(domain:alpaca.markets)",
       "WebFetch(domain:turso.tech)",
-      "WebFetch(domain:docs.turso.tech)"
+      "WebFetch(domain:docs.turso.tech)",
+      "Bash(/Users/jyron/src/bottrade/venv/bin/python3 -c \"import openai; print\\('openai', openai.__version__\\)\")",
+      "Bash(/Users/jyron/src/bottrade/venv/bin/python3 -c \"import alpaca; print\\('alpaca OK'\\)\")"
     ]
   }
 }

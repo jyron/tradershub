@@ -42,6 +42,8 @@ type LeaderboardEntry struct {
 	CreatorEmail  string   `json:"creator_email,omitempty"`
 	ModelProvider string   `json:"model_provider,omitempty"`
 	IsOfficial    bool     `json:"is_official,omitempty"`
+	IsBaseline    bool     `json:"is_baseline,omitempty"`
+	Tier          string   `json:"tier,omitempty"`
 	TotalValue    float64  `json:"total_value"`
 	PnL           float64  `json:"pnl"`
 	PnLPercent    float64  `json:"pnl_percent"`
@@ -80,11 +82,14 @@ type LeaderboardResponse struct {
 
 // GetLeaderboard returns multiple sortable views in a single payload. The
 // frontend picks which one to show. ?sort_by=value|sharpe|sortino|drawdown
-// controls the rank assigned on the per-bot list. The creators array is
-// included unconditionally so the frontend can flip tabs without re-fetching.
+// controls the rank assigned on the per-bot list. ?tier=challenger|verified|
+// official|all narrows the candidate pool; default is the loadEntries SQL
+// filter (verified + official). The creators array is included unconditionally
+// so the frontend can flip tabs without re-fetching.
 func GetLeaderboard(c *fiber.Ctx) error {
 	period := c.Query("period", "all")
 	sortBy := strings.ToLower(c.Query("sort_by", "value"))
+	tierFilter := strings.ToLower(c.Query("tier", ""))
 
 	limit := 50
 	if _, err := fmt.Sscanf(c.Query("limit", "50"), "%d", &limit); err != nil || limit <= 0 {
@@ -94,9 +99,10 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		limit = 200
 	}
 
-	// In-memory cache keyed by (period, sort_by, limit). 30s TTL is invisible
-	// to users since values only change when the hourly snapshot job runs.
-	cacheKey := fmt.Sprintf("%s|%s|%d", period, sortBy, limit)
+	// In-memory cache keyed by (period, sort_by, tier, limit). 30s TTL is
+	// invisible to users since values only change when the hourly snapshot
+	// job runs.
+	cacheKey := fmt.Sprintf("%s|%s|%s|%d", period, sortBy, tierFilter, limit)
 	if cached, ok := leaderboardCache.get(cacheKey); ok {
 		return c.JSON(cached)
 	}
@@ -106,6 +112,27 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch leaderboard",
 		})
+	}
+
+	// Apply tier filter in Go. Default (empty) shows verified+official —
+	// the headline boards. Explicit ?tier= overrides; ?tier=all shows
+	// everything (including challengers mid-backfill).
+	if tierFilter == "" {
+		filtered := entries[:0]
+		for _, e := range entries {
+			if e.Tier == "verified" || e.Tier == "official" {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	} else if tierFilter != "all" {
+		filtered := entries[:0]
+		for _, e := range entries {
+			if e.Tier == tierFilter {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
 	}
 
 	// Risk-adjusted views filter out ineligible bots entirely. Total Value
@@ -150,6 +177,10 @@ func GetLeaderboard(c *fiber.Ctx) error {
 }
 
 func loadEntries() ([]LeaderboardEntry, error) {
+	// Return ALL active bots; the handler post-filters by tier so it can
+	// support ?tier=challenger|verified|official|all without re-querying.
+	// Legacy bots without a tier value get one derived from is_official
+	// (the same defaulting we used in the prior version of this query).
 	rows, err := database.DB.Query(`
 		SELECT
 			b.id,
@@ -157,6 +188,8 @@ func loadEntries() ([]LeaderboardEntry, error) {
 			COALESCE(b.creator_email, ''),
 			COALESCE(b.model_provider, ''),
 			COALESCE(b.is_official, 0),
+			COALESCE(b.is_baseline, 0),
+			COALESCE(NULLIF(b.tier, ''), CASE WHEN COALESCE(b.is_official,0)=1 THEN 'official' ELSE 'challenger' END) AS tier,
 			COALESCE(b.cash_balance, ?1) AS cash_balance,
 			COALESCE(COUNT(DISTINCT t.id), 0) AS trade_count,
 			(SELECT total_value FROM portfolio_snapshots
@@ -164,8 +197,8 @@ func loadEntries() ([]LeaderboardEntry, error) {
 			 ORDER BY snapshot_at DESC LIMIT 1) AS latest_total_value
 		FROM bots b
 		LEFT JOIN trades t ON b.id = t.bot_id AND t.season_id IS NULL
-		WHERE b.is_active = 1 AND COALESCE(b.is_official, 0) = 1
-		GROUP BY b.id, b.name, b.creator_email, b.model_provider, b.is_official, b.cash_balance
+		WHERE b.is_active = 1
+		GROUP BY b.id, b.name, b.creator_email, b.model_provider, b.is_official, b.is_baseline, b.tier, b.cash_balance
 	`, startingBalance)
 	if err != nil {
 		return nil, err
@@ -174,11 +207,13 @@ func loadEntries() ([]LeaderboardEntry, error) {
 
 	var rowsOut []entryRow
 	for rows.Next() {
-		var idStr, name, email, modelProvider string
-		var isOfficial, tradeCount int
+		var idStr, name, email, modelProvider, tier string
+		var isOfficial, isBaseline, tradeCount int
 		var cashBalance float64
 		var latestTotal *float64
-		if err := rows.Scan(&idStr, &name, &email, &modelProvider, &isOfficial, &cashBalance, &tradeCount, &latestTotal); err != nil {
+		if err := rows.Scan(&idStr, &name, &email, &modelProvider,
+			&isOfficial, &isBaseline, &tier,
+			&cashBalance, &tradeCount, &latestTotal); err != nil {
 			continue
 		}
 		botID, err := uuid.Parse(idStr)
@@ -205,6 +240,8 @@ func loadEntries() ([]LeaderboardEntry, error) {
 				CreatorEmail:  email,
 				ModelProvider: modelProvider,
 				IsOfficial:    isOfficial != 0,
+				IsBaseline:    isBaseline != 0,
+				Tier:          tier,
 				TotalValue:    totalValue,
 				PnL:           pnl,
 				PnLPercent:    pnlPct,

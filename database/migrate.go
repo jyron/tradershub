@@ -18,6 +18,10 @@ func RunMigrations() error {
 		"database/migrations/007_seasons.sql",
 		"database/migrations/008_season_isolated_accounts.sql",
 		"database/migrations/009_add_model_provider.sql",
+		"database/migrations/010_bot_credentials_and_tiers.sql",
+		"database/migrations/011_bot_usage_daily.sql",
+		"database/migrations/012_backfill_jobs.sql",
+		"database/migrations/013_add_is_baseline.sql",
 	}
 
 	for _, migrationFile := range migrations {
