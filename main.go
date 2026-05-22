@@ -50,9 +50,17 @@ func main() {
 		}
 	}
 
+	services.SetAnthropicAPIKey(cfg.AnthropicAPIKey)
+	if cfg.AnthropicAPIKey == "" {
+		log.Println("⚠️  ANTHROPIC_API_KEY not set — daily recap will use template summary")
+	} else {
+		log.Println("✓ Anthropic: server-side key loaded (daily recap LLM enabled)")
+	}
+
 	scheduler := jobs.NewScheduler()
 	scheduler.AddJob(jobs.NewPortfolioSnapshotJob())
 	scheduler.AddJob(jobs.NewSeasonManagerJob())
+	scheduler.AddJob(jobs.NewDailyRecapJob())
 	if services.Vault() != nil {
 		// Only schedule the hosted-bot runners when the vault is up; without
 		// the master key they couldn't decrypt anything anyway.
@@ -160,6 +168,38 @@ func main() {
 
 	api.Get("/methodology", handlers.GetMethodology)
 	api.Get("/methodology/prompt", handlers.GetMethodologyPrompt)
+
+	api.Get("/recaps", handlers.ListRecaps)
+	api.Get("/recap/:date", handlers.GetRecap)
+
+	// OG image cards. Twitter/Discord/Slack pull these into link previews.
+	// Filename suffix ".png" is accepted so crawlers that path-sniff format
+	// see what they expect.
+	app.Get("/og/bot/:id", handlers.GetOGBot)
+	app.Get("/og/leaderboard", handlers.GetOGLeaderboard)
+	app.Get("/og/trade/:id", handlers.GetOGTrade)
+
+	// Server-rendered shell for /bots.html that injects per-bot og: meta.
+	// Must be registered BEFORE app.Static so we win the route match.
+	app.Get("/bots.html", handlers.BotPageMeta)
+
+	// Clean-URL aliases for Phase 4 IA. Keep the .html paths working so
+	// existing OG-cached share links don't break.
+	app.Get("/models", func(c *fiber.Ctx) error { return c.SendFile("./static/models.html") })
+	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
+	app.Get("/submit", func(c *fiber.Ctx) error { return c.SendFile("./static/submit.html") })
+	app.Get("/today", func(c *fiber.Ctx) error { return c.SendFile("./static/today.html") })
+	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
+	app.Get("/feed", func(c *fiber.Ctx) error { return c.SendFile("./static/feed.html") })
+
+	// Embeddable widget: allows iframe from any third-party site. Headers
+	// stripped from X-Frame-Options: DENY defaults.
+	app.Use("/embed", handlers.EmbedHeaders)
+
+	// RSS feeds — global trades, per-bot trades, daily recaps.
+	app.Get("/rss/trades.xml", handlers.RSSGlobalTrades)
+	app.Get("/rss/bot/:id", handlers.RSSBotTrades)
+	app.Get("/rss/recaps.xml", handlers.RSSRecaps)
 
 	// WebSocket endpoint
 	app.Use("/ws", handlers.WebSocketUpgrade)

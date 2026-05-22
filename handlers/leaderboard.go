@@ -75,6 +75,12 @@ type LeaderboardResponse struct {
 	Period             string             `json:"period"`
 	SortBy             string             `json:"sort_by"`
 	Rankings           []LeaderboardEntry `json:"rankings"`
+	// Baselines is the partitioned set of is_baseline=true bots. Kept out of
+	// Rankings so the headline rank numbering is "model bot vs. model bot"
+	// rather than "model bot vs. reference strategy." The ranking_snapshots
+	// table and the rank_change indicators reflect competitor-only positions
+	// as a result.
+	Baselines          []LeaderboardEntry `json:"baselines,omitempty"`
 	Creators           []CreatorEntry     `json:"creators,omitempty"`
 	HiddenIneligible   int                `json:"hidden_ineligible"`
 	MinTradesRequired  int                `json:"min_trades_required"`
@@ -135,14 +141,31 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		entries = filtered
 	}
 
+	// Partition baselines OUT of the competing pool. They live at
+	// tier='official' so the tier filter doesn't shake them loose; we
+	// have to do this explicitly so rank #1 means "best model bot," not
+	// "best including SPY Buy & Hold." ranking_snapshots only persists
+	// competitor positions for the same reason — otherwise the daily
+	// rank-change indicator would lie any time a baseline shifted past
+	// a model bot.
+	competitors := entries[:0]
+	var baselineEntries []LeaderboardEntry
+	for _, e := range entries {
+		if e.IsBaseline {
+			baselineEntries = append(baselineEntries, e)
+		} else {
+			competitors = append(competitors, e)
+		}
+	}
+
 	// Risk-adjusted views filter out ineligible bots entirely. Total Value
 	// shows everyone, since that's the "fun" headline number and exclusion
 	// would make the page look empty on a fresh deploy.
-	visible := entries
+	visible := competitors
 	hidden := 0
 	if sortBy != "value" {
 		filtered := visible[:0]
-		for _, e := range entries {
+		for _, e := range competitors {
 			if e.Eligible {
 				filtered = append(filtered, e)
 			} else {
@@ -162,12 +185,21 @@ func GetLeaderboard(c *fiber.Ctx) error {
 		persistTodaysRanking(visible)
 	}
 
-	creators := buildCreatorRankings(entries)
+	// Baselines: always sorted by total value desc, no rank assigned. The
+	// FE renders them as a separate reference strip.
+	sort.SliceStable(baselineEntries, func(i, j int) bool {
+		return baselineEntries[i].TotalValue > baselineEntries[j].TotalValue
+	})
+
+	// Creator rollup still consumes the full filtered set (incl. baselines)
+	// because buildCreatorRankings has its own e.IsBaseline skip.
+	creators := buildCreatorRankings(append(append([]LeaderboardEntry{}, competitors...), baselineEntries...))
 
 	resp := LeaderboardResponse{
 		Period:            period,
 		SortBy:            sortBy,
 		Rankings:          visible,
+		Baselines:         baselineEntries,
 		Creators:          creators,
 		HiddenIneligible:  hidden,
 		MinTradesRequired: MinTradesForRanking,
@@ -432,6 +464,11 @@ func buildCreatorRankings(entries []LeaderboardEntry) []CreatorEntry {
 		// 50 random bots can't dilute their score with 49 untested ones,
 		// because untested bots don't count toward the average at all.
 		if !e.Eligible {
+			continue
+		}
+		// Baselines are deterministic reference strategies, not work product
+		// of a human creator. Excluding them keeps the creator board honest.
+		if e.IsBaseline {
 			continue
 		}
 		b, ok := groups[e.CreatorEmail]

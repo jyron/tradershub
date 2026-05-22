@@ -24,6 +24,10 @@ type Config struct {
 	// rows encrypted under an older version stay readable until the
 	// rotation script rewrites them.
 	MasterKeyVersions map[int]string
+	// AnthropicAPIKey is the server-owned key used by the daily-recap job
+	// to generate the natural-language summary. Optional — when unset the
+	// recap falls back to a deterministic template.
+	AnthropicAPIKey   string
 }
 
 func Load() *Config {
@@ -42,6 +46,7 @@ func Load() *Config {
 		AdminSecret:       getEnv("ADMIN_SECRET", ""),
 		MasterKey:         getEnv("BOTTRADE_MASTER_KEY", ""),
 		MasterKeyVersions: loadMasterKeyVersions(),
+		AnthropicAPIKey:   getEnv("ANTHROPIC_API_KEY", ""),
 	}
 }
 

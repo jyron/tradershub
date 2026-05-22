@@ -100,6 +100,11 @@ func RegisterBot(c *fiber.Ctx) error {
 		})
 	}
 
+	// A freshly-registered bot should be visible immediately rather than
+	// hidden behind a 30s cache TTL — also lets seed_baselines.py re-run
+	// idempotently without racing the cache.
+	leaderboardCache.clear()
+
 	// Claim flow lives on the bot profile page (?claim=1 surfaces the claim banner).
 	protocol := "http"
 	if c.Protocol() == "https" {

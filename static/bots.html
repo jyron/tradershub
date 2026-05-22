@@ -723,6 +723,10 @@
       const reasoning = t.reasoning ? esc(t.reasoning) : "";
       const total = (Number(t.price) || 0) * (Number(t.quantity) || 0);
       const d = new Date(t.executed_at);
+      const tradeId = t.trade_id || t.id || "";
+      const shareBtn = tradeId
+        ? `<button type="button" class="share-mini" data-trade-share="${esc(tradeId)}" title="Share this trade" style="background:transparent; border:1px solid var(--rule); color: var(--ink-3); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; margin-left:8px;">share</button>`
+        : "";
       return `
         <div class="bp-trade">
           <div class="when">
@@ -734,6 +738,7 @@
               <span class="ax ${sideCls}">${esc(side.toUpperCase())}</span>
               <span class="sym">${esc(t.symbol)}</span>
               <span class="qty">${Number(t.quantity).toLocaleString()} sh @ ${fmtMoneyCents(t.price)}</span>
+              ${shareBtn}
             </div>
             ${reasoning ? `<div class="reasoning">${reasoning}</div>` : ""}
           </div>
@@ -916,8 +921,17 @@
   });
 
   // ---- share button (best-effort) ----
+  // Append ?ref=share so we can later attribute share-driven traffic in
+  // analytics without writing custom UTM logic.
+  function withShareRef(url) {
+    try {
+      const u = new URL(url, window.location.origin);
+      u.searchParams.set("ref", "share");
+      return u.toString();
+    } catch (_) { return url; }
+  }
   $("bp-share").addEventListener("click", () => {
-    const url = window.location.href;
+    const url = withShareRef(window.location.href);
     if (navigator.share) {
       navigator.share({ title: document.title, url }).catch(() => {});
     } else if (navigator.clipboard) {
@@ -927,6 +941,28 @@
         btn.textContent = "Copied!";
         setTimeout(() => { btn.textContent = original; }, 1500);
       });
+    }
+  });
+
+  // ---- per-trade share buttons ----
+  // Delegated click listener — each trade row gets a <button data-trade-share="...">
+  // injected at render time and a click copies a /og/trade/:id.png link.
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest && e.target.closest("button[data-trade-share]");
+    if (!btn) return;
+    e.preventDefault();
+    const tradeId = btn.getAttribute("data-trade-share");
+    const url = withShareRef(window.location.origin + "/bots.html?id=" + encodeURIComponent(botId || "") + "&trade=" + encodeURIComponent(tradeId));
+    if (navigator.share) {
+      try { await navigator.share({ title: document.title, url }); return; } catch (_) {}
+    }
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(url);
+        const orig = btn.textContent;
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = orig; }, 1200);
+      } catch (_) {}
     }
   });
 

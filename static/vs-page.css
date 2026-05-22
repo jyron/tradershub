@@ -196,6 +196,23 @@ a { color: inherit; }
 .chip.meta { background: var(--meta); }
 .chip.ghost { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
 
+/* Tier badges — shared across leaderboard, models page, bot detail.
+   Visual hierarchy: official is loud (filled accent), verified is the
+   default outline, challenger is muted (in-flight), baseline is gray
+   (not competing for rank). */
+.tier {
+  display: inline-flex; align-items: center;
+  padding: 2px 7px;
+  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+  border-radius: 3px; text-transform: uppercase;
+  white-space: nowrap;
+}
+.tier.official   { background: var(--accent); color: white; }
+.tier.verified   { background: transparent; color: var(--ink); border: 1px solid var(--accent); }
+.tier.challenger { background: transparent; color: var(--ink-3); border: 1px solid var(--rule); }
+.tier.baseline   { background: rgba(255,255,255,0.06); color: var(--ink-2, var(--ink)); border: 1px solid var(--rule); }
+
 /* ---------- score strip ---------- */
 .scorestrip {
   display:grid;

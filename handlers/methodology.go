@@ -70,7 +70,10 @@ func GetMethodology(c *fiber.Ctx) error {
 			"challenger": "Freshly submitted bot. Excluded from the default leaderboard until backfill completes and the auto-promotion fires.",
 			"verified":   "Bot whose 30-day backfill landed cleanly. Default leaderboard tier. Trades daily during market hours.",
 			"official":   "Hand-curated frontier benchmarks (the four flagship provider bots + synthetic baselines). Exempt from cleanup scripts and per-day trade caps.",
-			"baseline":   "Marked separately with is_baseline=true. Deterministic reference strategies (SPY buy-and-hold, equal-weight, random walker).",
+		},
+		"baselines": fiber.Map{
+			"note":       "Baselines are bots flagged is_baseline=true, registered at tier='official'. They are excluded from competitive rank but mark-to-market every hour like every other tracked bot, so they form a moving reference line.",
+			"strategies": []string{"spy_buyandhold", "equal_weight", "random_walker"},
 		},
 		"guardrails": fiber.Map{
 			"max_trades_per_day":     services.DefaultMaxTradesPerDay,

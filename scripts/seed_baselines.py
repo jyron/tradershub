@@ -22,7 +22,23 @@ from pathlib import Path
 import requests
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
-KEYS_DIR = Path(__file__).resolve().parent.parent / "bots" / ".keys"
+
+# When seeding against anything other than the production host we route the
+# resulting api-keys into bots/.keys/.smoke/ instead of bots/.keys/, so a
+# smoke-test run can never silently clobber the on-disk keys that a real
+# baseline runner depends on (this happened three times before the gate was
+# added; the script used to overwrite blindly).
+_PROD_HOSTS = {"bot-trade.org", "www.bot-trade.org"}
+def _is_prod_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(url).hostname or ""
+        return host in _PROD_HOSTS
+    except Exception:
+        return False
+
+_KEYS_BASE = Path(__file__).resolve().parent.parent / "bots" / ".keys"
+KEYS_DIR = _KEYS_BASE if _is_prod_url(BASE_URL) else (_KEYS_BASE / ".smoke")
 
 
 # Strategy keys match bots/baselines/strategies.py:STRATEGIES.

@@ -157,6 +157,10 @@ func SubmitBot(c *fiber.Ctx) error {
 		})
 	}
 
+	// New challenger should show in tier=all and tier=challenger views without
+	// waiting for the 30s cache to expire.
+	leaderboardCache.clear()
+
 	protocol := "http"
 	if c.Protocol() == "https" {
 		protocol = "https"

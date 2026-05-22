@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>bottrade leaderboard</title>
+<style>
+  :root {
+    --ink: #f5f5f5;
+    --ink-2: #c5c5cc;
+    --ink-3: #8a8a92;
+    --bg: #15151a;
+    --bg-2: #1d1d23;
+    --accent: #ff6633;
+    --up: #4ad295;
+    --down: #e85858;
+    --rule: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .wrap { padding: 16px; }
+  .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--rule); padding-bottom: 10px; margin-bottom: 12px;
+  }
+  .brand {
+    font-weight: 700; color: var(--ink); text-decoration: none; font-size: 14px;
+  }
+  .brand .slash { color: var(--accent); }
+  .live {
+    font-size: 11px; color: var(--ink-3);
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  .live::before { content: "●"; color: var(--up); margin-right: 4px; }
+  .row {
+    display: grid; grid-template-columns: 28px 1fr auto; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--rule); align-items: center;
+  }
+  .row:last-child { border-bottom: 0; }
+  .rk { color: var(--ink-3); font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px; }
+  .name { color: var(--ink); font-weight: 600; }
+  .name a { color: inherit; text-decoration: none; }
+  .name a:hover { color: var(--accent); }
+  .pct { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-weight: 600; }
+  .pct.up { color: var(--up); }
+  .pct.dn { color: var(--down); }
+  .ft {
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--rule);
+    font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between;
+  }
+  .ft a { color: var(--accent); text-decoration: none; }
+  .empty { padding: 30px 8px; text-align: center; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <a class="brand" href="https://bot-trade.org" target="_blank" rel="noopener">
+      bot<span class="slash">/</span>trade
+    </a>
+    <span class="live">LIVE</span>
+  </div>
+  <div id="rows"><div class="empty">loading…</div></div>
+  <div class="ft">
+    <span id="updated">&nbsp;</span>
+    <a href="https://bot-trade.org/leaderboard.html" target="_blank" rel="noopener">view full board →</a>
+  </div>
+</div>
+<script>
+(async () => {
+  const rows = document.getElementById("rows");
+  try {
+    const base = location.origin.startsWith("file") ? "https://bot-trade.org" : location.origin;
+    const r = await fetch(base + "/api/leaderboard?sort_by=value&limit=10");
+    const d = await r.json();
+    const top = (d.rankings || []).slice(0, 10);
+    if (top.length === 0) {
+      rows.innerHTML = '<div class="empty">no bots ranked yet</div>';
+      return;
+    }
+    rows.innerHTML = top.map(b => {
+      const pct = Number(b.pnl_percent || 0);
+      const cls = pct >= 0 ? "up" : "dn";
+      const sign = pct >= 0 ? "+" : "";
+      const nameSafe = (s) => { const d = document.createElement("div"); d.textContent = s||""; return d.innerHTML; };
+      return `
+        <div class="row">
+          <span class="rk">#${b.rank}</span>
+          <span class="name">
+            <a href="${base}/bots.html?id=${encodeURIComponent(b.bot_id)}" target="_blank" rel="noopener">${nameSafe(b.bot_name)}</a>
+          </span>
+          <span class="pct ${cls}">${sign}${pct.toFixed(2)}%</span>
+        </div>`;
+    }).join("");
+    document.getElementById("updated").textContent =
+      "updated " + new Date().toLocaleTimeString("en-US", { hour12: false });
+  } catch (e) {
+    rows.innerHTML = '<div class="empty">couldn\'t load leaderboard</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -36,6 +36,12 @@ func (j *PortfolioSnapshotJob) Run() error {
 	// Snapshot bots on the public boards (verified + official). Challenger
 	// bots are excluded until their backfill lands and promotes them, so we
 	// don't burn Finnhub quota on in-flight submissions.
+	//
+	// This is also how baselines (is_baseline=true, tier='official') stay
+	// "alive" without their own scheduler: GetPortfolio marks every position
+	// to current market price (see services/portfolio.go:GetPortfolio →
+	// marketService.GetQuote), so SPY Buy & Hold's total_value moves with
+	// SPY itself even though the bot never trades after backfill.
 	rows, err := database.DB.Query(`SELECT id FROM bots WHERE is_active = 1 AND COALESCE(tier,'') IN ('verified','official')`)
 	if err != nil {
 		return err

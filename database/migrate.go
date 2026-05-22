@@ -22,6 +22,7 @@ func RunMigrations() error {
 		"database/migrations/011_bot_usage_daily.sql",
 		"database/migrations/012_backfill_jobs.sql",
 		"database/migrations/013_add_is_baseline.sql",
+		"database/migrations/014_daily_recaps.sql",
 	}
 
 	for _, migrationFile := range migrations {
