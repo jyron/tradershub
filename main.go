@@ -177,6 +177,7 @@ func main() {
 	// see what they expect.
 	app.Get("/og/bot/:id", handlers.GetOGBot)
 	app.Get("/og/leaderboard", handlers.GetOGLeaderboard)
+	app.Get("/og/leaderboard.png", handlers.GetOGLeaderboard)
 	app.Get("/og/trade/:id", handlers.GetOGTrade)
 
 	// Server-rendered shell for /bots.html that injects per-bot og: meta.
