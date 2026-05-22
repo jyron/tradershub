@@ -262,31 +262,8 @@ func main() {
 		apiApp.Use(logger.New())
 		apiApp.Use(cors.New())
 
-		// Friendly root + healthcheck so curling the bare service URL
-		// doesn't look like a misconfiguration.
-		apiApp.Get("/", func(c *fiber.Ctx) error {
-			return c.JSON(fiber.Map{
-				"name":    "BotTrade Benchmark API",
-				"version": "v1",
-				"docs":    "https://bot-trade.org/methodology",
-				"endpoints": []string{
-					"GET    /v1/scenarios",
-					"GET    /v1/scenarios/:id",
-					"POST   /v1/runs",
-					"GET    /v1/runs/:id",
-					"GET    /v1/runs/:id/market",
-					"POST   /v1/runs/:id/trades",
-					"POST   /v1/runs/:id/step",
-					"GET    /v1/runs/:id/results",
-					"POST   /v1/runs/:id/publish",
-				},
-				"auth": "Send X-API-Key header on all /v1/* requests.",
-			})
-		})
-		apiApp.Get("/health", func(c *fiber.Ctx) error {
-			return c.JSON(fiber.Map{"ok": true})
-		})
-
+		// All routes (including the public /, /health, /docs, /llms.txt,
+		// /docs/agent.md, /docs/openapi.json) are attached inside apiv1.Mount.
 		apiv1.Mount(apiApp, engine)
 
 		// In api-only mode this is the only listener, so we listen on

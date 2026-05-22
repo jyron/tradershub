@@ -6,37 +6,31 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// idempotencyEntry is what's persisted in run_idempotency.
+// idempotencyEntry is the persisted record of a prior request response.
 type idempotencyEntry struct {
 	RequestHash  string
 	ResponseJSON string
 	StatusCode   int
 }
 
-// hashRequest returns the sha256 hex of the canonical (sorted-keys) JSON
-// representation of body — same body → same hash, regardless of map ordering.
-func hashRequest(body []byte) string {
-	// Re-encode to canonical form (compact + sorted keys via json.Marshal-of-map-roundtrip).
-	var v interface{}
-	if err := json.Unmarshal(body, &v); err == nil {
-		if canonical, err := json.Marshal(v); err == nil {
-			h := sha256.Sum256(canonical)
-			return hex.EncodeToString(h[:])
-		}
-	}
-	// Fallback: hash raw bytes
-	h := sha256.Sum256(body)
+// hashRequest produces the canonical sha256 of any input struct we'd cache.
+// Because huma parses the request body into the typed struct BEFORE the
+// handler runs, we don't have the raw bytes. We re-marshal the body
+// portion of the input — Go's encoding/json sorts map keys alphabetically
+// and writes structs in field-declaration order, so the same input
+// always produces the same hash.
+func hashRequest(v interface{}) string {
+	b, _ := json.Marshal(v)
+	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
 
-// lookupIdempotency returns a cached response for (runID, key) if one
-// exists. Returns nil,nil if no row. If the row exists but request_hash
-// doesn't match the new body, returns the entry with the *existing* hash
-// so the caller can 409.
+// lookupIdempotency returns the cached entry for (runID, key) if any.
 func lookupIdempotency(runID, key string) (*idempotencyEntry, error) {
 	if key == "" {
 		return nil, nil
@@ -55,7 +49,6 @@ func lookupIdempotency(runID, key string) (*idempotencyEntry, error) {
 	return &e, nil
 }
 
-// storeIdempotency inserts the (runID, key) → response row.
 func storeIdempotency(runID, key, requestHash, responseJSON string, statusCode int) error {
 	if key == "" {
 		return nil
@@ -68,51 +61,50 @@ func storeIdempotency(runID, key, requestHash, responseJSON string, statusCode i
 	return err
 }
 
-// withIdempotency wraps a handler body. If an idempotency_key is present
-// and matches a prior request, replays the cached response. If it matches
-// a prior key with a different body, returns 409. Otherwise runs `do()`
-// and stores the result.
+// idempotent wraps the actual operation logic. If idempKey is set and the
+// run has a previously-stored response for that key, returns the cached
+// response (after verifying the request body matches). Mismatched body
+// for the same key returns 409 via huma.
 //
-// do() must return (statusCode, responseBody) and a non-nil error short-circuits.
-func withIdempotency(c *fiber.Ctx, runID, key string, do func() (int, interface{}, error)) error {
-	bodyBytes := c.Body() // already-read body; Fiber buffers it
-
-	if key != "" {
-		hash := hashRequest(bodyBytes)
-		prior, err := lookupIdempotency(runID, key)
-		if err != nil {
-			return jsonErrorf(c, fiber.StatusInternalServerError, "idempotency_lookup_failed", "%v", err)
-		}
-		if prior != nil {
-			if prior.RequestHash != hash {
-				return jsonError(c, fiber.StatusConflict, "idempotency_key_reused",
-					"idempotency_key was previously used with a different request body")
-			}
-			// Replay cached response.
-			c.Status(prior.StatusCode)
-			c.Set("Content-Type", "application/json")
-			return c.SendString(prior.ResponseJSON)
-		}
+// On a fresh request, runs `do()` and persists the response.
+//
+// The returned interface is whatever `do` returned (one of the handler
+// output types). Returns true when the response came from cache.
+func idempotent[Out any](
+	runID, idempKey string,
+	requestForHash interface{},
+	do func() (*Out, error),
+) (*Out, error) {
+	if idempKey == "" {
+		return do()
 	}
-
-	status, body, err := do()
+	hash := hashRequest(requestForHash)
+	prior, err := lookupIdempotency(runID, idempKey)
 	if err != nil {
-		return err
+		return nil, huma.Error500InternalServerError("idempotency lookup failed: " + err.Error())
 	}
-
-	// Serialize the response so we can both return it AND cache it.
-	respBytes, mErr := json.Marshal(body)
-	if mErr != nil {
-		return jsonErrorf(c, fiber.StatusInternalServerError, "marshal_failed", "%v", mErr)
-	}
-
-	if key != "" {
-		if err := storeIdempotency(runID, key, hashRequest(bodyBytes), string(respBytes), status); err != nil {
-			return jsonErrorf(c, fiber.StatusInternalServerError, "idempotency_store_failed", "%v", err)
+	if prior != nil {
+		if prior.RequestHash != hash {
+			return nil, huma.NewError(http.StatusConflict,
+				"idempotency_key previously used with a different request body")
 		}
+		var cached Out
+		if err := json.Unmarshal([]byte(prior.ResponseJSON), &cached); err != nil {
+			return nil, huma.Error500InternalServerError("could not decode cached response: " + err.Error())
+		}
+		return &cached, nil
 	}
 
-	c.Status(status)
-	c.Set("Content-Type", "application/json")
-	return c.SendString(string(respBytes))
+	out, err := do()
+	if err != nil {
+		return nil, err
+	}
+	respBytes, mErr := json.Marshal(out)
+	if mErr != nil {
+		return nil, huma.Error500InternalServerError("could not encode response: " + mErr.Error())
+	}
+	if err := storeIdempotency(runID, idempKey, hash, string(respBytes), http.StatusOK); err != nil {
+		return nil, huma.Error500InternalServerError("could not store idempotency record: " + err.Error())
+	}
+	return out, nil
 }

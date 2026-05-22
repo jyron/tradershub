@@ -1,28 +1,54 @@
 package apiv1
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"bottrade/models"
+	"context"
+	"net/http"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// Publish pushes the run's results to the public per-scenario leaderboard.
-// Idempotent — re-publishes update the existing row.
-//   POST /v1/runs/:id/publish
-func (h *Handlers) Publish(c *fiber.Ctx) error {
-	runID := c.Params("id")
-	if err := h.assertRunOwner(c, runID); err != nil {
-		return err
-	}
+// PublishInput identifies which run to publish.
+type PublishInput struct {
+	ID string `path:"id" doc:"Run UUID. The run must not be active."`
+}
 
-	// Ensure results are computed; if active, this errors.
-	results, err := h.Engine.ComputeResults(runID)
+// PublishOutput confirms the publication and returns the metrics that were
+// pushed onto the leaderboard.
+type PublishOutput struct {
+	Body struct {
+		Published bool                `json:"published"`
+		Results   *models.RunResults  `json:"results"`
+	}
+}
+
+func (h *handlers) registerPublish(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "publish",
+		Method:      http.MethodPost,
+		Path:        "/v1/runs/{id}/publish",
+		Summary:     "Publish a run to the public leaderboard",
+		Description: "Computes results if not yet computed, then upserts a row " +
+			"into the per-scenario leaderboard. Re-publishing the same " +
+			"run is a no-op-update of the leaderboard row.",
+		Tags: []string{"Runs"},
+	}, h.publish)
+}
+
+func (h *handlers) publish(ctx context.Context, in *PublishInput) (*PublishOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
+	}
+	results, err := h.Engine.ComputeResults(in.ID)
 	if err != nil {
-		return jsonErrorf(c, fiber.StatusBadRequest, "publish_failed", "%v", err)
+		return nil, huma.Error400BadRequest(err.Error())
 	}
 
-	// Fetch scenario_id + bot_id off the run.
 	var scenarioID, botID string
-	if err := h.Engine.AppDB().QueryRow(`SELECT scenario_id, bot_id FROM runs WHERE id = ?1`, runID).Scan(&scenarioID, &botID); err != nil {
-		return jsonErrorf(c, fiber.StatusInternalServerError, "db_error", "%v", err)
+	if err := h.Engine.AppDB().QueryRow(
+		`SELECT scenario_id, bot_id FROM runs WHERE id = ?1`, in.ID,
+	).Scan(&scenarioID, &botID); err != nil {
+		return nil, huma.Error500InternalServerError("db error: " + err.Error())
 	}
 
 	var sharpe interface{}
@@ -36,11 +62,17 @@ func (h *Handlers) Publish(c *fiber.Ctx) error {
 			return_pct = excluded.return_pct,
 			sharpe = excluded.sharpe,
 			published_at = CURRENT_TIMESTAMP
-	`, scenarioID, runID, botID, results.ReturnPct, sharpe); err != nil {
-		return jsonErrorf(c, fiber.StatusInternalServerError, "leaderboard_insert_failed", "%v", err)
+	`, scenarioID, in.ID, botID, results.ReturnPct, sharpe); err != nil {
+		return nil, huma.Error500InternalServerError("leaderboard insert failed: " + err.Error())
 	}
-	if _, err := h.Engine.AppDB().Exec(`UPDATE runs SET published = 1 WHERE id = ?1`, runID); err != nil {
-		return jsonErrorf(c, fiber.StatusInternalServerError, "db_error", "%v", err)
+	if _, err := h.Engine.AppDB().Exec(
+		`UPDATE runs SET published = 1 WHERE id = ?1`, in.ID,
+	); err != nil {
+		return nil, huma.Error500InternalServerError("db error: " + err.Error())
 	}
-	return c.JSON(fiber.Map{"published": true, "results": results})
+
+	out := &PublishOutput{}
+	out.Body.Published = true
+	out.Body.Results = results
+	return out, nil
 }

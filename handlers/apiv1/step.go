@@ -1,32 +1,59 @@
 package apiv1
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"bottrade/services"
+	"context"
+	"net/http"
 
-// Step advances the run's sim_time by N bars, filling queued orders.
-//   POST /v1/runs/:id/step
-//   body: {count?:1, idempotency_key?}
-func (h *Handlers) Step(c *fiber.Ctx) error {
-	runID := c.Params("id")
-	if err := h.assertRunOwner(c, runID); err != nil {
-		return err
-	}
+	"github.com/danielgtaylor/huma/v2"
+)
 
-	var body struct {
-		Count          int    `json:"count"`
-		IdempotencyKey string `json:"idempotency_key"`
+// StepInput advances the run's sim_time by N bars. Each bar fills any
+// queued orders, marks-to-market, and may trigger force-liquidation.
+type StepInput struct {
+	ID   string `path:"id" doc:"Run UUID."`
+	Body struct {
+		Count          int    `json:"count,omitempty" minimum:"1" default:"1" doc:"Number of bars to advance. If a liquidation occurs mid-step, the remaining bars are skipped."`
+		IdempotencyKey string `json:"idempotency_key,omitempty" doc:"If set, retries return the cached response."`
 	}
-	_ = c.BodyParser(&body) // empty body is fine; defaults apply
-	if body.Count == 0 {
-		body.Count = 1
-	}
+}
 
-	return withIdempotency(c, runID, body.IdempotencyKey, func() (int, interface{}, error) {
-		result, err := h.Engine.AdvanceStep(runID, body.Count)
+// StepOutput summarizes what happened during the step.
+type StepOutput struct {
+	Body services.StepResult `json:"-"`
+}
+
+func (h *handlers) registerStep(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "step",
+		Method:      http.MethodPost,
+		Path:        "/v1/runs/{id}/step",
+		Summary:     "Advance the run by N bars",
+		Description: "Iterates the simulator forward `count` bars. For each bar: " +
+			"(1) any queued orders fill at that bar's open ± per-symbol " +
+			"slippage; (2) positions are upserted (signed quantity); " +
+			"(3) equity is mark-to-market at the bar's close; (4) if " +
+			"equity falls below the maintenance margin, ALL positions are " +
+			"force-closed and the run's status flips to `liquidated`. " +
+			"Returns the fills that landed, the new equity, and whether " +
+			"the run is now `done` (scenario exhausted) or `liquidated`.",
+		Tags: []string{"Runs"},
+	}, h.step)
+}
+
+func (h *handlers) step(ctx context.Context, in *StepInput) (*StepOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
+	}
+	count := in.Body.Count
+	if count == 0 {
+		count = 1
+	}
+	return idempotent(in.ID, in.Body.IdempotencyKey, in.Body, func() (*StepOutput, error) {
+		result, err := h.Engine.AdvanceStep(in.ID, count)
 		if err != nil {
-			return fiber.StatusBadRequest, fiber.Map{
-				"error": fiber.Map{"code": "step_failed", "message": err.Error()},
-			}, nil
+			return nil, huma.Error400BadRequest(err.Error())
 		}
-		return fiber.StatusOK, result, nil
+		return &StepOutput{Body: *result}, nil
 	})
 }

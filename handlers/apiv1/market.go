@@ -1,65 +1,87 @@
 package apiv1
 
 import (
-	"strconv"
+	"context"
+	"net/http"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// GetMarket returns bars up to (and including) the run's sim_time for the
-// requested symbols.
-//   GET /v1/runs/:id/market?symbols=AAPL,MSFT&lookback=24
-func (h *Handlers) GetMarket(c *fiber.Ctx) error {
-	runID := c.Params("id")
-	if err := h.assertRunOwner(c, runID); err != nil {
-		return err
-	}
+// MarketGetInput is the query for GET /v1/runs/{id}/market.
+type MarketGetInput struct {
+	ID       string `path:"id" doc:"Run UUID."`
+	Symbols  string `query:"symbols" doc:"Comma-separated list of symbols, e.g. AAPL,MSFT,SPY."`
+	Lookback int    `query:"lookback" default:"50" minimum:"1" maximum:"1000" doc:"Number of most-recent bars per symbol up to (and including) sim_time."`
+}
 
-	run, err := h.Engine.LoadRun(runID)
-	if err != nil {
-		return jsonError(c, fiber.StatusNotFound, "run_not_found", "no such run")
-	}
+// MarketBar is one OHLCV bar in the response.
+type MarketBar struct {
+	Ts     string  `json:"ts"`
+	Open   float64 `json:"open"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+	Close  float64 `json:"close"`
+	Volume int64   `json:"volume"`
+}
 
-	symbolsParam := c.Query("symbols")
-	if symbolsParam == "" {
-		return jsonError(c, fiber.StatusBadRequest, "missing_symbols", "symbols query param required (comma-separated)")
+// MarketGetOutput is the payload of GET /v1/runs/{id}/market.
+type MarketGetOutput struct {
+	Body struct {
+		SimTime string                  `json:"sim_time" doc:"Current run sim_time (ISO 8601 UTC)."`
+		Bars    map[string][]MarketBar  `json:"bars"   doc:"Map of symbol → ordered ascending bars."`
 	}
-	symbols := strings.Split(symbolsParam, ",")
+}
+
+func (h *handlers) registerMarket(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "getRunMarket",
+		Method:      http.MethodGet,
+		Path:        "/v1/runs/{id}/market",
+		Summary:     "Get market data visible to this run",
+		Description: "Returns the most recent N bars per requested symbol, " +
+			"only including bars with timestamp ≤ run.sim_time. " +
+			"This is how the agent observes price history without ever " +
+			"seeing the future.",
+		Tags: []string{"Market"},
+	}, h.getMarket)
+}
+
+func (h *handlers) getMarket(ctx context.Context, in *MarketGetInput) (*MarketGetOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
+	}
+	if in.Symbols == "" {
+		return nil, huma.Error400BadRequest("symbols query parameter is required (comma-separated)")
+	}
+	symbols := strings.Split(in.Symbols, ",")
 	for i := range symbols {
 		symbols[i] = strings.TrimSpace(symbols[i])
 	}
 
-	lookback := 50
-	if lb := c.Query("lookback"); lb != "" {
-		if n, err := strconv.Atoi(lb); err == nil && n > 0 {
-			lookback = n
-		}
+	run, err := h.Engine.LoadRun(in.ID)
+	if err != nil {
+		return nil, huma.Error404NotFound("no such run")
 	}
-	// Hard cap to keep response size bounded.
-	if lookback > 1000 {
-		lookback = 1000
-	}
-
 	bars := h.Engine.Bars()
-	out := map[string]interface{}{}
+
+	out := &MarketGetOutput{}
+	out.Body.SimTime = run.SimTime.UTC().Format("2006-01-02T15:04:05Z")
+	out.Body.Bars = map[string][]MarketBar{}
 	for _, sym := range symbols {
-		series := bars.Lookback(run.ScenarioID, run.ScenarioVersion, sym, run.SimTime, lookback)
-		simple := make([]map[string]interface{}, 0, len(series))
+		series := bars.Lookback(run.ScenarioID, run.ScenarioVersion, sym, run.SimTime, in.Lookback)
+		mb := make([]MarketBar, 0, len(series))
 		for _, b := range series {
-			simple = append(simple, map[string]interface{}{
-				"ts":     b.Ts.UTC().Format("2006-01-02T15:04:05Z"),
-				"open":   b.Open,
-				"high":   b.High,
-				"low":    b.Low,
-				"close":  b.Close,
-				"volume": b.Volume,
+			mb = append(mb, MarketBar{
+				Ts:     b.Ts.UTC().Format("2006-01-02T15:04:05Z"),
+				Open:   b.Open,
+				High:   b.High,
+				Low:    b.Low,
+				Close:  b.Close,
+				Volume: int64(b.Volume),
 			})
 		}
-		out[sym] = simple
+		out.Body.Bars[sym] = mb
 	}
-	return c.JSON(fiber.Map{
-		"sim_time": run.SimTime.UTC().Format("2006-01-02T15:04:05Z"),
-		"bars":     out,
-	})
+	return out, nil
 }

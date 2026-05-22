@@ -1,43 +1,67 @@
 package apiv1
 
 import (
+	"bottrade/models"
 	"bottrade/services"
+	"context"
+	"net/http"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// QueueTrade enqueues an order for fill on the next /step.
-//   POST /v1/runs/:id/trades
-//   body: {symbol, side, quantity, reasoning?, idempotency_key?}
-func (h *Handlers) QueueTrade(c *fiber.Ctx) error {
-	runID := c.Params("id")
-	if err := h.assertRunOwner(c, runID); err != nil {
-		return err
+// TradeQueueInput queues a new market order on a run. The order fills on
+// the next /step at the next bar's open + per-symbol slippage.
+type TradeQueueInput struct {
+	ID   string `path:"id" doc:"Run UUID."`
+	Body struct {
+		Symbol         string `json:"symbol"   example:"AAPL" doc:"Symbol from the scenario universe."`
+		Side           string `json:"side"     enum:"buy,sell,short,cover" doc:"Trade direction. buy/sell are for long positions, short opens a short, cover reduces a short."`
+		Quantity       int    `json:"quantity" minimum:"1" doc:"Whole-share quantity (positive)."`
+		Reasoning      string `json:"reasoning,omitempty" doc:"Optional free-text note recorded with the fill."`
+		IdempotencyKey string `json:"idempotency_key,omitempty" doc:"If set, retries of this same key + body return the cached response; same key + different body returns 409."`
 	}
+}
 
-	var body struct {
-		Symbol         string `json:"symbol"`
-		Side           string `json:"side"`
-		Quantity       int    `json:"quantity"`
-		Reasoning      string `json:"reasoning"`
-		IdempotencyKey string `json:"idempotency_key"`
+// TradeQueueOutput is returned after a successful queue. The order is NOT
+// filled yet; it fills on the next /step.
+type TradeQueueOutput struct {
+	Body struct {
+		Order *models.RunOrder `json:"order"`
 	}
-	if err := c.BodyParser(&body); err != nil {
-		return jsonError(c, fiber.StatusBadRequest, "invalid_body", "could not parse request body")
-	}
+}
 
-	return withIdempotency(c, runID, body.IdempotencyKey, func() (int, interface{}, error) {
-		order, err := h.Engine.QueueTrade(runID, services.QueueTradeRequest{
-			Symbol:    body.Symbol,
-			Side:      body.Side,
-			Quantity:  body.Quantity,
-			Reasoning: body.Reasoning,
+func (h *handlers) registerTrades(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "queueTrade",
+		Method:      http.MethodPost,
+		Path:        "/v1/runs/{id}/trades",
+		Summary:     "Queue a market order for the next /step",
+		Description: "Inserts an order into the run's queue. The order is " +
+			"validated against the scenario universe, leverage cap, and " +
+			"current position. It is NOT filled here; it fills at the next " +
+			"bar's open + slippage when you call POST /v1/runs/{id}/step. " +
+			"\n\nProvide `idempotency_key` to safely retry on network blips.",
+		Tags:          []string{"Runs"},
+		DefaultStatus: http.StatusCreated,
+	}, h.queueTrade)
+}
+
+func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQueueOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
+	}
+	return idempotent(in.ID, in.Body.IdempotencyKey, in.Body, func() (*TradeQueueOutput, error) {
+		order, err := h.Engine.QueueTrade(in.ID, services.QueueTradeRequest{
+			Symbol:    in.Body.Symbol,
+			Side:      in.Body.Side,
+			Quantity:  in.Body.Quantity,
+			Reasoning: in.Body.Reasoning,
 		})
 		if err != nil {
-			return fiber.StatusBadRequest, fiber.Map{
-				"error": fiber.Map{"code": "queue_trade_failed", "message": err.Error()},
-			}, nil
+			return nil, huma.Error400BadRequest(err.Error())
 		}
-		return fiber.StatusCreated, fiber.Map{"order": order}, nil
+		out := &TradeQueueOutput{}
+		out.Body.Order = order
+		return out, nil
 	})
 }

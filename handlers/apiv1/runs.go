@@ -1,82 +1,113 @@
 package apiv1
 
 import (
-	"bottrade/middleware"
-	"bottrade/services"
+	"bottrade/models"
+	"context"
+	"net/http"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// Handlers carries the dependencies shared by every /v1/* handler. Wired
-// at mount time so handlers themselves stay free of package globals.
-type Handlers struct {
-	Engine *services.ScenarioEngine
+// RunCreateInput accepts EITHER a scenario_id (UUID) or a scenario_slug.
+// Exactly one must be provided; if both are set, scenario_id wins.
+type RunCreateInput struct {
+	Body struct {
+		ScenarioID   string `json:"scenario_id,omitempty" doc:"Scenario UUID. Provide this OR scenario_slug."`
+		ScenarioSlug string `json:"scenario_slug,omitempty" doc:"Scenario slug. Used if scenario_id is omitted."`
+	}
 }
 
-func NewHandlers(engine *services.ScenarioEngine) *Handlers {
-	return &Handlers{Engine: engine}
+// RunCreateOutput is returned on successful POST /v1/runs.
+type RunCreateOutput struct {
+	Status int        `header:"-"`
+	Body   struct {
+		Run *models.Run `json:"run"`
+	}
 }
 
-// CreateRun starts a new run on a scenario.
-//   POST /v1/runs   body: {scenario_id?: "...", scenario_slug?: "..."}
-func (h *Handlers) CreateRun(c *fiber.Ctx) error {
-	bot := middleware.GetBot(c)
-	if bot.ID.String() == "" || bot.ID.String() == "00000000-0000-0000-0000-000000000000" {
-		return jsonError(c, fiber.StatusUnauthorized, "unauthorized", "no bot in context")
-	}
+// RunGetInput identifies a run by id (UUID).
+type RunGetInput struct {
+	ID string `path:"id" doc:"Run UUID."`
+}
 
-	var body struct {
-		ScenarioID   string `json:"scenario_id"`
-		ScenarioSlug string `json:"scenario_slug"`
-	}
-	if err := c.BodyParser(&body); err != nil {
-		return jsonError(c, fiber.StatusBadRequest, "invalid_body", "could not parse request body")
-	}
+// RunGetOutput is the full snapshot of an in-flight or finished run.
+type RunGetOutput struct {
+	Body models.RunSnapshot `json:"-"`
+}
 
-	scenarioID := body.ScenarioID
-	if scenarioID == "" && body.ScenarioSlug != "" {
+func (h *handlers) registerRuns(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "createRun",
+		Method:      http.MethodPost,
+		Path:        "/v1/runs",
+		Summary:     "Start a new run on a scenario",
+		Description: "Creates a run pinned to the scenario's current_version. " +
+			"sim_time starts at the first bar in the scenario timeline. " +
+			"Provide either scenario_id or scenario_slug.",
+		Tags:          []string{"Runs"},
+		DefaultStatus: http.StatusCreated,
+	}, h.createRun)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getRun",
+		Method:      http.MethodGet,
+		Path:        "/v1/runs/{id}",
+		Summary:     "Get the current state of a run",
+		Description: "Returns the run, all open positions, all queued (unfilled) " +
+			"orders, and the most recent equity sample. Only the run's own " +
+			"bot can access this endpoint.",
+		Tags: []string{"Runs"},
+	}, h.getRun)
+}
+
+func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreateOutput, error) {
+	bot := botFrom(ctx)
+	scenarioID := in.Body.ScenarioID
+	if scenarioID == "" && in.Body.ScenarioSlug != "" {
 		// Resolve slug → id.
 		if err := h.Engine.AppDB().QueryRow(
-			`SELECT id FROM scenarios WHERE slug = ?1`, body.ScenarioSlug,
+			`SELECT id FROM scenarios WHERE slug = ?1`, in.Body.ScenarioSlug,
 		).Scan(&scenarioID); err != nil {
-			return jsonError(c, fiber.StatusNotFound, "scenario_not_found", "no scenario for that slug")
+			return nil, huma.Error404NotFound("no scenario with slug " + in.Body.ScenarioSlug)
 		}
 	}
 	if scenarioID == "" {
-		return jsonError(c, fiber.StatusBadRequest, "missing_scenario", "scenario_id or scenario_slug required")
+		return nil, huma.Error400BadRequest("scenario_id or scenario_slug required")
 	}
-
 	run, err := h.Engine.StartRun(bot.ID.String(), scenarioID)
 	if err != nil {
-		return jsonErrorf(c, fiber.StatusBadRequest, "start_run_failed", "%v", err)
+		return nil, huma.Error400BadRequest(err.Error())
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"run": run})
+	out := &RunCreateOutput{Status: http.StatusCreated}
+	out.Body.Run = run
+	return out, nil
 }
 
-// GetRun returns the full snapshot (run + positions + queued orders + last equity).
-//   GET /v1/runs/:id
-func (h *Handlers) GetRun(c *fiber.Ctx) error {
-	runID := c.Params("id")
-	if err := h.assertRunOwner(c, runID); err != nil {
-		return err
+func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
 	}
-	snap, err := h.Engine.GetRunState(runID)
+	snap, err := h.Engine.GetRunState(in.ID)
 	if err != nil {
-		return jsonErrorf(c, fiber.StatusNotFound, "run_not_found", "%v", err)
+		return nil, huma.Error404NotFound("no such run")
 	}
-	return c.JSON(snap)
+	return &RunGetOutput{Body: *snap}, nil
 }
 
 // assertRunOwner returns nil iff the authenticated bot owns the run.
-func (h *Handlers) assertRunOwner(c *fiber.Ctx, runID string) error {
-	bot := middleware.GetBot(c)
+// Returned errors are already huma errors with the correct status — callers
+// should propagate as-is.
+func (h *handlers) assertRunOwner(ctx context.Context, runID string) error {
+	bot := botFrom(ctx)
 	var ownerID string
-	err := h.Engine.AppDB().QueryRow(`SELECT bot_id FROM runs WHERE id = ?1`, runID).Scan(&ownerID)
+	err := h.Engine.AppDB().QueryRow(
+		`SELECT bot_id FROM runs WHERE id = ?1`, runID,
+	).Scan(&ownerID)
 	if err != nil {
-		return jsonError(c, fiber.StatusNotFound, "run_not_found", "no such run")
+		return huma.Error404NotFound("no such run")
 	}
 	if ownerID != bot.ID.String() {
-		return jsonError(c, fiber.StatusForbidden, "run_not_owned", "you do not own this run")
+		return huma.Error403Forbidden("you do not own this run")
 	}
 	return nil
 }
