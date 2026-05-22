@@ -17,6 +17,13 @@ import (
 
 var DB *sql.DB
 
+// MarketDB is the second database — historical bars and frozen
+// scenario_bars for the Benchmark API. Kept physically separate from the
+// app DB so app-side schema changes can't accidentally touch market data,
+// and so re-pulling bars from Alpaca isn't a recovery dependency for
+// bots/runs.
+var MarketDB *sql.DB
+
 // Connect opens the SQLite/Turso database. Two URL forms are supported:
 //   - "libsql://<host>" — remote Turso; authToken is appended as a query param.
 //   - "file:./local.db" — local SQLite file; the libsql driver delegates to
@@ -90,9 +97,44 @@ func redactURL(u string) string {
 	return u
 }
 
+// ConnectMarket opens the market-data Turso/SQLite database into
+// the package-level MarketDB pool. Same URL conventions as Connect.
+// Safe to call only in API mode; site-only mode skips this entirely.
+func ConnectMarket(databaseURL, authToken string) error {
+	if databaseURL == "" {
+		return fmt.Errorf("TURSO_MARKET_DATABASE_URL is required for API mode")
+	}
+
+	connStr := databaseURL
+	if !isLocalURL(databaseURL) && authToken != "" {
+		connStr = fmt.Sprintf("%s?authToken=%s", databaseURL, authToken)
+	}
+
+	db, err := sql.Open("libsql", connStr)
+	if err != nil {
+		return fmt.Errorf("open market db: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		return fmt.Errorf("ping market db: %w", err)
+	}
+	if isLocalURL(databaseURL) {
+		if err := applyLocalPragmas(db); err != nil {
+			return fmt.Errorf("apply pragmas to market db: %w", err)
+		}
+	}
+
+	MarketDB = db
+	log.Printf("Market DB connection established (%s)", redactURL(databaseURL))
+	return nil
+}
+
 func Close() {
 	if DB != nil {
 		DB.Close()
 		log.Println("Database connection closed")
+	}
+	if MarketDB != nil {
+		MarketDB.Close()
+		log.Println("Market DB connection closed")
 	}
 }

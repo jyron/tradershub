@@ -103,7 +103,13 @@
       "WebFetch(domain:turso.tech)",
       "WebFetch(domain:docs.turso.tech)",
       "Bash(/Users/jyron/src/bottrade/venv/bin/python3 -c \"import openai; print\\('openai', openai.__version__\\)\")",
-      "Bash(/Users/jyron/src/bottrade/venv/bin/python3 -c \"import alpaca; print\\('alpaca OK'\\)\")"
+      "Bash(/Users/jyron/src/bottrade/venv/bin/python3 -c \"import alpaca; print\\('alpaca OK'\\)\")",
+      "WebFetch(domain:docs.alpaca.markets)",
+      "Bash(TURSO_DATABASE_URL='file:./bottrade.db' TURSO_MARKET_DATABASE_URL='file:/tmp/bottrade-market-test.db' SERVER_MODE=api timeout 4 /tmp/bottrade-test)",
+      "Bash(TURSO_MARKET_DATABASE_URL='file:/tmp/bottrade-market-test.db' go run ./cmd/backfill_bars --start 2024-06-03 --end 2024-06-05 --symbols AAPL,MSFT)",
+      "mcp__railway__list_projects",
+      "mcp__railway__whoami",
+      "mcp__railway__list_services"
     ]
   }
 }

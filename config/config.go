@@ -28,6 +28,18 @@ type Config struct {
 	// to generate the natural-language summary. Optional — when unset the
 	// recap falls back to a deterministic template.
 	AnthropicAPIKey   string
+
+	// Market DB — a second Turso DB for historical bars + frozen
+	// scenario_bars. Kept physically separate from the app DB so it can
+	// hold a lot of read-mostly bar data without coupling to migrations
+	// of bots/runs/etc.
+	MarketTursoURL    string
+	MarketTursoToken  string
+
+	// Benchmark API surface. ServerMode controls which Fiber app(s) this
+	// binary mounts: "site" (existing /api), "api" (new /v1), or "both".
+	ServerMode        string
+	APIPort           string
 }
 
 func Load() *Config {
@@ -47,6 +59,12 @@ func Load() *Config {
 		MasterKey:         getEnv("BOTTRADE_MASTER_KEY", ""),
 		MasterKeyVersions: loadMasterKeyVersions(),
 		AnthropicAPIKey:   getEnv("ANTHROPIC_API_KEY", ""),
+
+		MarketTursoURL:   os.Getenv("TURSO_MARKET_DATABASE_URL"),
+		MarketTursoToken: os.Getenv("TURSO_MARKET_AUTH_TOKEN"),
+
+		ServerMode: getEnv("SERVER_MODE", "both"),
+		APIPort:    getEnv("API_PORT", "3001"),
 	}
 }
 

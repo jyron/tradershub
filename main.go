@@ -4,6 +4,7 @@ import (
 	"bottrade/config"
 	"bottrade/database"
 	"bottrade/handlers"
+	apiv1 "bottrade/handlers/apiv1"
 	"bottrade/jobs"
 	"bottrade/middleware"
 	"bottrade/services"
@@ -27,6 +28,26 @@ func main() {
 
 	if err := database.RunMigrations(); err != nil {
 		log.Fatal("Failed to run migrations:", err)
+	}
+
+	// API mode also opens the market DB (historical bars + frozen
+	// scenario_bars). Site-only deployments skip this so they don't
+	// require the second DB to exist. In local dev, default to a file://
+	// path so the binary boots without needing a second Turso DB
+	// provisioned just to iterate on UI work.
+	apiMode := cfg.ServerMode == "api" || cfg.ServerMode == "both"
+	if apiMode {
+		marketURL := cfg.MarketTursoURL
+		if marketURL == "" {
+			marketURL = "file:./bottrade-market.db"
+			log.Println("⚠️  Market DB: TURSO_MARKET_DATABASE_URL not set, falling back to ./bottrade-market.db")
+		}
+		if err := database.ConnectMarket(marketURL, cfg.MarketTursoToken); err != nil {
+			log.Fatal("Failed to connect market DB:", err)
+		}
+		if err := database.RunMigrationsOn(database.MarketDB, "database/migrations_market"); err != nil {
+			log.Fatal("Failed to run market migrations:", err)
+		}
 	}
 
 	services.InitMarketData(cfg.MarketAPIKey)
@@ -73,10 +94,27 @@ func main() {
 			log.Printf("⚠️  Alpaca: Failed to initialize - %v", err)
 		} else {
 			scheduler.AddJob(jobs.NewAssetSyncJob())
+			// Bar ingest pulls hourly bars for the BenchmarkUniverse into
+			// market.bars. Only meaningful when the market DB is open
+			// (api or both modes).
+			if apiMode {
+				scheduler.AddJob(jobs.NewBarIngestJob())
+			}
 		}
 	} else {
 		log.Println("⚠️  Alpaca: API keys not configured (options trading disabled)")
 		log.Println("   Set ALPACA_API_KEY and ALPACA_SECRET_KEY in .env for options trading")
+	}
+
+	// Benchmark API maintenance jobs. The results compute job needs the
+	// engine; we'll construct that once below for the API listener and
+	// the job will receive a pointer to the same instance.
+	var benchEngine *services.ScenarioEngine
+	if apiMode {
+		benchEngine = services.NewScenarioEngine(database.DB, database.MarketDB)
+		scheduler.AddJob(jobs.NewIdleRunCleanupJob())
+		scheduler.AddJob(jobs.NewIdempotencySweepJob())
+		scheduler.AddJob(jobs.NewRunResultsComputeJob(benchEngine))
 	}
 
 	scheduler.Start()
@@ -207,6 +245,73 @@ func main() {
 	app.Get("/ws", websocket.New(handlers.WebSocketHandler))
 
 	app.Static("/", "./static")
+
+	// Mount the Benchmark API (/v1/*) on its own Fiber app + port. Lives
+	// in the same process for MVP but is fully independent: separate
+	// listener, separate routing tree, doesn't share middleware or
+	// connection-pool contention with /api/*.
+	//
+	// In mode=api: only the API listens (foreground).
+	// In mode=both: API listens in a goroutine, site is foreground.
+	// In mode=site: API is skipped entirely.
+	if apiMode {
+		// Reuse the same engine the results-compute job is wired to so
+		// there's a single per-process locks map.
+		engine := benchEngine
+		apiApp := fiber.New(fiber.Config{AppName: "BotTrade API v1"})
+		apiApp.Use(logger.New())
+		apiApp.Use(cors.New())
+
+		// Friendly root + healthcheck so curling the bare service URL
+		// doesn't look like a misconfiguration.
+		apiApp.Get("/", func(c *fiber.Ctx) error {
+			return c.JSON(fiber.Map{
+				"name":    "BotTrade Benchmark API",
+				"version": "v1",
+				"docs":    "https://bot-trade.org/methodology",
+				"endpoints": []string{
+					"GET    /v1/scenarios",
+					"GET    /v1/scenarios/:id",
+					"POST   /v1/runs",
+					"GET    /v1/runs/:id",
+					"GET    /v1/runs/:id/market",
+					"POST   /v1/runs/:id/trades",
+					"POST   /v1/runs/:id/step",
+					"GET    /v1/runs/:id/results",
+					"POST   /v1/runs/:id/publish",
+				},
+				"auth": "Send X-API-Key header on all /v1/* requests.",
+			})
+		})
+		apiApp.Get("/health", func(c *fiber.Ctx) error {
+			return c.JSON(fiber.Map{"ok": true})
+		})
+
+		apiv1.Mount(apiApp, engine)
+
+		// In api-only mode this is the only listener, so we listen on
+		// $PORT (what Railway/Heroku-style platforms assign and proxy to).
+		// In mode=both the site already owns $PORT, so the API uses the
+		// dedicated $API_PORT — set to a port the platform isn't routing
+		// public traffic to.
+		apiListenPort := cfg.APIPort
+		if cfg.ServerMode == "api" {
+			apiListenPort = cfg.Port
+		}
+		log.Printf("Benchmark API starting on port %s", apiListenPort)
+		if cfg.ServerMode == "api" {
+			if err := apiApp.Listen(":" + apiListenPort); err != nil {
+				log.Fatal("Failed to start API:", err)
+			}
+			return
+		}
+		// mode=both: API in background; site below blocks
+		go func() {
+			if err := apiApp.Listen(":" + apiListenPort); err != nil {
+				log.Printf("API listener exited: %v", err)
+			}
+		}()
+	}
 
 	log.Printf("Server starting on port %s", cfg.Port)
 	if err := app.Listen(":" + cfg.Port); err != nil {

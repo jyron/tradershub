@@ -1,56 +1,74 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 )
 
+// RunMigrations applies all .sql files under database/migrations to the app DB
+// in filename order. Kept as a thin wrapper so callers that only know about the
+// app DB don't need to specify a path.
 func RunMigrations() error {
-	migrations := []string{
-		"database/migrations/001_initial.sql",
-		"database/migrations/002_add_claimed.sql",
-		"database/migrations/003_add_is_test.sql",
-		"database/migrations/004_add_assets.sql",
-		"database/migrations/005_extend_symbol_columns.sql",
-		"database/migrations/006_add_ranking_history.sql",
-		"database/migrations/007_seasons.sql",
-		"database/migrations/008_season_isolated_accounts.sql",
-		"database/migrations/009_add_model_provider.sql",
-		"database/migrations/010_bot_credentials_and_tiers.sql",
-		"database/migrations/011_bot_usage_daily.sql",
-		"database/migrations/012_backfill_jobs.sql",
-		"database/migrations/013_add_is_baseline.sql",
-		"database/migrations/014_daily_recaps.sql",
+	return RunMigrationsOn(DB, "database/migrations")
+}
+
+// RunMigrationsOn applies every .sql file under dir to the given database in
+// lexicographic filename order. Filenames are expected to be numerically
+// prefixed (e.g. 001_initial.sql) so the order is deterministic and stable.
+//
+// Each file is split into individual statements; a single "duplicate column"
+// error per statement is treated as a no-op (SQLite lacks ADD COLUMN IF NOT
+// EXISTS). Any other error aborts the run.
+func RunMigrationsOn(db *sql.DB, dir string) error {
+	if db == nil {
+		return fmt.Errorf("RunMigrationsOn: nil db")
 	}
 
-	for _, migrationFile := range migrations {
-		sqlBytes, err := os.ReadFile(migrationFile)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read migrations dir %s: %w", dir, err)
+	}
+
+	files := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		files = append(files, filepath.Join(dir, e.Name()))
+	}
+	sort.Strings(files)
+
+	for _, file := range files {
+		sqlBytes, err := os.ReadFile(file)
 		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", migrationFile, err)
+			return fmt.Errorf("read migration %s: %w", file, err)
 		}
 
-		if err := execStatements(string(sqlBytes)); err != nil {
-			return fmt.Errorf("failed to execute migration %s: %w", migrationFile, err)
+		if err := execStatements(db, string(sqlBytes)); err != nil {
+			return fmt.Errorf("apply migration %s: %w", file, err)
 		}
 
-		log.Printf("Executed migration: %s", migrationFile)
+		log.Printf("Executed migration: %s", file)
 	}
 
-	log.Println("All migrations executed successfully")
+	log.Printf("All migrations executed successfully (%s)", dir)
 	return nil
 }
 
 // execStatements runs each ;-separated statement individually so a single
 // "duplicate column" error (SQLite has no ADD COLUMN IF NOT EXISTS) doesn't
 // abort the whole migration. All other errors propagate.
-func execStatements(sql string) error {
+func execStatements(db *sql.DB, sql string) error {
 	for _, stmt := range splitStatements(sql) {
 		if stmt == "" {
 			continue
 		}
-		if _, err := DB.Exec(stmt); err != nil {
+		if _, err := db.Exec(stmt); err != nil {
 			if isDuplicateColumnErr(err) {
 				continue
 			}
