@@ -164,24 +164,21 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 	}
 	defer tx.Rollback()
 
-	insert, err := tx.Prepare(`
-		INSERT INTO scenario_bars
-			(scenario_id, scenario_version, symbol, ts, open, high, low, close, volume, slippage_bps)
-		VALUES
-			(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-		ON CONFLICT (scenario_id, scenario_version, symbol, ts) DO UPDATE SET
-			open = excluded.open, high = excluded.high, low = excluded.low,
-			close = excluded.close, volume = excluded.volume,
-			slippage_bps = excluded.slippage_bps
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("prepare insert: %w", err)
-	}
-	defer insert.Close()
-
 	startStr := s.StartTs.UTC().Format(time.RFC3339)
 	endStr := s.EndTs.UTC().Format(time.RFC3339)
 	totalBars := 0
+
+	// freezeBatchSize keeps a single multi-VALUES INSERT well under SQLite's
+	// SQLITE_MAX_VARIABLE_NUMBER (10 cols × 50 = 500, under the 999 default).
+	// Without batching this loop was one network round-trip per row to remote
+	// Turso — ~3s of throughput per minute. Batched it's ~50x faster.
+	const freezeBatchSize = 50
+
+	type barRow struct {
+		ts   string
+		o, h, l, c float64
+		v    int64
+	}
 
 	for _, symbol := range s.Universe {
 		slip := s.SlippageBps[symbol]
@@ -195,24 +192,54 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 			return 0, fmt.Errorf("query bars %s: %w", symbol, err)
 		}
 
+		batch := make([]barRow, 0, freezeBatchSize)
+		flush := func() error {
+			if len(batch) == 0 {
+				return nil
+			}
+			placeholders := make([]string, len(batch))
+			args := make([]interface{}, 0, len(batch)*10)
+			for i, b := range batch {
+				placeholders[i] = "(?,?,?,?,?,?,?,?,?,?)"
+				args = append(args,
+					scenarioID, s.CurrentVersion, symbol, b.ts,
+					b.o, b.h, b.l, b.c, b.v, slip,
+				)
+			}
+			query := `INSERT INTO scenario_bars
+				(scenario_id, scenario_version, symbol, ts, open, high, low, close, volume, slippage_bps)
+				VALUES ` + strings.Join(placeholders, ",") +
+				` ON CONFLICT (scenario_id, scenario_version, symbol, ts) DO UPDATE SET
+					open = excluded.open, high = excluded.high, low = excluded.low,
+					close = excluded.close, volume = excluded.volume,
+					slippage_bps = excluded.slippage_bps`
+			if _, err := tx.Exec(query, args...); err != nil {
+				return fmt.Errorf("batched insert %s: %w", symbol, err)
+			}
+			batch = batch[:0]
+			return nil
+		}
+
 		count := 0
 		for rows.Next() {
-			var ts string
-			var open, high, low, close float64
-			var volume int64
-			if err := rows.Scan(&ts, &open, &high, &low, &close, &volume); err != nil {
+			var b barRow
+			if err := rows.Scan(&b.ts, &b.o, &b.h, &b.l, &b.c, &b.v); err != nil {
 				rows.Close()
 				return 0, fmt.Errorf("scan bar %s: %w", symbol, err)
 			}
-			if _, err := insert.Exec(
-				scenarioID, s.CurrentVersion, symbol, ts, open, high, low, close, volume, slip,
-			); err != nil {
-				rows.Close()
-				return 0, fmt.Errorf("insert bar %s @ %s: %w", symbol, ts, err)
-			}
+			batch = append(batch, b)
 			count++
+			if len(batch) >= freezeBatchSize {
+				if err := flush(); err != nil {
+					rows.Close()
+					return 0, err
+				}
+			}
 		}
 		rows.Close()
+		if err := flush(); err != nil {
+			return 0, err
+		}
 
 		if count == 0 {
 			log.Printf("  ⚠️  %s: no bars in [%s, %s) — symbol will be unavailable in this scenario",

@@ -5,6 +5,7 @@ import (
 	"bottrade/services"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -66,6 +67,13 @@ func (j *BarIngestJob) Run() error {
 	return nil
 }
 
+// upsertBatchSize is rows per multi-VALUES INSERT. 50 × 7 columns = 350
+// bound parameters, well under SQLite's default SQLITE_MAX_VARIABLE_NUMBER
+// (999) and libsql's per-statement budget. Reducing round-trips by ~50x
+// versus one-exec-per-row is the difference between a full-year backfill
+// taking ~4 hours vs ~5 minutes against remote Turso.
+const upsertBatchSize = 50
+
 // UpsertBars writes the given candles into market.bars idempotently. Exposed
 // (capitalized) so the backfill CLI can call it directly without going
 // through the scheduled job path.
@@ -79,29 +87,32 @@ func UpsertBars(symbol string, bars []services.Candle) (int, error) {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`
-		INSERT INTO bars (symbol, ts, open, high, low, close, volume)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-		ON CONFLICT(symbol, ts) DO UPDATE SET
-			open = excluded.open,
-			high = excluded.high,
-			low = excluded.low,
-			close = excluded.close,
-			volume = excluded.volume,
-			ingested_at = CURRENT_TIMESTAMP
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("prepare upsert: %w", err)
-	}
-	defer stmt.Close()
+	for offset := 0; offset < len(bars); offset += upsertBatchSize {
+		end := offset + upsertBatchSize
+		if end > len(bars) {
+			end = len(bars)
+		}
+		chunk := bars[offset:end]
 
-	for _, b := range bars {
-		if _, err := stmt.Exec(
-			symbol,
-			b.Timestamp.UTC().Format(time.RFC3339),
-			b.Open, b.High, b.Low, b.Close, b.Volume,
-		); err != nil {
-			return 0, fmt.Errorf("exec upsert %s @ %s: %w", symbol, b.Timestamp, err)
+		placeholders := make([]string, len(chunk))
+		args := make([]interface{}, 0, len(chunk)*7)
+		for i, b := range chunk {
+			placeholders[i] = "(?,?,?,?,?,?,?)"
+			args = append(args,
+				symbol,
+				b.Timestamp.UTC().Format(time.RFC3339),
+				b.Open, b.High, b.Low, b.Close, b.Volume,
+			)
+		}
+		query := `INSERT INTO bars (symbol, ts, open, high, low, close, volume) VALUES ` +
+			strings.Join(placeholders, ",") +
+			` ON CONFLICT(symbol, ts) DO UPDATE SET
+				open = excluded.open, high = excluded.high, low = excluded.low,
+				close = excluded.close, volume = excluded.volume,
+				ingested_at = CURRENT_TIMESTAMP`
+
+		if _, err := tx.Exec(query, args...); err != nil {
+			return 0, fmt.Errorf("batched upsert %s offset %d: %w", symbol, offset, err)
 		}
 	}
 
