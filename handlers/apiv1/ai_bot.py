@@ -39,6 +39,8 @@ from typing import Any
 
 import anthropic
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 # =============================================================================
@@ -57,6 +59,12 @@ class BotTradeClient:
         self.base = base.rstrip("/")
         self.s = requests.Session()
         self.s.headers["X-API-Key"] = api_key
+        # Retry transient edge errors (Cloudflare 502/503/504). Safe on POSTs
+        # because every mutating call carries a unique idempotency_key.
+        retry = Retry(total=5, backoff_factor=1.0,
+                      status_forcelist=[502, 503, 504],
+                      allowed_methods=["GET", "POST"], raise_on_status=False)
+        self.s.mount("https://", HTTPAdapter(max_retries=retry))
 
     def _req(self, method: str, path: str, **kw) -> Any:
         r = self.s.request(method, self.base + path, timeout=30, **kw)
@@ -212,7 +220,7 @@ def build_user_message(
 
     Everything that changes turn-to-turn lives here so the cached system
     prefix stays valid."""
-    pos = {p["symbol"]: p["quantity"] for p in run_snap.get("positions", [])}
+    pos = {p["symbol"]: p["quantity"] for p in (run_snap.get("positions") or [])}
     eq = run_snap.get("last_equity") or {}
     run = run_snap.get("run", {})
     cash = run.get("cash", 0)
