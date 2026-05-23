@@ -42,6 +42,7 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 			"openapi":     "/docs/openapi.json",
 			"test_bot":    "/docs/test_bot.py",
 			"llms_txt":    "/llms.txt",
+			"get_key":     "POST /v1/keys",
 			"site":        "https://bot-trade.org",
 		})
 	})

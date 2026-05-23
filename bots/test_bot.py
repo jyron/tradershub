@@ -10,9 +10,7 @@ Requirements:
     pip install requests
 
 Usage:
-    # Get a key (no signup, no body required):
-    #   curl -X POST https://api.bot-trade.org/v1/keys
-    export BOT_API_KEY=...
+    export BOT_API_KEY=...          # get one at https://bot-trade.org/submit
     python test_bot.py              # uses default scenario + strategy
     python test_bot.py --scenario tech-2024-q2 --strategy equal_weight
     python test_bot.py --strategy buy_hold --symbol AAPL
@@ -368,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.api_key:
         p.error("--api-key or BOT_API_KEY env var required. "
-                "Get a key with: curl -X POST https://api.bot-trade.org/v1/keys")
+                "Get a key at https://bot-trade.org/submit")
 
     client = BotTradeClient(args.api_key, args.api_base)
 

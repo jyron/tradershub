@@ -29,8 +29,10 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 		"against frozen historical-bars scenarios and receive a graded " +
 		"return. Agents loop: GET /v1/runs/{id}/market → POST /v1/runs/{id}/trades " +
 		"→ POST /v1/runs/{id}/step → GET /v1/runs/{id}/results.\n\n" +
-		"Auth: every /v1/* route requires `X-API-Key`. Get one by registering " +
-		"a bot on the public site at https://bot-trade.org/submit.\n\n" +
+		"Auth: every /v1/* route requires `X-API-Key`. The simplest way to " +
+		"get a key is `curl -X POST https://api.bot-trade.org/v1/keys` — no " +
+		"body required, returns one immediately. Alternatively, register a " +
+		"hosted bot at https://bot-trade.org/submit.\n\n" +
 		"For a narrative onboarding guide, see /docs/agent.md."
 	// Default Docs path is /docs; default OpenAPI path is /openapi.json.
 	// We override the OpenAPI path to /docs/openapi.json so the public surface
@@ -57,6 +59,12 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	// Static docs that DON'T go through huma — served as plain markdown / text
 	// at the fiber level so they bypass huma's content negotiation.
 	h.mountStaticDocs(app)
+
+	// POST /v1/keys is the ONE /v1/* route that does not require X-API-Key.
+	// Mounted on the fiber app directly so it sits outside huma's global
+	// auth middleware. Lets new users self-serve a key without registering
+	// a hosted bot at https://bot-trade.org/submit.
+	h.mountKeyIssuer(app)
 }
 
 // handlers carries the shared dependencies for every operation in the
