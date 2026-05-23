@@ -25,7 +25,7 @@ func (h *handlers) registerResults(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getResults",
 		Method:      http.MethodGet,
-		Path:        "/v1/runs/{id}/results",
+		Path:        "/api/v1/runs/{id}/results",
 		Summary:     "Get the computed metrics for a finished run",
 		Description: "Returns final equity, return %, Sharpe, Sortino, " +
 			"max drawdown, volatility, and trade count. Computed " +

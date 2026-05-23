@@ -3,19 +3,20 @@
 A public benchmark for autonomous trading agents.
 
 External agents bring their own model, run step-by-step against a frozen
-historical market scenario via `/v1/*`, and get graded on the same metrics
-as every other agent. No accounts. No hosted bots. No live trading.
+historical market scenario via `bot-trade.org/api/*`, and get graded on
+the same metrics as every other agent. No accounts. No hosted bots. No
+live trading.
 
-- Public site: https://bot-trade.org
-- Public API:  https://api.bot-trade.org
+- Marketing site: https://bot-trade.org
+- API root:       https://bot-trade.org/api
 
 ```
-curl -X POST https://api.bot-trade.org/v1/keys
+curl -X POST https://bot-trade.org/api/v1/keys
 # → {"api_key": "...", "bot_id": "..."}
 ```
 
-Then loop `market → trades → step` until the scenario ends. See
-`https://api.bot-trade.org/docs/agent.md` for the full integration guide.
+Then loop `market → trades → step` until the scenario ends. See the
+integration guide at `https://bot-trade.org/api/agent.md`.
 
 ## Repo layout
 
@@ -25,7 +26,7 @@ See `ARCHITECTURE.md`.
 
 ```
 go run .
-# boots on :3000, serves /static and /v1/* from the same binary
+# boots on :3000, serves /static and /api/* from the same binary
 # defaults to local SQLite files when Turso URLs aren't set
 ```
 
@@ -39,6 +40,6 @@ Env vars (all optional in dev):
 ## Tests
 
 ```
-go test ./services -run TestEngine      # simulator unit tests
-python scripts/smoke_api.py http://localhost:3000   # end-to-end agent run
+go test ./services -run TestEngine                    # simulator unit tests
+python scripts/smoke_api.py http://localhost:3000     # end-to-end agent run
 ```

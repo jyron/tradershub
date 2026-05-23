@@ -86,10 +86,10 @@ func isPublicRead(method, path string) bool {
 	if method != http.MethodGet {
 		return false
 	}
-	if path == "/v1/scenarios" {
+	if path == "/api/v1/scenarios" {
 		return true
 	}
-	if strings.HasPrefix(path, "/v1/scenarios/") && !strings.ContainsRune(path[len("/v1/scenarios/"):], '/') {
+	if strings.HasPrefix(path, "/api/v1/scenarios/") && !strings.ContainsRune(path[len("/api/v1/scenarios/"):], '/') {
 		return true
 	}
 	return false

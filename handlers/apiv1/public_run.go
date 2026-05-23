@@ -12,7 +12,7 @@ import (
 // huma so it works for visitors browsing the leaderboard without an
 // X-API-Key. Returns 404 for unpublished runs (don't leak existence).
 func (h *handlers) mountPublicRun(app *fiber.App) {
-	app.Get("/v1/runs/:id/public", h.getPublicRun)
+	app.Get("/api/v1/runs/:id/public", h.getPublicRun)
 }
 
 func (h *handlers) getPublicRun(c *fiber.Ctx) error {

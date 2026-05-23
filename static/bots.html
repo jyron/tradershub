@@ -23,8 +23,8 @@
     <a href="/">Home</a>
     <a href="/leaderboard">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/docs">API docs</a>
-    <a href="/docs/agent.md" class="cta">Build an agent</a>
+    <a href="/api/docs">API docs</a>
+    <a href="/api/agent.md" class="cta">Build an agent</a>
   </nav>
 </header>
 
@@ -124,7 +124,7 @@
 
   async function load() {
     try {
-      const payload = await fetch(`/v1/runs/${encodeURIComponent(runId)}/public`).then(r => r.ok ? r.json() : null).catch(() => null);
+      const payload = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/public`).then(r => r.ok ? r.json() : null).catch(() => null);
       if (!payload) {
         $("page-status").innerHTML = `<div style="padding: 40px; color: var(--down); text-align: center;">no published run with id ${esc(runId)}.</div>`;
         return;
@@ -180,7 +180,7 @@
 
     // trades require a second fetch — see /v1 doesn't expose a trades list
     // endpoint yet; we leave the panel blank with a hint.
-    $("bp-trades").innerHTML = `<div style="padding: 16px; color: var(--ink-3); font-size: 13px;">trade history is available via <code>GET /v1/runs/${esc(run.id)}</code> in a future endpoint.</div>`;
+    $("bp-trades").innerHTML = `<div style="padding: 16px; color: var(--ink-3); font-size: 13px;">trade history is available via <code>GET /api/v1/runs/${esc(run.id)}</code> in a future endpoint.</div>`;
 
     drawEquityChart(snap, results, run);
   }

@@ -34,7 +34,7 @@ func (h *handlers) registerTrades(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "queueTrade",
 		Method:      http.MethodPost,
-		Path:        "/v1/runs/{id}/trades",
+		Path:        "/api/v1/runs/{id}/trades",
 		Summary:     "Queue a market order for the next /step",
 		Description: "Inserts an order into the run's queue. The order is " +
 			"validated against the scenario universe, leverage cap, and " +

@@ -48,7 +48,7 @@ func (h *handlers) mountKeyIssuer(app *fiber.App) {
 		},
 	})
 
-	app.Post("/v1/keys", keysLimiter, issueKey)
+	app.Post("/api/v1/keys", keysLimiter, issueKey)
 }
 
 func issueKey(c *fiber.Ctx) error {

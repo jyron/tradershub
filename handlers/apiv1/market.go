@@ -37,7 +37,7 @@ func (h *handlers) registerMarket(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getRunMarket",
 		Method:      http.MethodGet,
-		Path:        "/v1/runs/{id}/market",
+		Path:        "/api/v1/runs/{id}/market",
 		Summary:     "Get market data visible to this run",
 		Description: "Returns the most recent N bars per requested symbol, " +
 			"only including bars with timestamp ≤ run.sim_time. " +

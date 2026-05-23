@@ -12,8 +12,8 @@ import (
 // an X-API-Key. Both endpoints return data that is already public by
 // design (the published run_leaderboard table).
 func (h *handlers) mountLeaderboardPublic(app *fiber.App) {
-	app.Get("/v1/leaderboard/scenarios", listLeaderboardScenarios)
-	app.Get("/v1/leaderboard", getLeaderboard)
+	app.Get("/api/v1/leaderboard/scenarios", listLeaderboardScenarios)
+	app.Get("/api/v1/leaderboard", getLeaderboard)
 }
 
 type leaderboardEntry struct {

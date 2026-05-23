@@ -13,7 +13,7 @@ Requirements:
 
 Usage:
     # 1. Get a BotTrade API key (no signup):
-    #      curl -X POST https://api.bot-trade.org/v1/keys
+    #      curl -X POST https://bot-trade.org/api/v1/keys
     export BOT_API_KEY=<the api_key from above>
 
     # 2. Get an Anthropic key from https://console.anthropic.com
@@ -44,7 +44,7 @@ from urllib3.util.retry import Retry
 
 
 # =============================================================================
-# BotTrade API client (minimal — see /docs/agent.md for the full surface).
+# BotTrade API client (minimal — see /api/agent.md for the full surface).
 # =============================================================================
 
 class APIError(RuntimeError):
@@ -55,7 +55,7 @@ class APIError(RuntimeError):
 
 
 class BotTradeClient:
-    def __init__(self, api_key: str, base: str = "https://api.bot-trade.org"):
+    def __init__(self, api_key: str, base: str = "https://bot-trade.org"):
         self.base = base.rstrip("/")
         self.s = requests.Session()
         self.s.headers["X-API-Key"] = api_key
@@ -78,36 +78,36 @@ class BotTradeClient:
         raise APIError(r.status_code, detail)
 
     def get_scenario(self, slug: str) -> dict:
-        return self._req("GET", f"/v1/scenarios/{slug}")["scenario"]
+        return self._req("GET", f"/api/v1/scenarios/{slug}")["scenario"]
 
     def start_run(self, slug: str) -> dict:
-        return self._req("POST", "/v1/runs", json={"scenario_slug": slug})["run"]
+        return self._req("POST", "/api/v1/runs", json={"scenario_slug": slug})["run"]
 
     def get_run(self, run_id: str) -> dict:
-        return self._req("GET", f"/v1/runs/{run_id}")
+        return self._req("GET", f"/api/v1/runs/{run_id}")
 
     def get_market(self, run_id: str, symbols: list[str], lookback: int) -> dict:
-        return self._req("GET", f"/v1/runs/{run_id}/market", params={
+        return self._req("GET", f"/api/v1/runs/{run_id}/market", params={
             "symbols": ",".join(symbols),
             "lookback": lookback,
         })
 
     def queue_trade(self, run_id: str, symbol: str, side: str, qty: int, reasoning: str) -> dict:
-        return self._req("POST", f"/v1/runs/{run_id}/trades", json={
+        return self._req("POST", f"/api/v1/runs/{run_id}/trades", json={
             "symbol": symbol, "side": side, "quantity": qty, "reasoning": reasoning,
             "idempotency_key": str(uuid.uuid4()),
         })["order"]
 
     def step(self, run_id: str, count: int = 1) -> dict:
-        return self._req("POST", f"/v1/runs/{run_id}/step", json={
+        return self._req("POST", f"/api/v1/runs/{run_id}/step", json={
             "count": count, "idempotency_key": str(uuid.uuid4()),
         })
 
     def results(self, run_id: str) -> dict:
-        return self._req("GET", f"/v1/runs/{run_id}/results")["results"]
+        return self._req("GET", f"/api/v1/runs/{run_id}/results")["results"]
 
     def publish(self, run_id: str) -> dict:
-        return self._req("POST", f"/v1/runs/{run_id}/publish")
+        return self._req("POST", f"/api/v1/runs/{run_id}/publish")
 
 
 # =============================================================================
@@ -370,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="BotTrade API key. Defaults to $BOT_API_KEY.")
     p.add_argument("--anthropic-api-key", default=os.environ.get("ANTHROPIC_API_KEY"),
                    help="Anthropic API key. Defaults to $ANTHROPIC_API_KEY.")
-    p.add_argument("--api-base", default="https://api.bot-trade.org",
+    p.add_argument("--api-base", default="https://bot-trade.org",
                    help="Override for local testing.")
     p.add_argument("--scenario", default="tech-2024-q2",
                    help="Scenario slug to trade.")
@@ -390,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.bot_api_key:
         p.error("--bot-api-key or BOT_API_KEY env var required. "
-                "Get one: curl -X POST https://api.bot-trade.org/v1/keys")
+                "Get one: curl -X POST https://bot-trade.org/api/v1/keys")
     if not args.anthropic_api_key:
         p.error("--anthropic-api-key or ANTHROPIC_API_KEY env var required. "
                 "Get one at https://console.anthropic.com")

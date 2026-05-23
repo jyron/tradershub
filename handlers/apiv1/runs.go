@@ -39,7 +39,7 @@ func (h *handlers) registerRuns(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "createRun",
 		Method:      http.MethodPost,
-		Path:        "/v1/runs",
+		Path:        "/api/v1/runs",
 		Summary:     "Start a new run on a scenario",
 		Description: "Creates a run pinned to the scenario's current_version. " +
 			"sim_time starts at the first bar in the scenario timeline. " +
@@ -51,7 +51,7 @@ func (h *handlers) registerRuns(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getRun",
 		Method:      http.MethodGet,
-		Path:        "/v1/runs/{id}",
+		Path:        "/api/v1/runs/{id}",
 		Summary:     "Get the current state of a run",
 		Description: "Returns the run, all open positions, all queued (unfilled) " +
 			"orders, and the most recent equity sample. Only the run's own " +

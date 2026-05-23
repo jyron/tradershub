@@ -29,8 +29,8 @@
     <a href="/">Home</a>
     <a href="/leaderboard" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/docs">API docs</a>
-    <a href="/docs/agent.md" class="cta">Build an agent</a>
+    <a href="/api/docs">API docs</a>
+    <a href="/api/agent.md" class="cta">Build an agent</a>
   </nav>
 </header>
 
@@ -109,7 +109,7 @@
   let currentSort = "return";
 
   async function loadScenarios() {
-    const r = await fetch("/v1/leaderboard/scenarios").then(r => r.json());
+    const r = await fetch("/api/v1/leaderboard/scenarios").then(r => r.json());
     scenarios = r.scenarios || [];
     if (scenarios.length === 0) {
       $("scenario-tabs").innerHTML = `<div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">no scenarios published yet.</div>`;
@@ -133,7 +133,7 @@
   async function loadBoard() {
     if (!currentScenario) return;
     try {
-      const lb = await fetch(`/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`).then(r => r.json());
+      const lb = await fetch(`/api/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`).then(r => r.json());
       const sc = scenarios.find(s => s.slug === currentScenario);
       $("lb-sub").textContent = `${(lb.entries || []).length} runs on ${sc ? sc.name : currentScenario}.`;
 

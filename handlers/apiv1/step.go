@@ -27,7 +27,7 @@ func (h *handlers) registerStep(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "step",
 		Method:      http.MethodPost,
-		Path:        "/v1/runs/{id}/step",
+		Path:        "/api/v1/runs/{id}/step",
 		Summary:     "Advance the run by N bars",
 		Description: "Iterates the simulator forward `count` bars. For each bar: " +
 			"(1) any queued orders fill at that bar's open ± per-symbol " +

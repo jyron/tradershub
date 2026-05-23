@@ -34,7 +34,7 @@ func (h *handlers) registerScenarios(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "listScenarios",
 		Method:      http.MethodGet,
-		Path:        "/v1/scenarios",
+		Path:        "/api/v1/scenarios",
 		Summary:     "List available scenarios",
 		Description: "Returns every scenario currently in status `ready` " +
 			"or `archived`. Drafts (still being provisioned) are hidden.",
@@ -44,7 +44,7 @@ func (h *handlers) registerScenarios(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getScenario",
 		Method:      http.MethodGet,
-		Path:        "/v1/scenarios/{id}",
+		Path:        "/api/v1/scenarios/{id}",
 		Summary:     "Get one scenario by id or slug",
 		Description: "Returns the full scenario including the universe, the " +
 			"per-symbol slippage tiers, the leverage cap, and the date " +

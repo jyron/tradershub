@@ -1,13 +1,7 @@
-// Package apiv1 implements the Benchmark API at /v1/* using huma.
+// Package apiv1 implements the Benchmark API. All routes live under /api/*.
 //
-// Design choice: we use huma instead of plain Fiber handlers because huma's
-// type-first model GUARANTEES the OpenAPI spec, request validation, and
-// the live behavior are always in sync. The Go request/response structs ARE
-// the schema. There is no separately-maintained .yaml file that can drift.
-//
-// All operations live under /v1/* and require the RequireAPIKeyV1 middleware
-// (huma-style) attached at Mount-time. The auto-generated docs are served at
-// /docs (Swagger UI) and /openapi.json (machine-readable spec), both public.
+// Type-first via huma: the Go request/response structs ARE the OpenAPI
+// schema, so the spec, validation, and live behavior cannot drift apart.
 package apiv1
 
 import (
@@ -18,35 +12,27 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// Mount attaches the entire v1 API + its docs to the given Fiber app.
-// Callers (main.go) provide an already-constructed ScenarioEngine; this
-// function does not allocate one so the same engine instance can be shared
-// with background jobs.
+// Mount attaches the API + its docs to the given Fiber app. Callers provide
+// an already-constructed ScenarioEngine so the same engine instance is
+// shared with background jobs.
 func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
 	cfg.Info.Description = "" +
-		"The BotTrade Benchmark API lets an external AI trading agent run " +
+		"The BotTrade Benchmark API lets an external trading agent run " +
 		"against frozen historical-bars scenarios and receive a graded " +
-		"return. Agents loop: GET /v1/runs/{id}/market → POST /v1/runs/{id}/trades " +
-		"→ POST /v1/runs/{id}/step → GET /v1/runs/{id}/results.\n\n" +
-		"Auth: every /v1/* route requires `X-API-Key`. The simplest way to " +
-		"get a key is `curl -X POST https://api.bot-trade.org/v1/keys` — no " +
-		"body required, returns one immediately. Alternatively, register a " +
-		"hosted bot at https://bot-trade.org/submit.\n\n" +
-		"For a narrative onboarding guide, see /docs/agent.md."
-	// Default Docs path is /docs; default OpenAPI path is /openapi.json.
-	// We override the OpenAPI path to /docs/openapi.json so the public surface
-	// is cleanly nested under /docs.
-	cfg.OpenAPIPath = "/docs/openapi"
+		"return. Agents loop: GET /api/v1/runs/{id}/market → POST /api/v1/runs/{id}/trades " +
+		"→ POST /api/v1/runs/{id}/step → GET /api/v1/runs/{id}/results.\n\n" +
+		"Auth: most /api/v1/* routes require `X-API-Key`. Mint one with " +
+		"`curl -X POST https://bot-trade.org/api/v1/keys` — no body, no signup. " +
+		"GET /api/v1/scenarios and the leaderboard endpoints are public.\n\n" +
+		"For a narrative integration guide see /api/agent.md."
+	cfg.OpenAPIPath = "/api/openapi"
+	cfg.DocsPath = "/api/docs"
 
 	h := &handlers{Engine: engine}
 
 	// Public, no-auth fiber routes mounted BEFORE huma so they win the
-	// route-table lookup for their exact paths:
-	//   POST /v1/keys                  — self-serve key issuer
-	//   GET  /v1/leaderboard           — public per-scenario ranking
-	//   GET  /v1/leaderboard/scenarios — public scenario picker
-	//   GET  /v1/runs/{id}/public      — read-only view of a published run
+	// route-table lookup for their exact paths.
 	h.mountKeyIssuer(app)
 	h.mountLeaderboardPublic(app)
 	h.mountPublicRun(app)
@@ -54,7 +40,6 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	api := humafiber.NewV2(app, cfg)
 	api.UseMiddleware(h.authMiddleware(api))
 
-	// Register all huma operations (these are X-API-Key-protected).
 	h.registerScenarios(api)
 	h.registerRuns(api)
 	h.registerMarket(api)
@@ -63,8 +48,6 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	h.registerResults(api)
 	h.registerPublish(api)
 
-	// Static docs that DON'T go through huma — served as plain markdown / text
-	// at the fiber level so they bypass huma's content negotiation.
 	h.mountStaticDocs(app)
 }
 

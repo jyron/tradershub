@@ -11,7 +11,7 @@ Requirements:
 
 Usage:
     # Get a key (no signup, no body required):
-    #   curl -X POST https://api.bot-trade.org/v1/keys
+    #   curl -X POST https://bot-trade.org/api/v1/keys
     export BOT_API_KEY=...
     python test_bot.py              # uses default scenario + strategy
     python test_bot.py --scenario tech-2024-q2 --strategy equal_weight
@@ -44,7 +44,7 @@ except ImportError:
     sys.exit("error: requests not installed. run: pip install requests")
 
 
-API_BASE = os.environ.get("BOTTRADE_API", "https://api.bot-trade.org")
+API_BASE = os.environ.get("BOTTRADE_API", "https://bot-trade.org")
 DEFAULT_SCENARIO = "tech-2024-q2"
 
 
@@ -83,28 +83,28 @@ class BotTradeClient:
     # --- endpoints -----------------------------------------------------------
 
     def list_scenarios(self) -> list[dict]:
-        return self._request("GET", "/v1/scenarios")["scenarios"]
+        return self._request("GET", "/api/v1/scenarios")["scenarios"]
 
     def get_scenario(self, id_or_slug: str) -> dict:
-        return self._request("GET", f"/v1/scenarios/{id_or_slug}")["scenario"]
+        return self._request("GET", f"/api/v1/scenarios/{id_or_slug}")["scenario"]
 
     def start_run(self, scenario_slug: str) -> dict:
-        return self._request("POST", "/v1/runs",
+        return self._request("POST", "/api/v1/runs",
                              json={"scenario_slug": scenario_slug})["run"]
 
     def get_run(self, run_id: str) -> dict:
-        return self._request("GET", f"/v1/runs/{run_id}")
+        return self._request("GET", f"/api/v1/runs/{run_id}")
 
     def get_market(self, run_id: str, symbols: list[str], lookback: int = 50) -> dict:
         return self._request(
-            "GET", f"/v1/runs/{run_id}/market",
+            "GET", f"/api/v1/runs/{run_id}/market",
             params={"symbols": ",".join(symbols), "lookback": lookback},
         )
 
     def queue_trade(self, run_id: str, symbol: str, side: str, quantity: int,
                     reasoning: str = "") -> dict:
         return self._request(
-            "POST", f"/v1/runs/{run_id}/trades",
+            "POST", f"/api/v1/runs/{run_id}/trades",
             json={
                 "symbol": symbol, "side": side, "quantity": quantity,
                 "reasoning": reasoning,
@@ -114,15 +114,15 @@ class BotTradeClient:
 
     def step(self, run_id: str, count: int = 1) -> dict:
         return self._request(
-            "POST", f"/v1/runs/{run_id}/step",
+            "POST", f"/api/v1/runs/{run_id}/step",
             json={"count": count, "idempotency_key": str(uuid.uuid4())},
         )
 
     def get_results(self, run_id: str) -> dict:
-        return self._request("GET", f"/v1/runs/{run_id}/results")["results"]
+        return self._request("GET", f"/api/v1/runs/{run_id}/results")["results"]
 
     def publish(self, run_id: str) -> dict:
-        return self._request("POST", f"/v1/runs/{run_id}/publish")
+        return self._request("POST", f"/api/v1/runs/{run_id}/publish")
 
 
 # -----------------------------------------------------------------------------
@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.api_key:
         p.error("--api-key or BOT_API_KEY env var required. "
-                "Get a key with: curl -X POST https://api.bot-trade.org/v1/keys")
+                "Get a key with: curl -X POST https://bot-trade.org/api/v1/keys")
 
     client = BotTradeClient(args.api_key, args.api_base)
 

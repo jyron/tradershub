@@ -26,7 +26,7 @@ func (h *handlers) registerPublish(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "publish",
 		Method:      http.MethodPost,
-		Path:        "/v1/runs/{id}/publish",
+		Path:        "/api/v1/runs/{id}/publish",
 		Summary:     "Publish a run to the public leaderboard",
 		Description: "Computes results if not yet computed, then upserts a row " +
 			"into the per-scenario leaderboard. Re-publishing the same " +
