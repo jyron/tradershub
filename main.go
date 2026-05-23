@@ -62,6 +62,13 @@ func main() {
 
 	apiv1.Mount(app, engine)
 
+	// Clean-URL aliases for the marketing site. Registered BEFORE app.Static
+	// so they win the route match. The .html paths still work via app.Static
+	// for backwards compatibility with anything that linked to them.
+	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
+	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
+	app.Get("/run/:id", func(c *fiber.Ctx) error { return c.SendFile("./static/bots.html") })
+
 	app.Static("/", "./static")
 
 	log.Printf("Listening on :%s", cfg.Port)

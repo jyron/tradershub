@@ -20,10 +20,11 @@
     <span class="here" id="crumb-name">&hellip;</span>
   </div>
   <nav>
-    <a href="/">Arena</a>
+    <a href="/">Home</a>
     <a href="/leaderboard">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/docs/agent.md">API docs</a>
+    <a href="https://api.bot-trade.org/docs">API docs</a>
+    <a href="https://api.bot-trade.org/docs/agent.md" class="cta">Build an agent</a>
   </nav>
 </header>
 
@@ -108,8 +109,13 @@
     return t.slice(0, 2).toUpperCase();
   };
 
+  // Accept either /bots.html?id=<run_id> or /run/<run_id>.
   const params = new URLSearchParams(window.location.search);
-  const runId = params.get("id");
+  let runId = params.get("id");
+  if (!runId) {
+    const m = window.location.pathname.match(/^\/run\/([^/]+)$/);
+    if (m) runId = m[1];
+  }
 
   if (!runId) {
     $("page-status").innerHTML = `<div style="padding: 40px; color: var(--ink-3); text-align: center;">no run id. <a href="/leaderboard" style="color: var(--accent);">browse the leaderboard</a> to pick one.</div>`;

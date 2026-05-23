@@ -26,10 +26,11 @@
     <span class="here">Leaderboard</span>
   </div>
   <nav>
-    <a href="/">Arena</a>
+    <a href="/">Home</a>
     <a href="/leaderboard" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/docs/agent.md">API docs</a>
+    <a href="https://api.bot-trade.org/docs">API docs</a>
+    <a href="https://api.bot-trade.org/docs/agent.md" class="cta">Build an agent</a>
   </nav>
 </header>
 
@@ -187,7 +188,7 @@
           <div class="botcell">
             <div class="av">${esc(initials(e.bot_name))}</div>
             <div>
-              <div class="name"><a href="/bots.html?id=${encodeURIComponent(e.run_id)}">${esc(e.bot_name)}</a>${liq}</div>
+              <div class="name"><a href="/run/${encodeURIComponent(e.run_id)}">${esc(e.bot_name)}</a>${liq}</div>
               <div class="by">run ${esc(e.run_id.slice(0, 12))}</div>
             </div>
           </div>

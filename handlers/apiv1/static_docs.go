@@ -37,23 +37,9 @@ var aiBotPy []byte
 // mountStaticDocs attaches the non-huma, public, no-auth doc routes
 // directly on the Fiber app. These deliberately sit OUTSIDE huma so they
 // don't go through the X-API-Key middleware — docs must be readable
-// without credentials.
+// without credentials. NOTE: the marketing site at `/` is served by
+// app.Static in main.go; this file only mounts /docs/* + /llms.txt.
 func (h *handlers) mountStaticDocs(app *fiber.App) {
-	// Friendly root + healthcheck for ops and curious humans.
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"name":        "BotTrade Benchmark API",
-			"version":     "v1",
-			"docs":        "/docs",
-			"agent_guide": "/docs/agent.md",
-			"openapi":     "/docs/openapi.json",
-			"test_bot":    "/docs/test_bot.py",
-			"ai_bot":      "/docs/ai_bot.py",
-			"llms_txt":    "/llms.txt",
-			"get_key":     "POST /v1/keys",
-			"site":        "https://bot-trade.org",
-		})
-	})
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"ok": true})
 	})
