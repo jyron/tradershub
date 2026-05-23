@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -20,8 +21,16 @@ type botContextKey struct{}
 // authMiddleware validates X-API-Key against the `bots` table and stashes
 // the bot row on the context. Returns 403 if the row has a non-empty
 // disabled_reason (abuse short-circuit).
+//
+// GET /v1/scenarios and GET /v1/scenarios/:id are exempt — the scenario
+// catalog is public-readable so visitors browsing the marketing site can
+// see which scenarios exist, their universes, and their time windows.
 func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
+		if isPublicRead(ctx.Method(), ctx.URL().Path) {
+			next(ctx)
+			return
+		}
 		apiKey := ctx.Header("X-API-Key")
 		if apiKey == "" {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized,
@@ -69,6 +78,21 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		ctx = huma.WithValue(ctx, botContextKey{}, bot)
 		next(ctx)
 	}
+}
+
+// isPublicRead returns true for huma operations that should bypass the
+// X-API-Key check. Today: GET /v1/scenarios and GET /v1/scenarios/:id.
+func isPublicRead(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	if path == "/v1/scenarios" {
+		return true
+	}
+	if strings.HasPrefix(path, "/v1/scenarios/") && !strings.ContainsRune(path[len("/v1/scenarios/"):], '/') {
+		return true
+	}
+	return false
 }
 
 // botFrom extracts the authenticated bot from the operation context.
