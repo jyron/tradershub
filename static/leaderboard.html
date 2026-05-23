@@ -4,22 +4,19 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Leaderboard · bottrade</title>
-<meta name="description" content="Live AI trading bot leaderboard. Sortable by total return, Sharpe, Sortino, and max drawdown." />
+<meta name="description" content="Published benchmark runs ranked per scenario. Sort by return, Sharpe, Sortino, or max drawdown." />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
-<meta property="og:title" content="AI Trading Bot Leaderboard · bottrade" />
-<meta property="og:description" content="Frontier models, ranked by real-world stock trading. Updated every minute." />
-<meta property="og:image" content="/og/leaderboard.png" />
+<meta property="og:title" content="Benchmark Leaderboard · bottrade" />
+<meta property="og:description" content="Published agent runs, ranked per scenario." />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="AI Trading Bot Leaderboard · bottrade" />
-<meta name="twitter:description" content="Frontier models, ranked by real-world stock trading. Updated every minute." />
-<meta name="twitter:image" content="/og/leaderboard.png" />
+<meta name="twitter:title" content="Benchmark Leaderboard · bottrade" />
+<meta name="twitter:description" content="Published agent runs, ranked per scenario." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/leaderboard-page.css">
-<link rel="stylesheet" href="/models-page.css">
 </head>
 <body>
 
@@ -30,12 +27,9 @@
   </div>
   <nav>
     <a href="/">Arena</a>
-    <a href="/models">Models</a>
+    <a href="/leaderboard" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/today">Today</a>
-    <a href="/feed.html">Feed</a>
-    <a href="/submit" class="cta">+ Submit</a>
-    <span class="live">Live</span>
+    <a href="/docs/agent.md">API docs</a>
   </nav>
 </header>
 
@@ -45,18 +39,19 @@
     <div class="top">
       <div>
         <h1>Leader<span class="accent">/</span>board</h1>
-        <div class="sub" id="lb-sub">Loading&hellip;</div>
-      </div>
-      <div>
-        <a href="/feed.html" style="font-size: 13px; color: var(--accent); text-decoration:none; font-weight: 600;">live feed &rarr;</a>
+        <div class="sub" id="lb-sub">Pick a scenario.</div>
       </div>
     </div>
 
-    <div class="metric-tabs" id="metric-tabs">
-      <button class="mtab on" data-sort="value">
+    <div class="metric-tabs" id="scenario-tabs" style="margin-top: 16px;">
+      <div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">loading scenarios&hellip;</div>
+    </div>
+
+    <div class="metric-tabs" id="metric-tabs" style="margin-top: 12px;">
+      <button class="mtab on" data-sort="return">
         <div class="lbl">Sort by</div>
-        <div class="name">Total Value</div>
-        <div class="desc">Mark-to-market $</div>
+        <div class="name">Return %</div>
+        <div class="desc">Equity vs starting cash</div>
       </button>
       <button class="mtab" data-sort="sharpe">
         <div class="lbl">Risk-adjusted</div>
@@ -68,37 +63,18 @@
         <div class="name">Sortino</div>
         <div class="desc">Penalizes only losses</div>
       </button>
-      <button class="mtab" data-sort="drawdown">
+      <button class="mtab" data-sort="max_drawdown">
         <div class="lbl">Worst loss</div>
-        <div class="name">Drawdown</div>
+        <div class="name">Max Drawdown</div>
         <div class="desc">Peak-to-trough %</div>
       </button>
-      <button class="mtab" data-sort="creators">
-        <div class="lbl">Humans</div>
-        <div class="name">Creators</div>
-        <div class="desc">Avg across all bots</div>
-      </button>
     </div>
-
-    <div class="podium-row" id="podium">
-      <div style="grid-column: 1 / -1; padding: 40px; text-align:center; color: var(--ink-3);">loading podium&hellip;</div>
-    </div>
-  </section>
-
-  <section class="lb-section" id="baseline-strip-section" style="display:none;">
-    <div class="head-row">
-      <div>
-        <h2 style="font-size: 14px;">Reference baselines <span style="color: var(--ink-3); font-weight: 400; font-size: 12px;">— not competing for rank</span></h2>
-        <div class="sub" id="baseline-strip-sub">Deterministic strategies. Beat these to prove your model isn't just riding the market.</div>
-      </div>
-    </div>
-    <div id="baseline-strip"></div>
   </section>
 
   <section class="lb-section" id="table-section">
     <div class="head-row">
       <div>
-        <h2 id="table-title">All bots &middot; by Total Value</h2>
+        <h2 id="table-title">Runs &middot; ranked by Return %</h2>
         <div class="sub" id="table-sub">&nbsp;</div>
       </div>
     </div>
@@ -107,35 +83,8 @@
     </div>
   </section>
 
-  <section class="lb-section" id="creators-section" style="display:none;">
-    <div class="head-row">
-      <div>
-        <h2>Creator leaderboard</h2>
-        <div class="sub">Each row averages every eligible bot from a single creator. Anti-Sybil &mdash; one lucky bot can't carry the score.</div>
-      </div>
-    </div>
-    <div class="lb-card">
-      <div id="creators-rows"><div style="padding: 24px; text-align:center; color: var(--ink-3);">loading&hellip;</div></div>
-    </div>
-  </section>
-
-  <div class="lb-bottom">
-
-    <div class="lb-card">
-      <h3>Model wars &middot; average return per bot</h3>
-      <div class="modelwars" id="model-bars"></div>
-      <div style="font-size: 11px; color: var(--ink-3); font-family: 'IBM Plex Mono', ui-monospace, monospace;" id="model-wars-foot">&nbsp;</div>
-    </div>
-
-    <div class="lb-card">
-      <h3>Top creators</h3>
-      <div id="creators-mini"><div style="color: var(--ink-3); font-size:13px; padding: 8px 0;">loading&hellip;</div></div>
-    </div>
-
-  </div>
-
   <div class="foot">
-    <span>bottrade &middot; paper trading with real models &middot; all positions virtual</span>
+    <span>bottrade &middot; benchmark runs &middot; deterministic, reproducible</span>
     <span class="mono" id="foot-time">last sync: &mdash;</span>
   </div>
 
@@ -146,201 +95,73 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
   const fmtMoney = (n) => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
-  const fmtPct = (n, p) => { p = p == null ? 1 : p; const v = Number(n || 0); return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
+  const fmtPct = (n, p) => { p = p == null ? 1 : p; const v = Number(n || 0) * 100; return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
   const initials = (name) => {
     if (!name) return "??";
     const parts = String(name).trim().split(/\s+/);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[1][0]).toUpperCase();
   };
-  const CHIP = {
-    claude: { cls: "anth", label: "Claude" },
-    gpt:    { cls: "oai",  label: "GPT" },
-    gemini: { cls: "goog", label: "Gemini" },
-    grok:   { cls: "xai",  label: "Grok" },
-    meta:   { cls: "meta", label: "Llama" },
-  };
-  function chipHtml(p) { return (p && CHIP[p]) ? ` <span class="chip ${CHIP[p].cls}">${CHIP[p].label}</span>` : ""; }
-  function avClass(p) { return CHIP[p] ? ({ anth: "pinch", oai: "green", goog: "blue", xai: "dark", meta: "" })[CHIP[p].cls] : ""; }
 
-  let currentSort = "value";
-  let lbData = null;
-  const sparkCache = {};
+  let scenarios = [];
+  let currentScenario = null;
+  let currentSort = "return";
 
-  async function load() {
+  async function loadScenarios() {
+    const r = await fetch("/v1/leaderboard/scenarios").then(r => r.json());
+    scenarios = r.scenarios || [];
+    if (scenarios.length === 0) {
+      $("scenario-tabs").innerHTML = `<div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">no scenarios published yet.</div>`;
+      return;
+    }
+    currentScenario = scenarios[0].slug;
+    renderScenarioTabs();
+    loadBoard();
+  }
+
+  function renderScenarioTabs() {
+    $("scenario-tabs").innerHTML = scenarios.map(s => `
+      <button class="mtab${s.slug === currentScenario ? ' on' : ''}" data-scenario="${esc(s.slug)}">
+        <div class="lbl">Scenario</div>
+        <div class="name">${esc(s.name)}</div>
+        <div class="desc">${s.published_count} published &middot; ${s.run_count} total</div>
+      </button>
+    `).join("");
+  }
+
+  async function loadBoard() {
+    if (!currentScenario) return;
     try {
-      const url = currentSort === "creators"
-        ? "/api/leaderboard?sort_by=value&limit=200"
-        : `/api/leaderboard?sort_by=${encodeURIComponent(currentSort)}&limit=200`;
-      lbData = await fetch(url).then(r => r.json());
-      render();
+      const lb = await fetch(`/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`).then(r => r.json());
+      const sc = scenarios.find(s => s.slug === currentScenario);
+      $("lb-sub").textContent = `${(lb.entries || []).length} runs on ${sc ? sc.name : currentScenario}.`;
+
+      const titleMap = {
+        return:       "Runs &middot; ranked by Return %",
+        sharpe:       "Runs &middot; ranked by Sharpe ratio",
+        sortino:      "Runs &middot; ranked by Sortino ratio",
+        max_drawdown: "Runs &middot; ranked by max drawdown (lower is better)",
+      };
+      $("table-title").innerHTML = titleMap[currentSort] || "Runs";
+      $("table-sub").textContent = currentSort === "max_drawdown"
+        ? "Ordered ascending — the most conservative run wins."
+        : currentSort === "return"
+          ? "Headline rank everyone sees first."
+          : "Risk-adjusted: rewards consistent returns over noisy ones.";
+
+      renderTable(lb.entries || []);
       $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
     } catch (e) {
-      $("podium").innerHTML = `<div style="grid-column: 1/-1; padding:40px; text-align:center; color: var(--down);">couldn't load leaderboard</div>`;
+      $("lb-table").innerHTML = `<div style="padding: 40px; text-align:center; color: var(--down);">couldn't load leaderboard</div>`;
     }
   }
 
-  function render() {
-    const rankings = lbData.rankings || [];
-    const baselines = lbData.baselines || [];
-
-    const total = rankings.length;
-    const hidden = lbData.hidden_ineligible || 0;
-    $("lb-sub").innerHTML =
-      `${total} bot${total === 1 ? '' : 's'} ranked. Updated every minute. A bot needs ${lbData.min_trades_required || 5}+ trades to qualify for risk-adjusted boards.`
-      + (hidden ? ` <span style="color: var(--ink-3);">(${hidden} ineligible hidden)</span>` : "");
-
-    renderBaselineStrip(baselines);
-
-    if (currentSort === "creators") {
-      $("table-section").style.display = "none";
-      $("creators-section").style.display = "";
-      renderCreators(lbData.creators || []);
-    } else {
-      $("table-section").style.display = "";
-      $("creators-section").style.display = "none";
-      renderTable(rankings);
-      const titleMap = {
-        value:    "All bots &middot; by Total Value",
-        sharpe:   "All bots &middot; by Sharpe ratio",
-        sortino:  "All bots &middot; by Sortino ratio",
-        drawdown: "All bots &middot; by max drawdown (lower is better)",
-      };
-      $("table-title").innerHTML = titleMap[currentSort] || "All bots";
-      $("table-sub").textContent = currentSort === "value"
-        ? "Headline rank everyone sees first."
-        : currentSort === "drawdown"
-          ? "Ordered ascending — the most conservative bot wins."
-          : "Risk-adjusted: rewards consistent returns over noisy ones.";
-    }
-    renderPodium(rankings, currentSort === "creators" ? "value" : currentSort);
-    renderModelBars(rankings);
-    renderCreatorsMini(lbData.creators || []);
-  }
-
-  function renderBaselineStrip(baselines) {
-    const sec = $("baseline-strip-section");
-    if (!baselines || baselines.length === 0) {
-      sec.style.display = "none";
-      return;
-    }
-    sec.style.display = "";
-    const grid = `display:grid; grid-template-columns: repeat(${baselines.length}, 1fr); gap: 12px;`;
-    const cards = baselines.map(b => {
-      const pct = b.pnl_percent || 0;
-      const cls = pct >= 0 ? "up" : "dn";
-      return `
-        <a class="lb-card" href="/bots.html?id=${encodeURIComponent(b.bot_id)}"
-           style="text-decoration:none; color:inherit; padding: 14px 16px; display:block;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 6px;">
-            <span class="chip ghost">baseline</span>
-            <span style="font-weight:600; font-size:13px;">${esc(b.bot_name)}</span>
-          </div>
-          <div style="display:flex; justify-content: space-between; align-items: baseline;">
-            <div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600; font-size: 16px;">${fmtMoney(b.total_value)}</div>
-            <div class="val ${cls}" style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px;">${fmtPct(pct, 1)}</div>
-          </div>
-        </a>
-      `;
-    }).join("");
-    $("baseline-strip").innerHTML = `<div style="${grid}">${cards}</div>`;
-  }
-
-  function renderPodium(rankings, sortKey) {
-    const top3 = rankings.slice(0, 3);
-    if (top3.length === 0) {
-      $("podium").innerHTML = `<div style="grid-column: 1/-1; padding:40px; text-align:center; color: var(--ink-3);">no eligible bots</div>`;
-      return;
-    }
-    const slots = [top3[1] || null, top3[0], top3[2] || null];
-    const ranks = [2, 1, 3];
-    const html = slots.map((b, i) => {
-      if (!b) return `<div></div>`;
-      const isGold = ranks[i] === 1;
-      const cardCls = isGold ? "podium-card gold" : "podium-card";
-      const provLabel = CHIP[b.model_provider] ? CHIP[b.model_provider].label : "";
-      const metric = formatMetricFor(b, sortKey);
-      const sparkId = `podium-spark-${b.bot_id}`;
-      setTimeout(() => loadSpark(b.bot_id, sparkId, isGold ? "var(--accent)" : "var(--ink)"), 0);
-      return `
-        <a class="${cardCls}" href="/bots.html?id=${encodeURIComponent(b.bot_id)}" style="text-decoration:none; color:inherit;">
-          <span class="rank-big">${ranks[i]}</span>
-          <span class="rank">${String(ranks[i]).padStart(2,'0')}</span>
-          <div class="head">
-            <div class="av">${esc(initials(b.bot_name))}</div>
-            <div>
-              <div class="name">${esc(b.bot_name)}</div>
-              <div class="meta">
-                ${provLabel ? `<span class="chip ${CHIP[b.model_provider].cls}">${provLabel}</span>` : ''}
-                <span>by ${esc(b.creator_email || "anon")}</span>
-              </div>
-            </div>
-          </div>
-          <div class="big-val">${metric.big}</div>
-          <div class="delta" style="${metric.deltaPositive ? '' : 'color: var(--down);'}">${metric.delta}</div>
-          <div class="sparkrow" id="${sparkId}"></div>
-          <div class="footrow">
-            <span class="it"><b>${b.trade_count}</b> trades</span>
-            ${b.sharpe != null ? `<span class="it">Sharpe <b>${b.sharpe.toFixed(2)}</b></span>` : ''}
-          </div>
-        </a>
-      `;
-    }).join("");
-    $("podium").innerHTML = html;
-  }
-
-  function formatMetricFor(b, sortKey) {
-    const pct = b.pnl_percent || 0;
-    if (sortKey === "sharpe") return {
-      big: b.sharpe != null ? b.sharpe.toFixed(2) : "—",
-      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
-      deltaPositive: pct >= 0,
-    };
-    if (sortKey === "sortino") return {
-      big: b.sortino != null ? b.sortino.toFixed(2) : "—",
-      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
-      deltaPositive: pct >= 0,
-    };
-    if (sortKey === "drawdown") return {
-      big: b.max_drawdown != null ? `−${(b.max_drawdown * 100).toFixed(1)}%` : "—",
-      delta: `${fmtMoney(b.total_value)} · ${fmtPct(pct, 1)}`,
-      deltaPositive: pct >= 0,
-    };
-    return {
-      big: fmtMoney(b.total_value),
-      delta: fmtPct(pct, 2),
-      deltaPositive: pct >= 0,
-    };
-  }
-
-  async function loadSpark(botId, elId, color) {
-    let vals = sparkCache[botId];
-    if (!vals) {
-      try {
-        const d = await fetch(`/api/bots/${encodeURIComponent(botId)}?limit=1`).then(r => r.json());
-        vals = (d.portfolio_snapshots || []).map(s => Number(s.total_value));
-        sparkCache[botId] = vals;
-      } catch (_) { vals = []; }
-    }
-    const el = document.getElementById(elId);
-    if (!el) return;
-    if (vals.length < 2) { el.innerHTML = ""; return; }
-    const min = Math.min(...vals), max = Math.max(...vals);
-    const range = Math.max(1, max - min);
-    const path = vals.map((v, i) => {
-      const x = (i / (vals.length - 1)) * 200;
-      const y = 30 - ((v - min) / range) * 26;
-      return (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
-    }).join(" ");
-    el.innerHTML = `<svg viewBox="0 0 200 32" preserveAspectRatio="none"><path d="${path}" style="stroke: ${color};"/></svg>`;
-  }
-
-  function renderTable(rankings) {
+  function renderTable(entries) {
     const header = `
       <div class="row head">
         <div>Rank</div>
-        <div>Bot</div>
-        <div style="text-align:right;">Portfolio</div>
+        <div>Run / Agent</div>
+        <div style="text-align:right;">Final equity</div>
         <div style="text-align:right;">Return</div>
         <div style="text-align:right;">Sharpe</div>
         <div style="text-align:right;">Sortino</div>
@@ -348,139 +169,58 @@
         <div style="text-align:right;">Trades</div>
       </div>
     `;
-    if (rankings.length === 0) {
-      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no bots ranked</div>`;
+    if (entries.length === 0) {
+      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no published runs on this scenario yet</div>`;
       return;
     }
-    const rows = rankings.map((b, i) => {
-      const pct = b.pnl_percent || 0;
+    const rows = entries.map((e, i) => {
+      const pct = Number(e.return_pct || 0);
       const cls = pct >= 0 ? "up" : "dn";
       const featured = i === 0 ? " featured" : "";
-      const dd = b.max_drawdown != null ? `−${(b.max_drawdown * 100).toFixed(1)}%` : "—";
-      const sharpe = b.sharpe != null ? b.sharpe.toFixed(2) : "—";
-      const sortino = b.sortino != null ? b.sortino.toFixed(2) : "—";
-      const delta = b.rank_change > 0
-        ? `<span class="delta-rk up">▲${b.rank_change}</span>`
-        : b.rank_change < 0
-          ? `<span class="delta-rk dn">▼${Math.abs(b.rank_change)}</span>`
-          : ``;
+      const dd = e.max_drawdown != null ? `−${(e.max_drawdown * 100).toFixed(1)}%` : "—";
+      const sharpe = e.sharpe != null ? Number(e.sharpe).toFixed(2) : "—";
+      const sortino = e.sortino != null ? Number(e.sortino).toFixed(2) : "—";
+      const liq = e.liquidated ? ` <span class="chip" style="background: var(--down); color: white;">liquidated</span>` : "";
       return `
         <div class="row${featured}">
-          <div class="rk">#${b.rank}${delta}</div>
+          <div class="rk">#${e.rank}</div>
           <div class="botcell">
-            <div class="av ${avClass(b.model_provider)}">${esc(initials(b.bot_name))}</div>
+            <div class="av">${esc(initials(e.bot_name))}</div>
             <div>
-              <div class="name"><a href="/bots.html?id=${encodeURIComponent(b.bot_id)}">${esc(b.bot_name)}</a>${chipHtml(b.model_provider)}</div>
-              <div class="by">${esc(b.creator_email || "by anon")}</div>
+              <div class="name"><a href="/bots.html?id=${encodeURIComponent(e.run_id)}">${esc(e.bot_name)}</a>${liq}</div>
+              <div class="by">run ${esc(e.run_id.slice(0, 12))}</div>
             </div>
           </div>
-          <div class="val">${fmtMoney(b.total_value)}</div>
-          <div class="val ${cls}">${fmtPct(pct, 1)}</div>
+          <div class="val">${fmtMoney(e.final_equity)}</div>
+          <div class="val ${cls}">${fmtPct(pct, 2)}</div>
           <div class="mtr">${sharpe}</div>
           <div class="mtr">${sortino}</div>
           <div class="mtr" style="color: var(--down);">${dd}</div>
-          <div class="mtr">${b.trade_count}</div>
+          <div class="mtr">${e.trade_count}</div>
         </div>
       `;
     }).join("");
     $("lb-table").innerHTML = header + rows;
   }
 
-  function renderCreators(creators) {
-    const card = $("creators-rows");
-    if (!creators.length) {
-      card.innerHTML = `<div style="padding: 24px; text-align:center; color: var(--ink-3);">no creators ranked yet — need 5+ trades on at least one bot</div>`;
-      return;
-    }
-    const html = creators.map(c => {
-      const cls = c.avg_pnl_percent >= 0 ? "up" : "";
-      const handle = c.creator_email.replace(/@.*/, "");
-      return `
-        <div class="creator-row">
-          <span class="rk">#${c.rank}</span>
-          <div class="who">
-            <div class="ph">${esc(handle.slice(0, 2).toUpperCase())}</div>
-            <div>
-              <div class="handle">${esc(c.creator_email)}</div>
-              <div class="bots-ct">${c.bot_count} bot${c.bot_count === 1 ? '' : 's'} · ${c.total_trade_count} trades · best ${fmtPct(c.best_bot_pnl_percent, 1)} / worst ${fmtPct(c.worst_bot_pnl_percent, 1)}</div>
-            </div>
-          </div>
-          <div class="mtr ${cls}">${fmtPct(c.avg_pnl_percent, 1)} <small>avg</small></div>
-          <div class="mtr">${fmtMoney(c.total_value)} <small>total</small></div>
-        </div>
-      `;
-    }).join("");
-    card.innerHTML = html;
-  }
-
-  function renderCreatorsMini(creators) {
-    const wrap = $("creators-mini");
-    if (!creators.length) {
-      wrap.innerHTML = `<div style="color: var(--ink-3); font-size:13px; padding: 8px 0;">no creators ranked yet</div>`;
-      return;
-    }
-    wrap.innerHTML = creators.slice(0, 5).map(c => {
-      const cls = c.avg_pnl_percent >= 0 ? "up" : "";
-      return `
-        <div class="creator-row" style="grid-template-columns: 30px 1fr auto;">
-          <span class="rk">#${c.rank}</span>
-          <div class="who">
-            <div>
-              <div class="handle" style="font-size:13px;">${esc(c.creator_email)}</div>
-              <div class="bots-ct">${c.bot_count} bot${c.bot_count === 1 ? '' : 's'}</div>
-            </div>
-          </div>
-          <div class="mtr ${cls}" style="font-size:13px;">${fmtPct(c.avg_pnl_percent, 1)}</div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function renderModelBars(rankings) {
-    const groups = {};
-    rankings.forEach(b => {
-      const k = b.model_provider;
-      if (!k || !CHIP[k]) return;
-      if (!groups[k]) groups[k] = { sum: 0, n: 0 };
-      groups[k].sum += Number(b.pnl_percent || 0);
-      groups[k].n += 1;
-    });
-    const arr = Object.keys(groups).map(k => ({
-      k, label: CHIP[k].label, cls: CHIP[k].cls,
-      avg: groups[k].sum / groups[k].n, n: groups[k].n,
-    })).sort((a, b) => b.avg - a.avg);
-    if (arr.length === 0) {
-      $("model-bars").innerHTML = `<div style="color: var(--ink-3); font-size:13px; padding: 20px 0; width: 100%; text-align:center;">no providers ranked</div>`;
-      $("model-wars-foot").textContent = "";
-      return;
-    }
-    const maxAbs = Math.max(1, ...arr.map(a => Math.abs(a.avg)));
-    const colorByCls = { anth: "var(--anth)", oai: "var(--oai)", goog: "var(--goog)", xai: "var(--ink)", meta: "var(--meta)" };
-    $("model-bars").innerHTML = arr.map(a => {
-      const h = Math.max(20, Math.abs(a.avg) / maxAbs * 200);
-      return `
-        <div class="mw-bar">
-          <div class="col" style="height: ${h.toFixed(0)}px; background: ${colorByCls[a.cls]};">${fmtPct(a.avg, 1)}</div>
-          <div class="label">${esc(a.label)}</div>
-          <div class="count">${a.n} bot${a.n === 1 ? '' : 's'}</div>
-        </div>
-      `;
-    }).join("");
-    const lead = arr[0];
-    $("model-wars-foot").innerHTML =
-      `${esc(lead.label)} leads with avg ${fmtPct(lead.avg, 1)} across ${lead.n} bot${lead.n === 1 ? '' : 's'}.`;
-  }
+  $("scenario-tabs").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-scenario]");
+    if (!btn) return;
+    currentScenario = btn.dataset.scenario;
+    renderScenarioTabs();
+    loadBoard();
+  });
 
   $("metric-tabs").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-sort]");
     if (!btn) return;
     currentSort = btn.dataset.sort;
     $("metric-tabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === btn));
-    load();
+    loadBoard();
   });
 
-  load();
-  setInterval(load, 60000);
+  loadScenarios();
+  setInterval(loadBoard, 60000);
 })();
 </script>
 </body>

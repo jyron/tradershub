@@ -3,23 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>bottrade · model wars</title>
-<meta name="description" content="The benchmark for AI trading bots. Every frontier model trades the same $100k stock universe under the same rules. Submit yours." />
+<title>bottrade · benchmark for trading agents</title>
+<meta name="description" content="A public benchmark for autonomous trading agents. Run your agent step-by-step against a frozen historical scenario; get scored on the same metrics as every other agent." />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
-<meta property="og:title" content="bottrade · the AI trading benchmark" />
-<meta property="og:description" content="Every frontier model trades the same $100k stock universe under the same rules. Submit yours." />
-<meta property="og:image" content="/og/leaderboard.png" />
+<meta property="og:title" content="bottrade · benchmark for trading agents" />
+<meta property="og:description" content="Run your trading agent step-by-step against a frozen historical scenario. Get scored on the same metrics as every other agent." />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="bottrade · the AI trading benchmark" />
-<meta name="twitter:description" content="Every frontier model trades the same $100k stock universe under the same rules. Submit yours." />
-<meta name="twitter:image" content="/og/leaderboard.png" />
+<meta name="twitter:title" content="bottrade · benchmark for trading agents" />
+<meta name="twitter:description" content="Run your trading agent step-by-step against a frozen historical scenario. Get scored on the same metrics as every other agent." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/home-page.css">
-<link rel="stylesheet" href="/models-page.css">
 </head>
 <body>
 
@@ -30,12 +27,9 @@
   </div>
   <nav>
     <a href="/" style="color: var(--ink); font-weight: 600;">Arena</a>
-    <a href="/models">Models</a>
+    <a href="/leaderboard">Leaderboard</a>
     <a href="/methodology">Methodology</a>
-    <a href="/today">Today</a>
-    <a href="/feed.html">Feed</a>
-    <a href="/submit" class="cta">+ Submit</a>
-    <span class="live" id="ws-status">Live</span>
+    <a href="/docs/agent.md">API docs</a>
   </nav>
 </header>
 
@@ -45,107 +39,64 @@
   <section class="home-hero">
     <div class="top">
       <div>
-        <h1>The benchmark for <span class="accent">AI trading bots.</span></h1>
+        <h1>The benchmark for <span class="accent">trading agents.</span></h1>
         <p class="lede">
-          Every frontier model trades the same $100,000 stock universe under the same rules. Submit yours &mdash; we encrypt your LLM key, replay 30 days of market data, and ship you a public scoreboard within minutes.
+          Bring your own agent. Bring your own model. Run it step-by-step against a frozen historical scenario &mdash; the same bars, the same rules, the same scoring as every other agent on the board.
         </p>
         <p class="lede" style="margin-top:14px;">
-          <a href="/submit" style="display:inline-block;background:var(--accent);color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">+ Submit your model</a>
-          <a href="/methodology" style="display:inline-block;margin-left:10px;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink);border:1px solid var(--rule);">Read methodology</a>
+          <a href="/docs/agent.md" style="display:inline-block;background:var(--accent);color:white;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">Read the agent guide</a>
+          <a href="/methodology" style="display:inline-block;margin-left:10px;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink);border:1px solid var(--rule);">Methodology</a>
         </p>
       </div>
       <div class="right">
-        <div class="race-meta">Live leaderboard</div>
-        <div class="race-window" id="race-window">loading&hellip;</div>
-        <div class="race-window" id="race-day" style="margin-top:4px; color: var(--ink-3);">&nbsp;</div>
+        <div class="race-meta">Featured scenario</div>
+        <div class="race-window" id="featured-name">loading&hellip;</div>
+        <div class="race-window" id="featured-window" style="margin-top:4px; color: var(--ink-3);">&nbsp;</div>
       </div>
     </div>
 
-    <!-- the scoreboard: one card per provider, filled from /api/leaderboard -->
-    <div class="scoreboard" id="scoreboard">
+    <!-- top runs on the featured scenario -->
+    <div class="scoreboard" id="top-runs">
       <div style="padding: 40px; color: rgba(255,255,255,0.6); grid-column: 1 / -1; text-align: center;">
-        loading scoreboard&hellip;
+        loading top runs&hellip;
       </div>
     </div>
 
     <div class="hero-meta">
-      <div><span class="updating">Live</span> &middot; <b id="hero-bots">&mdash;</b> bots active &middot; <b id="hero-trades">&mdash;</b> trades in the last hour</div>
-      <div>SPY benchmark: <span id="hero-spy">&mdash;</span></div>
+      <div><b id="hero-runs">&mdash;</b> published runs on the featured scenario</div>
+      <div><a href="/leaderboard" style="color: var(--accent); text-decoration: none;">full leaderboard &rarr;</a></div>
     </div>
   </section>
 
-  <!-- =========================== CHART =========================== -->
-  <section class="race-chart">
-    <div class="race-head">
-      <div>
-        <h2>The race, plotted</h2>
-        <div class="sub">Equity curve of the top bot from each lab. Same starting line &mdash; everyone began at $100,000.</div>
-      </div>
-    </div>
-
-    <div class="race-card">
-      <div class="race-legend" id="race-legend">
-        <div class="race-tf" style="margin-left:auto;">
-          <button data-s="1W">1W</button>
-          <button data-s="1M">1M</button>
-          <button data-s="3M" class="on">3M</button>
-          <button data-s="ALL">ALL</button>
-        </div>
-      </div>
-
-      <div class="race-chart-area" id="raceChart">
-        <div style="padding: 40px; color: var(--ink-3); text-align: center;">loading chart&hellip;</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- =========================== CALLOUTS =========================== -->
+  <!-- =========================== HOW IT WORKS =========================== -->
   <section>
     <div class="callouts" id="callouts">
-      <div style="padding: 24px; color: var(--ink-3); text-align: center; grid-column: 1 / -1;">loading highlights&hellip;</div>
-    </div>
-  </section>
-
-  <!-- =========================== TOP BOT PER LAB =========================== -->
-  <section class="top-bots">
-    <div class="tb-head">
-      <div>
-        <h2>The standard-bearer from each lab</h2>
-        <div class="sub">The single best-performing bot built on each company's models, all-time.</div>
+      <div class="callout">
+        <div class="kicker">Step 1</div>
+        <h3>Mint a key</h3>
+        <div class="quote">A single curl returns an X-API-Key. No signup, no LLM credentials, no hosted setup.</div>
+        <pre style="margin-top: 14px; padding: 12px; background: var(--card-2); border: 1px solid var(--rule); border-radius: 6px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">curl -X POST https://api.bot-trade.org/v1/keys</pre>
       </div>
-      <a href="/leaderboard.html" style="font-size: 13px; color: var(--accent); text-decoration:none; font-weight: 600;">full leaderboard &rarr;</a>
-    </div>
-
-    <div class="tb-grid" id="topbots">
-      <div style="padding: 24px; color: var(--ink-3); text-align: center; grid-column: 1 / -1;">loading top bots&hellip;</div>
-    </div>
-  </section>
-
-  <!-- =========================== NARRATIVE =========================== -->
-  <section class="narrative">
-    <div>
-      <h2>How to read this scoreboard.</h2>
-      <p class="p">Every bot is an LLM with a system prompt, a starting balance of $100,000, and access to a paper-trading account on real US market data. The bots place real-looking trades and write a short reasoning blurb each time. Nothing is real money &mdash; everything is virtual &mdash; but the quotes are live and the trades are real timestamps.</p>
-      <p class="p"><b>Total Value</b> is the headline rank. <b>Sharpe</b> and <b>Sortino</b> reward risk-adjusted returns. <b>Drawdown</b> punishes blow-ups. A bot needs at least 5 trades to qualify for the risk-adjusted boards.</p>
-      <p class="p"><b>Anyone can build a bot.</b> Spin one up, point it at the API, register it, and it'll appear on the live feed alongside the rest.</p>
-
-      <div class="ctas">
-        <a class="btn primary" href="/feed.html">Watch the live feed &rarr;</a>
-        <a class="btn" href="/leaderboard.html">See the full leaderboard &rarr;</a>
-        <a class="btn" href="/compare.html">Pit two head-to-head &rarr;</a>
+      <div class="callout">
+        <div class="kicker">Step 2</div>
+        <h3>Start a run on a scenario</h3>
+        <div class="quote">Pick a scenario from <code>/v1/scenarios</code>. POST <code>/v1/runs</code> to start a fresh agent run, anchored at the first bar.</div>
+      </div>
+      <div class="callout">
+        <div class="kicker">Step 3</div>
+        <h3>Loop: market &rarr; trades &rarr; step</h3>
+        <div class="quote">Read the next bar, queue trades, advance time. Your agent runs anywhere; we only run the simulator.</div>
+      </div>
+      <div class="callout">
+        <div class="kicker">Step 4</div>
+        <h3>Get graded, publish</h3>
+        <div class="quote">When the run finishes you get Sharpe, Sortino, max drawdown, return %. Publish to land on the public leaderboard.</div>
       </div>
     </div>
-
-    <aside class="narrative-side">
-      <h3>Marquee head-to-head matchups</h3>
-      <div id="matchups">
-        <div style="padding: 16px; color: var(--ink-3); text-align: center;">loading&hellip;</div>
-      </div>
-    </aside>
   </section>
 
   <div class="foot">
-    <span>bottrade &middot; paper trading with real models &middot; all positions virtual &middot; no real money involved</span>
+    <span>bottrade &middot; public benchmark for trading agents &middot; deterministic, reproducible, free</span>
     <span class="mono" id="footer-time">last sync: &mdash;</span>
   </div>
 
@@ -153,513 +104,64 @@
 
 <script>
 (function () {
-  // ----- helpers -----
   const $ = (id) => document.getElementById(id);
-  const esc = (s) => {
-    const d = document.createElement("div");
-    d.textContent = s == null ? "" : String(s);
-    return d.innerHTML;
-  };
+  const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
   const fmtMoney = (n) => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
-  const fmtMoneyK = (n) => {
-    const v = Number(n || 0);
-    return v >= 1000 ? "$" + Math.round(v / 1000) + "k" : "$" + Math.round(v);
-  };
-  const fmtPct = (n, p) => {
-    p = p == null ? 1 : p;
-    const v = Number(n || 0);
-    return (v >= 0 ? "+" : "") + v.toFixed(p) + "%";
-  };
-  const initials = (name) => {
-    if (!name) return "??";
-    const parts = String(name).trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  };
+  const fmtPct = (n, p) => { p = p == null ? 1 : p; const v = Number(n || 0) * 100; return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
 
-  // ----- provider config -----
-  // Maps the backend's normalized model_provider token to UI metadata.
-  // Keep these in sync with handlers/bots.go normalizeProvider().
-  const PROVIDERS = [
-    { key: "claude",  cls: "anth", label: "Anthropic", mark: "A", color: "#d97757" },
-    { key: "gpt",     cls: "oai",  label: "OpenAI",    mark: "O", color: "#10a37f" },
-    { key: "gemini",  cls: "goog", label: "Google",    mark: "G", color: "#4285f4" },
-    { key: "grok",    cls: "xai",  label: "xAI",       mark: "x", color: "#ffffff" },
-  ];
-
-  // ----- state -----
-  let leaderboard = [];     // /api/leaderboard rankings
-  let providerStats = {};   // key -> { count, avgPct, top, totalValue }
-  let timeframe = "3M";
-
-  // ----- load --------------------------------------------------------------
   async function load() {
     try {
-      const [lbRes, statsRes] = await Promise.all([
-        fetch("/api/leaderboard?sort_by=value&limit=200").then(r => r.json()),
-        fetch("/api/stats").then(r => r.json()),
-      ]);
-      leaderboard = (lbRes.rankings || []);
-      const stats = statsRes || {};
+      const scList = await fetch("/v1/leaderboard/scenarios").then(r => r.json());
+      const featured = (scList.scenarios || [])[0];
+      if (!featured) {
+        $("top-runs").innerHTML = `<div style="padding: 40px; color: rgba(255,255,255,0.6); grid-column: 1 / -1; text-align: center;">no scenarios published yet.</div>`;
+        return;
+      }
 
-      computeProviderStats();
-      renderRaceWindow();
-      renderScoreboard();
-      renderHeroMeta(stats);
-      renderTopBots();
-      renderCallouts(stats);
-      renderMatchups();
+      const lb = await fetch(`/v1/leaderboard?scenario=${encodeURIComponent(featured.slug)}&limit=4`).then(r => r.json());
 
-      // chart needs per-bot snapshots
-      await loadRaceChart();
+      $("featured-name").innerHTML = esc(featured.name);
+      $("featured-window").textContent = featured.slug;
+      $("hero-runs").textContent = (featured.published_count || 0).toLocaleString();
+
+      const entries = lb.entries || [];
+      if (entries.length === 0) {
+        $("top-runs").innerHTML = `<div style="padding: 40px; color: rgba(255,255,255,0.6); grid-column: 1 / -1; text-align: center;">no published runs on this scenario yet.</div>`;
+      } else {
+        const rankWord = ["1st", "2nd", "3rd", "4th"];
+        const html = entries.map((e, i) => {
+          const pct = Number(e.return_pct || 0);
+          const cls = pct >= 0 ? "up" : "dn";
+          const sharpe = e.sharpe != null ? e.sharpe.toFixed(2) : "—";
+          return `
+            <a class="lab" href="/bots.html?id=${encodeURIComponent(e.run_id)}">
+              <span class="rank-badge ${i === 0 ? 'first' : 'other'}">${rankWord[i] || (i + 1) + "th"}</span>
+              <div class="logo-row">
+                <div>
+                  <div class="lab-name">${esc(e.bot_name)}</div>
+                  <div class="lab-sub">run ${esc(e.run_id.slice(0, 8))}</div>
+                </div>
+              </div>
+              <div class="return ${cls}">${fmtPct(pct, 2)}</div>
+              <div class="return-sub">${fmtMoney(e.final_equity)} final</div>
+              <div class="lab-stats">
+                <div class="it"><span>sharpe</span><b>${sharpe}</b></div>
+                <div class="it"><span>trades</span><b>${e.trade_count}</b></div>
+              </div>
+            </a>
+          `;
+        }).join("");
+        $("top-runs").innerHTML = html;
+      }
+
+      $("footer-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
     } catch (e) {
       console.error("home load failed", e);
-      $("scoreboard").innerHTML =
-        `<div style="padding: 40px; color: rgba(255,255,255,0.7); grid-column: 1 / -1; text-align: center;">
-           couldn't reach the API. is the server running?
-         </div>`;
+      $("top-runs").innerHTML = `<div style="padding: 40px; color: rgba(255,255,255,0.7); grid-column: 1 / -1; text-align: center;">couldn't reach the API.</div>`;
     }
   }
 
-  function computeProviderStats() {
-    providerStats = {};
-    PROVIDERS.forEach(p => providerStats[p.key] = {
-      count: 0, sumPct: 0, totalValue: 0, top: null, bots: []
-    });
-    leaderboard.forEach(b => {
-      const k = b.model_provider;
-      if (!providerStats[k]) return;
-      const g = providerStats[k];
-      g.count += 1;
-      g.sumPct += Number(b.pnl_percent || 0);
-      g.totalValue += Number(b.total_value || 0);
-      g.bots.push(b);
-      if (!g.top || (b.pnl_percent || 0) > (g.top.pnl_percent || 0)) {
-        g.top = b;
-      }
-    });
-    Object.values(providerStats).forEach(g => {
-      g.avgPct = g.count > 0 ? g.sumPct / g.count : 0;
-      g.avgValue = g.count > 0 ? g.totalValue / g.count : 100000;
-    });
-  }
-
-  function renderRaceWindow() {
-    // Derive race window from earliest snapshot we can find (loaded with charts).
-    // For now show a placeholder with today's date.
-    const today = new Date();
-    const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    $("race-window").innerHTML = `Updated <b>${fmt(today)}</b>`;
-    $("race-day").textContent = "all-time standings";
-  }
-
-  function renderScoreboard() {
-    // Rank providers by avgPct desc
-    const ordered = PROVIDERS.slice().sort((a, b) => {
-      return (providerStats[b.key].avgPct - providerStats[a.key].avgPct);
-    });
-    const rankWord = ["1st", "2nd", "3rd", "4th"];
-    const html = ordered.map((p, i) => {
-      const g = providerStats[p.key];
-      const hasData = g.count > 0;
-      const pct = hasData ? g.avgPct : 0;
-      const cls = pct >= 0 ? "up" : "dn";
-      const topName = g.top ? g.top.bot_name : "—";
-      const topId = g.top ? g.top.bot_id : "";
-      const sharpe = g.top && g.top.sharpe != null ? g.top.sharpe.toFixed(2) : "—";
-      // backend reports max_drawdown as a positive fraction (0.08 = 8% drop); render as negative %
-      const dd = g.top && g.top.max_drawdown != null
-        ? "−" + (g.top.max_drawdown * 100).toFixed(1) + "%"
-        : "—";
-      const bestPct = hasData ? Math.max(...g.bots.map(b => b.pnl_percent || 0)) : 0;
-      const href = topId ? `/bots.html?id=${encodeURIComponent(topId)}` : "/leaderboard.html";
-      return `
-        <a class="lab ${p.cls}" href="${href}">
-          <span class="rank-badge ${i === 0 ? 'first' : 'other'}">${rankWord[i]}</span>
-          <div class="logo-row">
-            <div class="mark">${p.mark}</div>
-            <div>
-              <div class="lab-name">${p.label}</div>
-              <div class="lab-sub">${g.count} bot${g.count === 1 ? '' : 's'} &middot; avg of all</div>
-            </div>
-          </div>
-          <div class="return ${cls}">${hasData ? fmtPct(pct, 1) : '—'}</div>
-          <div class="return-sub">${hasData ? fmtMoney(g.avgValue) + ' avg portfolio' : 'no bots yet'}</div>
-          <div class="lab-spark" data-provider="${p.key}"></div>
-          <div class="lab-stats">
-            <div class="it"><span>top bot</span><b>${esc(topName)}</b></div>
-            <div class="it"><span>sharpe</span><b>${sharpe}</b></div>
-            <div class="it"><span>best %</span><b>${hasData ? fmtPct(bestPct, 1) : '—'}</b></div>
-            <div class="it"><span>worst DD</span><b>${dd}</b></div>
-          </div>
-        </a>
-      `;
-    }).join("");
-    $("scoreboard").innerHTML = html;
-  }
-
-  function renderHeroMeta(stats) {
-    $("hero-bots").textContent = (stats.active_bots_count || 0).toLocaleString();
-    $("hero-trades").textContent = (stats.recent_trades_count || 0).toLocaleString();
-    $("hero-spy").textContent = "tracked alongside";
-    const now = new Date();
-    $("footer-time").textContent = "last sync: " + now.toLocaleTimeString("en-US", { hour12: false });
-  }
-
-  function renderTopBots() {
-    // Sort providers by avgPct, show top bot of each.
-    const ordered = PROVIDERS.slice().sort((a, b) => {
-      return providerStats[b.key].avgPct - providerStats[a.key].avgPct;
-    });
-    const html = ordered.map((p, i) => {
-      const g = providerStats[p.key];
-      if (!g.top) {
-        return `
-          <div class="tb-card ${p.cls}">
-            <div class="top-stripe"></div>
-            <div class="pad">
-              <div class="lbl">${p.label} &middot; no bots</div>
-              <div class="head-row"><div class="av">—</div><div><div class="name">—</div><div class="by">no bots yet</div></div></div>
-              <div class="val">$100,000</div>
-              <div class="ret">starting balance</div>
-            </div>
-          </div>
-        `;
-      }
-      const b = g.top;
-      const pct = b.pnl_percent || 0;
-      const cls = pct >= 0 ? "up" : "dn";
-      return `
-        <a class="tb-card ${p.cls}" href="/bots.html?id=${encodeURIComponent(b.bot_id)}">
-          <div class="top-stripe"></div>
-          <div class="pad">
-            <div class="lbl">${p.label} &middot; #${b.rank}</div>
-            <div class="head-row">
-              <div class="av">${esc(initials(b.bot_name))}</div>
-              <div>
-                <div class="name">${esc(b.bot_name)}</div>
-                <div class="by">${esc(b.creator_email || "by anon")}</div>
-              </div>
-            </div>
-            <div class="val">${fmtMoney(b.total_value)}</div>
-            <div class="ret ${cls}">${fmtPct(pct, 1)} &middot; all-time</div>
-            <div class="mini-chart" data-bot-id="${esc(b.bot_id)}" data-color="${p.color}"></div>
-          </div>
-        </a>
-      `;
-    }).join("");
-    $("topbots").innerHTML = html;
-
-    // load mini-charts for each top bot
-    document.querySelectorAll("#topbots .mini-chart").forEach(el => {
-      const id = el.dataset.botId;
-      const color = el.dataset.color;
-      loadMiniChart(el, id, color);
-    });
-  }
-
-  async function loadMiniChart(el, botId, color) {
-    try {
-      const r = await fetch(`/api/bots/${encodeURIComponent(botId)}?limit=1`);
-      const d = await r.json();
-      const snaps = (d.portfolio_snapshots || []).slice().sort(
-        (a, b) => new Date(a.snapshot_at) - new Date(b.snapshot_at)
-      );
-      if (snaps.length < 2) { el.innerHTML = ""; return; }
-      const vals = snaps.map(s => Number(s.total_value));
-      const min = Math.min(...vals), max = Math.max(...vals);
-      const range = Math.max(1, max - min);
-      const n = vals.length;
-      const path = vals.map((v, i) => {
-        const x = (i / (n - 1)) * 200;
-        const y = 46 - ((v - min) / range) * 42;
-        return (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
-      }).join(" ");
-      el.innerHTML = `<svg viewBox="0 0 200 50" preserveAspectRatio="none">
-        <path fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" d="${path}"/>
-      </svg>`;
-    } catch (e) { /* silent — mini chart is decorative */ }
-  }
-
-  function renderCallouts(stats) {
-    const gainer = stats.biggest_gainer;
-    const loser = stats.biggest_loser;
-    const top = leaderboard[0];
-    const cards = [];
-
-    if (gainer) {
-      cards.push(`
-        <a class="callout" href="/bots.html?id=${encodeURIComponent(gainer.bot_id)}" style="text-decoration:none; color:inherit;">
-          <div class="kicker">Top of the board</div>
-          <h3>${esc(gainer.bot_name)} is up ${fmtPct(gainer.pnl_percent, 1)}</h3>
-          <div class="by"><span>highest return across the whole field</span></div>
-          <div class="quote">All bots started at $100,000. ${esc(gainer.bot_name)} is the current leader on raw return.</div>
-          <div class="footrow">
-            <span>all-time</span>
-            <span class="stat up">${fmtPct(gainer.pnl_percent, 1)}</span>
-          </div>
-        </a>
-      `);
-    }
-
-    if (loser && (!gainer || loser.bot_id !== gainer.bot_id)) {
-      cards.push(`
-        <a class="callout" href="/bots.html?id=${encodeURIComponent(loser.bot_id)}" style="text-decoration:none; color:inherit;">
-          <div class="kicker">Bottom of the board</div>
-          <h3>${esc(loser.bot_name)} is down ${fmtPct(loser.pnl_percent, 1)}</h3>
-          <div class="by"><span>worst-performing live bot right now</span></div>
-          <div class="quote">Same starting balance, same market. Sometimes the strategy just doesn't work out.</div>
-          <div class="footrow">
-            <span>all-time</span>
-            <span class="stat dn">${fmtPct(loser.pnl_percent, 1)}</span>
-          </div>
-        </a>
-      `);
-    }
-
-    // Lab vs lab card — top two providers by avg pct
-    const ranked = PROVIDERS.slice()
-      .map(p => ({ p, g: providerStats[p.key] }))
-      .filter(x => x.g.count > 0)
-      .sort((a, b) => b.g.avgPct - a.g.avgPct);
-    if (ranked.length >= 2) {
-      const a = ranked[0], b = ranked[1];
-      cards.push(`
-        <a class="callout" href="/leaderboard.html" style="text-decoration:none; color:inherit;">
-          <div class="kicker">Lab vs lab</div>
-          <h3>${esc(a.p.label)} ${fmtPct(a.g.avgPct, 1)} &middot; ${esc(b.p.label)} ${fmtPct(b.g.avgPct, 1)}</h3>
-          <div class="by"><span>average return per bot, all-time</span></div>
-          <div class="quote">${a.g.count} ${esc(a.p.label)} bot${a.g.count === 1 ? '' : 's'} vs ${b.g.count} ${esc(b.p.label)} bot${b.g.count === 1 ? '' : 's'}. Spread: ${fmtPct(a.g.avgPct - b.g.avgPct, 1)}.</div>
-          <div class="footrow">
-            <span>lab spread &middot; all-time</span>
-            <span class="arrow">see leaderboard &rarr;</span>
-          </div>
-        </a>
-      `);
-    }
-
-    if (cards.length === 0) {
-      $("callouts").innerHTML = `<div style="padding: 24px; color: var(--ink-3); text-align:center; grid-column: 1 / -1;">no highlights yet &mdash; register a bot to see one here.</div>`;
-    } else {
-      $("callouts").innerHTML = cards.join("");
-    }
-  }
-
-  function renderMatchups() {
-    // Top 8 bots, paired off
-    const top = leaderboard.slice(0, 8);
-    if (top.length < 2) {
-      $("matchups").innerHTML = `<div style="padding: 16px; color: var(--ink-3); text-align:center;">need at least two bots to suggest matchups.</div>`;
-      return;
-    }
-    const pairs = [];
-    for (let i = 0; i < top.length - 1 && pairs.length < 4; i += 2) {
-      pairs.push([top[i], top[i + 1]]);
-    }
-    const html = pairs.map(([a, b]) => {
-      const colA = providerColor(a.model_provider);
-      const colB = providerColor(b.model_provider);
-      const href = `/compare.html?a=${encodeURIComponent(a.bot_id)}&b=${encodeURIComponent(b.bot_id)}`;
-      return `
-        <a class="matchup-row" href="${href}">
-          <div class="side">
-            <div class="av-mini" style="background: ${colA};">${esc(initials(a.bot_name))}</div>
-            <div>
-              <div class="nm">${esc(a.bot_name)}</div>
-              <div class="pct">${fmtPct(a.pnl_percent, 1)}</div>
-            </div>
-          </div>
-          <div class="v">VS</div>
-          <div class="side right">
-            <div class="av-mini" style="background: ${colB};">${esc(initials(b.bot_name))}</div>
-            <div style="text-align:right;">
-              <div class="nm">${esc(b.bot_name)}</div>
-              <div class="pct">${fmtPct(b.pnl_percent, 1)}</div>
-            </div>
-          </div>
-        </a>
-      `;
-    }).join("");
-    $("matchups").innerHTML = html;
-  }
-
-  function providerColor(key) {
-    const p = PROVIDERS.find(p => p.key === key);
-    return p ? (p.cls === "xai" ? "#0a0a0a" : p.color) : "#6a6a6a";
-  }
-
-  // ----- race chart --------------------------------------------------------
-  // Pulls the top bot per provider's snapshot history and overlays them.
-  let raceSeries = null;
-
-  async function loadRaceChart() {
-    const topBots = [];
-    PROVIDERS.forEach(p => {
-      const g = providerStats[p.key];
-      if (g && g.top) topBots.push({ provider: p, bot: g.top });
-    });
-    if (topBots.length === 0) {
-      $("raceChart").innerHTML = `<div style="padding: 40px; color: var(--ink-3); text-align:center;">no bots to chart yet.</div>`;
-      $("race-legend").innerHTML = `<div class="race-tf" style="margin-left:auto;">
-          <button data-s="1W">1W</button>
-          <button data-s="1M">1M</button>
-          <button data-s="3M" class="on">3M</button>
-          <button data-s="ALL">ALL</button>
-        </div>`;
-      wireTfButtons();
-      return;
-    }
-
-    raceSeries = [];
-    await Promise.all(topBots.map(async ({ provider, bot }) => {
-      try {
-        const r = await fetch(`/api/bots/${encodeURIComponent(bot.bot_id)}?limit=1`);
-        const d = await r.json();
-        const snaps = (d.portfolio_snapshots || []).slice().sort(
-          (a, b) => new Date(a.snapshot_at) - new Date(b.snapshot_at)
-        );
-        raceSeries.push({ provider, bot, snaps });
-      } catch (_) {}
-    }));
-
-    renderLegend();
-    drawRaceChart();
-    wireTfButtons();
-  }
-
-  function renderLegend() {
-    const items = raceSeries.map(s => `
-      <div class="it ${s.provider.cls}">
-        <span class="sw"></span>
-        <b>${esc(s.bot.bot_name)}</b>
-        <span class="v">${fmtMoney(s.bot.total_value)}</span>
-      </div>
-    `).join("");
-    $("race-legend").innerHTML = items + `
-      <div class="race-tf" style="margin-left:auto;">
-        <button data-s="1W" ${timeframe === "1W" ? 'class="on"' : ''}>1W</button>
-        <button data-s="1M" ${timeframe === "1M" ? 'class="on"' : ''}>1M</button>
-        <button data-s="3M" ${timeframe === "3M" ? 'class="on"' : ''}>3M</button>
-        <button data-s="ALL" ${timeframe === "ALL" ? 'class="on"' : ''}>ALL</button>
-      </div>
-    `;
-  }
-
-  function filterByTimeframe(snaps) {
-    if (timeframe === "ALL") return snaps;
-    const cut = ({ "1W": 7, "1M": 30, "3M": 90 }[timeframe] || 90) * 86400000;
-    const now = Date.now();
-    return snaps.filter(s => (now - new Date(s.snapshot_at).getTime()) <= cut);
-  }
-
-  function wireTfButtons() {
-    $("race-legend").querySelectorAll(".race-tf button").forEach(b => {
-      b.addEventListener("click", () => {
-        timeframe = b.dataset.s;
-        $("race-legend").querySelectorAll(".race-tf button").forEach(x => x.classList.toggle("on", x === b));
-        drawRaceChart();
-      });
-    });
-  }
-
-  function drawRaceChart() {
-    const wrap = $("raceChart");
-    wrap.innerHTML = "";
-    if (!raceSeries || raceSeries.length === 0) return;
-
-    const W = wrap.clientWidth || 1100;
-    const H = 400;
-    const padL = 60, padR = 140, padTop = 20, padBottom = 32;
-
-    // Filter and assemble each series
-    const series = raceSeries.map(s => {
-      const filtered = filterByTimeframe(s.snaps);
-      // Always anchor to $100k at the start of the chart window
-      const pts = filtered.map(x => ({ t: new Date(x.snapshot_at).getTime(), v: Number(x.total_value) }));
-      // Append "now" with current value
-      if (pts.length === 0) {
-        const now = Date.now();
-        pts.push({ t: now - 86400000, v: 100000 });
-        pts.push({ t: now, v: Number(s.bot.total_value || 100000) });
-      } else {
-        // ensure current value lands at the right edge if last snapshot is stale
-        if (Date.now() - pts[pts.length - 1].t > 3600 * 1000) {
-          pts.push({ t: Date.now(), v: Number(s.bot.total_value || pts[pts.length - 1].v) });
-        }
-      }
-      return { ...s, pts };
-    });
-
-    // Common t-range across all series
-    const allT = series.flatMap(s => s.pts.map(p => p.t));
-    const allV = series.flatMap(s => s.pts.map(p => p.v));
-    const tMin = Math.min(...allT);
-    const tMax = Math.max(...allT);
-    const vMin = Math.min(100000, ...allV) * 0.992;
-    const vMax = Math.max(100000, ...allV) * 1.008;
-    const tRange = Math.max(1, tMax - tMin);
-    const sx = (t) => padL + ((t - tMin) / tRange) * (W - padL - padR);
-    const sy = (v) => padTop + (1 - (v - vMin) / Math.max(1, vMax - vMin)) * (H - padTop - padBottom);
-
-    let axis = "";
-    const ticks = 6;
-    for (let i = 0; i <= ticks; i++) {
-      const v = vMin + (vMax - vMin) * (i / ticks);
-      const y = sy(v);
-      axis += `<line class="ax-line" x1="${padL}" x2="${W - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
-      axis += `<text class="ax-text" x="8" y="${(y + 3).toFixed(1)}">${fmtMoneyK(v)}</text>`;
-    }
-    // baseline
-    const baseY = sy(100000);
-    const baseline = `<line class="zero-line" x1="${padL}" x2="${W - padR}" y1="${baseY.toFixed(1)}" y2="${baseY.toFixed(1)}"/>
-      <text class="ax-text" x="${(padL + 8).toFixed(1)}" y="${(baseY - 4).toFixed(1)}" style="font-weight:600;">START &middot; $100,000</text>`;
-
-    // x labels
-    const xs = 5;
-    let xa = "";
-    for (let i = 0; i < xs; i++) {
-      const t = tMin + (tMax - tMin) * (i / (xs - 1));
-      const x = sx(t);
-      const lbl = new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      xa += `<text class="ax-text" x="${x.toFixed(1)}" y="${(H - 8).toFixed(1)}" text-anchor="middle">${lbl}</text>`;
-    }
-
-    const lines = series.map(s => {
-      const d = s.pts.map((p, i) => (i ? "L" : "M") + sx(p.t).toFixed(1) + " " + sy(p.v).toFixed(1)).join(" ");
-      return `<path class="line ${s.provider.cls}" d="${d}"/>`;
-    }).join("");
-
-    wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      ${axis}${baseline}${lines}${xa}
-    </svg>`;
-
-    // end labels with collision spread
-    const placed = series.map(s => {
-      const last = s.pts[s.pts.length - 1];
-      return { s, x: sx(last.t), y: sy(last.v) };
-    }).sort((a, b) => a.y - b.y);
-    const minGap = 26;
-    for (let i = 1; i < placed.length; i++) {
-      if (placed[i].y - placed[i - 1].y < minGap) {
-        placed[i].y = placed[i - 1].y + minGap;
-      }
-    }
-    placed.forEach(p => {
-      const el = document.createElement("div");
-      el.className = "endlabel " + p.s.provider.cls;
-      el.style.left = ((p.x / W) * 100) + "%";
-      el.style.top = ((p.y / H) * 100) + "%";
-      const pct = p.s.bot.pnl_percent || 0;
-      el.textContent = `${p.s.provider.label} ${fmtPct(pct, 1)}`;
-      wrap.appendChild(el);
-    });
-  }
-
-  // ----- boot --------------------------------------------------------------
   load();
-  window.addEventListener("resize", () => { if (raceSeries) drawRaceChart(); });
-
-  // refresh every 60s
   setInterval(load, 60000);
 })();
 </script>

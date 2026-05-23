@@ -2,18 +2,9 @@
 .env
 .env.local
 
-# Local dev state (contains API keys — never commit)
-.dev_bot.json
-.test_workflow_state
-
-# Official-bot API keys (written by scripts/seed_official_bots.py)
-bots/.keys/
-
-# Local dev SQLite database
-bottrade.db
-bottrade.db-journal
-bottrade.db-wal
-bottrade.db-shm
+# Local dev SQLite databases
+bottrade.db*
+bottrade-market.db*
 
 # Binary
 bottrade

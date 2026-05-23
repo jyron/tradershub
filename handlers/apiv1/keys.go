@@ -89,18 +89,10 @@ func issueKey(c *fiber.Ctx) error {
 		name = "agent-" + botID.String()[:8]
 	}
 
-	// claimed=1 because possession of the key is itself the claim — there's
-	// no separate ownership flow for self-hosted agents. tier='challenger'
-	// keeps the bot off the official leaderboard view; without credentials
-	// or a backfill_jobs row it also never enters the hosted-runner queue.
-	//
-	// description and creator_email are stored as empty strings, not NULL.
-	// models.Bot.CreatorEmail is a plain `string`, so the legacy auth path
-	// fails to Scan a NULL row — see auth.go.
 	_, err = database.DB.Exec(
 		`INSERT INTO bots
-		   (id, name, api_key, description, creator_email, is_test, is_official, claimed, tier)
-		 VALUES (?1, ?2, ?3, '', ?4, 0, 0, 1, 'challenger')`,
+		   (id, name, api_key, description, creator_email, tier)
+		 VALUES (?1, ?2, ?3, '', ?4, 'challenger')`,
 		botID.String(), name, apiKey, req.Email,
 	)
 	if err != nil {

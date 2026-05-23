@@ -61,7 +61,7 @@ func main() {
 	if cfg.AlpacaAPIKey == "" || cfg.AlpacaSecretKey == "" {
 		log.Fatal("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set")
 	}
-	if err := services.InitAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaSecretKey, cfg.AlpacaPaperMode); err != nil {
+	if err := services.InitAlpacaClient(cfg.AlpacaAPIKey, cfg.AlpacaSecretKey, true); err != nil {
 		log.Fatalf("init alpaca: %v", err)
 	}
 

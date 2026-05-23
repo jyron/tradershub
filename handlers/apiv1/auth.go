@@ -18,15 +18,8 @@ import (
 type botContextKey struct{}
 
 // authMiddleware validates X-API-Key against the `bots` table and stashes
-// the bot row on the context. Mirrors the contract of legacy
-// middleware/auth.go::RequireAPIKey but:
-//   - SKIPS the bot.Claimed=1 check (benchmark API users are pure API
-//     consumers; they need not have visited the claim URL)
-//   - SKIPS the per-bot daily trade-cap check (the cap exists for the
-//     legacy /api/trade/* surface; deterministic scenario replays don't
-//     have an analog)
-//
-// Returned middleware function is the huma-style middleware signature.
+// the bot row on the context. Returns 403 if the row has a non-empty
+// disabled_reason (abuse short-circuit).
 func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		apiKey := ctx.Header("X-API-Key")
@@ -38,23 +31,17 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 
 		var bot models.Bot
 		var botIDStr, createdAt string
-		var isActive, claimed, isTest int
+		var isActive int
 		var description, creatorEmail, tier, disabledReason sql.NullString
-		// Scan nullable text columns through sql.NullString so a row with
-		// NULL description / creator_email doesn't silently fail Scan and
-		// surface as a confusing "Invalid API key" — see models.Bot where
-		// these fields are plain `string` and would otherwise panic Scan.
 		err := database.DB.QueryRow(
-			`SELECT id, name, api_key, description, creator_email, cash_balance,
-			        created_at, is_active, claimed, is_test, COALESCE(tier,''),
-			        disabled_reason
+			`SELECT id, name, api_key, description, creator_email,
+			        created_at, is_active, COALESCE(tier,''), disabled_reason
 			   FROM bots
 			  WHERE api_key = ?1 AND is_active = 1`,
 			apiKey,
 		).Scan(
 			&botIDStr, &bot.Name, &bot.APIKey, &description,
-			&creatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed,
-			&isTest, &tier, &disabledReason,
+			&creatorEmail, &createdAt, &isActive, &tier, &disabledReason,
 		)
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Invalid API key")
@@ -71,12 +58,8 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		}
 		bot.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		bot.IsActive = isActive != 0
-		bot.Claimed = claimed != 0
-		bot.IsTest = isTest != 0
 		bot.Tier = tier.String
 
-		// Even on the benchmark API, an explicitly-disabled key is locked out
-		// everywhere — this is the abuse short-circuit.
 		if disabledReason.Valid && disabledReason.String != "" {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
 				"Bot is disabled: "+disabledReason.String)

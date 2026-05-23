@@ -39,15 +39,22 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	// is cleanly nested under /docs.
 	cfg.OpenAPIPath = "/docs/openapi"
 
-	api := humafiber.NewV2(app, cfg)
-
-	// Global auth middleware. Applies to every registered huma operation but
-	// NOT to /docs or /docs/openapi (those are managed by huma's router, not
-	// huma operations).
 	h := &handlers{Engine: engine}
+
+	// Public, no-auth fiber routes mounted BEFORE huma so they win the
+	// route-table lookup for their exact paths:
+	//   POST /v1/keys                  — self-serve key issuer
+	//   GET  /v1/leaderboard           — public per-scenario ranking
+	//   GET  /v1/leaderboard/scenarios — public scenario picker
+	//   GET  /v1/runs/{id}/public      — read-only view of a published run
+	h.mountKeyIssuer(app)
+	h.mountLeaderboardPublic(app)
+	h.mountPublicRun(app)
+
+	api := humafiber.NewV2(app, cfg)
 	api.UseMiddleware(h.authMiddleware(api))
 
-	// Register all operations.
+	// Register all huma operations (these are X-API-Key-protected).
 	h.registerScenarios(api)
 	h.registerRuns(api)
 	h.registerMarket(api)
@@ -59,12 +66,6 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	// Static docs that DON'T go through huma — served as plain markdown / text
 	// at the fiber level so they bypass huma's content negotiation.
 	h.mountStaticDocs(app)
-
-	// POST /v1/keys is the ONE /v1/* route that does not require X-API-Key.
-	// Mounted on the fiber app directly so it sits outside huma's global
-	// auth middleware. Lets new users self-serve a key without registering
-	// a hosted bot at https://bot-trade.org/submit.
-	h.mountKeyIssuer(app)
 }
 
 // handlers carries the shared dependencies for every operation in the

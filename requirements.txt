@@ -1,8 +1,0 @@
-alpaca-py
-python-dotenv
-requests
-
-# Official benchmark bot scripts — install only the providers you have keys for
-anthropic
-openai
-google-genai

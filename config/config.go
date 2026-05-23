@@ -2,94 +2,38 @@ package config
 
 import (
 	"os"
-	"strconv"
-	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	TursoDatabaseURL  string
-	TursoAuthToken    string
-	Port              string
-	MarketAPIKey      string
-	AlpacaAPIKey      string
-	AlpacaSecretKey   string
-	AlpacaPaperMode   bool
-	AdminSecret       string
-	// MasterKey is the active 32-byte hex AES-256 key used to encrypt
-	// submitter LLM API keys at rest. Required for the submission flow.
-	MasterKey         string
-	// MasterKeyVersions maps version → hex key for in-flight rotation:
-	// rows encrypted under an older version stay readable until the
-	// rotation script rewrites them.
-	MasterKeyVersions map[int]string
-	// AnthropicAPIKey is the server-owned key used by the daily-recap job
-	// to generate the natural-language summary. Optional — when unset the
-	// recap falls back to a deterministic template.
-	AnthropicAPIKey   string
+	// App DB — bots, scenarios catalog, runs, results, leaderboard.
+	TursoDatabaseURL string
+	TursoAuthToken   string
 
-	// Market DB — a second Turso DB for historical bars + frozen
-	// scenario_bars. Kept physically separate from the app DB so it can
-	// hold a lot of read-mostly bar data without coupling to migrations
-	// of bots/runs/etc.
-	MarketTursoURL    string
-	MarketTursoToken  string
+	// Market DB — historical bars + frozen scenario_bars. Separate Turso DB.
+	MarketTursoURL   string
+	MarketTursoToken string
 
-	// Benchmark API surface. ServerMode controls which Fiber app(s) this
-	// binary mounts: "site" (existing /api), "api" (new /v1), or "both".
-	ServerMode        string
-	APIPort           string
+	// Alpaca creds, used by the hourly bar-ingest job.
+	AlpacaAPIKey    string
+	AlpacaSecretKey string
+
+	Port string
 }
 
 func Load() *Config {
-	// .env.local wins over .env (per dotenv conventions). Use this for
-	// local SQLite + dev secrets without touching the shared Turso config.
 	godotenv.Load(".env.local", ".env")
 
 	return &Config{
-		TursoDatabaseURL:  os.Getenv("TURSO_DATABASE_URL"),
-		TursoAuthToken:    os.Getenv("TURSO_AUTH_TOKEN"),
-		Port:              getEnv("PORT", "3000"),
-		MarketAPIKey:      getEnv("MARKET_API_KEY", ""),
-		AlpacaAPIKey:      getEnv("ALPACA_API_KEY", ""),
-		AlpacaSecretKey:   getEnv("ALPACA_SECRET_KEY", ""),
-		AlpacaPaperMode:   getEnv("ALPACA_PAPER", "true") == "true",
-		AdminSecret:       getEnv("ADMIN_SECRET", ""),
-		MasterKey:         getEnv("BOTTRADE_MASTER_KEY", ""),
-		MasterKeyVersions: loadMasterKeyVersions(),
-		AnthropicAPIKey:   getEnv("ANTHROPIC_API_KEY", ""),
-
+		TursoDatabaseURL: os.Getenv("TURSO_DATABASE_URL"),
+		TursoAuthToken:   os.Getenv("TURSO_AUTH_TOKEN"),
 		MarketTursoURL:   os.Getenv("TURSO_MARKET_DATABASE_URL"),
 		MarketTursoToken: os.Getenv("TURSO_MARKET_AUTH_TOKEN"),
-
-		ServerMode: getEnv("SERVER_MODE", "both"),
-		APIPort:    getEnv("API_PORT", "3001"),
+		AlpacaAPIKey:     os.Getenv("ALPACA_API_KEY"),
+		AlpacaSecretKey:  os.Getenv("ALPACA_SECRET_KEY"),
+		Port:             getEnv("PORT", "3000"),
 	}
-}
-
-// loadMasterKeyVersions reads any BOTTRADE_MASTER_KEY_V<n> env vars
-// (e.g. BOTTRADE_MASTER_KEY_V1) so old ciphertexts stay decryptable
-// during rotation.
-func loadMasterKeyVersions() map[int]string {
-	out := map[int]string{}
-	const prefix = "BOTTRADE_MASTER_KEY_V"
-	for _, kv := range os.Environ() {
-		eq := strings.IndexByte(kv, '=')
-		if eq < 0 {
-			continue
-		}
-		k, v := kv[:eq], kv[eq+1:]
-		if !strings.HasPrefix(k, prefix) || v == "" {
-			continue
-		}
-		ver, err := strconv.Atoi(k[len(prefix):])
-		if err != nil {
-			continue
-		}
-		out[ver] = v
-	}
-	return out
 }
 
 func getEnv(key, defaultValue string) string {

@@ -74,8 +74,8 @@ func newTestSetup(t *testing.T, universe []string, leverageCap float64, shortEna
 	// Insert a bot row directly (the auth layer is bypassed in engine tests).
 	botID := uuid.NewString()
 	if _, err := appDB.Exec(`
-		INSERT INTO bots (id, name, api_key, description, creator_email, cash_balance, is_active, claimed)
-		VALUES (?1, 'test-bot', ?2, '', '', 100000, 1, 1)
+		INSERT INTO bots (id, name, api_key, description, creator_email, is_active)
+		VALUES (?1, 'test-bot', ?2, '', '', 1)
 	`, botID, "test-key-"+botID); err != nil {
 		t.Fatalf("insert bot: %v", err)
 	}
