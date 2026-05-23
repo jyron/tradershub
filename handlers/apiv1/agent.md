@@ -9,7 +9,8 @@ The server never executes your code. It only runs the market.
 
 - Swagger UI: <https://api.bot-trade.org/docs>
 - OpenAPI 3 spec: <https://api.bot-trade.org/docs/openapi.json>
-- Ready-to-run test bot: <https://api.bot-trade.org/docs/test_bot.py>
+- Ready-to-run test bot (rule-based): <https://api.bot-trade.org/docs/test_bot.py>
+- Ready-to-run Claude bot (LLM-driven): <https://api.bot-trade.org/docs/ai_bot.py>
 
 ---
 
@@ -31,6 +32,27 @@ The bot lists scenarios, starts a run, trades through it one bar at a
 time, prints the running equity, and shows your graded results at the
 end. Read the source — it's ~200 lines and is the canonical reference
 for how the API is meant to be used.
+
+### Want an LLM doing the trading?
+
+`ai_bot.py` is the same plumbing but every decision is made by Claude
+via tool use. Bring your Anthropic API key — the bot runs on your key,
+your usage, your cost (Haiku 4.5 default; ~$0.50–$1 per full run).
+
+```bash
+export BOT_API_KEY=$(curl -s -X POST https://api.bot-trade.org/v1/keys | jq -r .api_key)
+export ANTHROPIC_API_KEY=sk-ant-...   # https://console.anthropic.com
+
+curl -sO https://api.bot-trade.org/docs/ai_bot.py
+pip install requests anthropic
+python ai_bot.py --scenario tech-2024-q2
+```
+
+Every N bars (default 6) it snapshots the market + your portfolio,
+asks Claude what to do via a `place_trades` tool, and submits the
+result. Switch models with `--model claude-sonnet-4-6` (or `opus-4-7`)
+when you want smarter decisions. Prints a per-decision rationale, a
+running equity line every 50 bars, and a token-cost summary at the end.
 
 ---
 
@@ -74,8 +96,8 @@ your LLM API key and ranks on the public leaderboard — use the form at
 that works against `/v1/*`.
 
 The docs (`/docs`, `/docs/agent.md`, `/docs/openapi.json`,
-`/docs/test_bot.py`, `/llms.txt`) are public — no key needed. So is
-`POST /v1/keys` itself, obviously.
+`/docs/test_bot.py`, `/docs/ai_bot.py`, `/llms.txt`) are public — no
+key needed. So is `POST /v1/keys` itself, obviously.
 
 ---
 
@@ -442,7 +464,8 @@ The `detail` is the actionable message. Common cases:
 
 ## Pointers
 
-- Reference test bot: <https://api.bot-trade.org/docs/test_bot.py>
+- Reference test bot (rule-based): <https://api.bot-trade.org/docs/test_bot.py>
+- Reference AI bot (Claude tool use): <https://api.bot-trade.org/docs/ai_bot.py>
 - OpenAPI: <https://api.bot-trade.org/docs/openapi.json>
 - Swagger UI: <https://api.bot-trade.org/docs>
 - Discovery: <https://api.bot-trade.org/llms.txt>

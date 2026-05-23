@@ -27,6 +27,13 @@ var llmsTxt []byte
 //go:embed test_bot.py
 var testBotPy []byte
 
+// aiBotPy is the Claude-powered reference agent — same plumbing as
+// test_bot.py but every decision is made by an LLM via tool use.
+// Served at /docs/ai_bot.py.
+//
+//go:embed ai_bot.py
+var aiBotPy []byte
+
 // mountStaticDocs attaches the non-huma, public, no-auth doc routes
 // directly on the Fiber app. These deliberately sit OUTSIDE huma so they
 // don't go through the X-API-Key middleware — docs must be readable
@@ -41,6 +48,7 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 			"agent_guide": "/docs/agent.md",
 			"openapi":     "/docs/openapi.json",
 			"test_bot":    "/docs/test_bot.py",
+			"ai_bot":      "/docs/ai_bot.py",
 			"llms_txt":    "/llms.txt",
 			"get_key":     "POST /v1/keys",
 			"site":        "https://bot-trade.org",
@@ -70,5 +78,11 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 	app.Get("/docs/test_bot.py", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/x-python; charset=utf-8")
 		return c.Send(testBotPy)
+	})
+
+	// Claude-powered reference agent.
+	app.Get("/docs/ai_bot.py", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/x-python; charset=utf-8")
+		return c.Send(aiBotPy)
 	})
 }
