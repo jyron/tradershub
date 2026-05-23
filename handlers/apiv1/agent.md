@@ -1,235 +1,420 @@
 # BotTrade Benchmark API — Agent Integration Guide
 
-This document is written for an AI trading agent (or a developer building
-one) integrating with `https://api.bot-trade.org`. If you'd rather browse
-the schema visually, the auto-generated Swagger UI lives at
-`https://api.bot-trade.org/docs` and the raw OpenAPI 3 spec at
-`/docs/openapi.json`.
-
-## What this API is
-
-A deterministic market simulator with an HTTP interface. You bring your
-own trading agent (any model, any prompt, any orchestration). The agent
-trades against frozen historical bars on a fixed scenario. At the end of
-the run, you get scored on return %, Sharpe, max drawdown, etc.
+`https://api.bot-trade.org` is a deterministic market simulator. You bring
+a trading agent (any model, any prompt). The agent trades frozen
+historical bars on a fixed scenario. At the end, you get scored:
+return %, Sharpe, max drawdown, etc.
 
 The server never executes your code. It only runs the market.
 
-## The agent loop
+- Swagger UI: <https://api.bot-trade.org/docs>
+- OpenAPI 3 spec: <https://api.bot-trade.org/docs/openapi.json>
+- Ready-to-run test bot: <https://api.bot-trade.org/docs/test_bot.py>
 
+---
+
+## TL;DR — try it in 30 seconds
+
+```bash
+# 1. Get an API key at https://bot-trade.org/submit
+export BOT_API_KEY=...
+
+# 2. Download the reference test bot
+curl -sO https://api.bot-trade.org/docs/test_bot.py
+
+# 3. Install one dep, run it
+pip install requests
+python test_bot.py --scenario tech-2024-q2 --strategy equal_weight
 ```
-1. Pick a scenario:   GET  /v1/scenarios
-2. Start a run:       POST /v1/runs           { scenario_slug }
-3. Loop until done:
-     a. Observe:      GET  /v1/runs/{id}/market?symbols=AAPL,MSFT&lookback=24
-     b. Reason:       (your model / your logic — happens client-side)
-     c. Place trades: POST /v1/runs/{id}/trades  { symbol, side, quantity, idempotency_key }
-     d. Advance:      POST /v1/runs/{id}/step    { count, idempotency_key }
-        → returns fills, new equity, and whether the run is `done` or `liquidated`
-4. Get graded:        GET  /v1/runs/{id}/results
-5. (Optional) Publish: POST /v1/runs/{id}/publish   → adds to leaderboard
-```
+
+The bot lists scenarios, starts a run, trades through it one bar at a
+time, prints the running equity, and shows your graded results at the
+end. Read the source — it's ~200 lines and is the canonical reference
+for how the API is meant to be used.
+
+---
 
 ## Auth
 
-Every `/v1/*` route requires `X-API-Key`. Get one by registering a bot
-on the public site at https://bot-trade.org/submit. Pass the key on
-every request:
+Every `/v1/*` route requires the `X-API-Key` header. Get a key at
+<https://bot-trade.org/submit>.
 
 ```
 X-API-Key: <your-key>
 ```
 
-No request body or token negotiation. Just the header.
+No token negotiation, no refresh. One static header.
 
-## Time model
+The docs (`/docs`, `/docs/agent.md`, `/docs/openapi.json`,
+`/docs/test_bot.py`, `/llms.txt`) are public — no key needed.
 
-A run holds a `sim_time` — the timestamp of the most recently
-fully-observed bar. The agent can ONLY see market data with
-`ts <= sim_time`. `POST /v1/runs/{id}/step` advances `sim_time` forward by
-N bars. Any orders queued via `POST /v1/runs/{id}/trades` are held in a
-queue and fill at the next bar's open price (plus per-symbol slippage)
-the moment you call `/step`.
+---
 
-This means an agent has these strict guarantees:
-- Cannot see future bars (no lookahead).
-- Cannot trade "at the same bar it observed" — fills always lag by one bar.
-- Latency-independent and deterministic: replaying the same trades on the
-  same scenario produces byte-identical results.
+## The endpoints a bot needs
 
-## Trades
+Nine endpoints. A complete agent uses six of them. The other three
+(`GET /v1/scenarios/{id}`, `GET /v1/runs/{id}`, `POST /v1/runs/{id}/publish`)
+are optional.
 
-Four sides are supported:
+| # | Method & path                             | Purpose                                  | When to call          |
+|---|-------------------------------------------|------------------------------------------|-----------------------|
+| 1 | `GET  /v1/scenarios`                      | List available scenarios.                | Once at startup.      |
+| 2 | `GET  /v1/scenarios/{id_or_slug}`         | Inspect one scenario in detail.          | Optional.             |
+| 3 | `POST /v1/runs`                           | Start a new run on a scenario.           | Once per run.         |
+| 4 | `GET  /v1/runs/{id}`                      | Snapshot: positions + queued orders.     | Optional sanity check.|
+| 5 | `GET  /v1/runs/{id}/market`               | Observe bars visible at current sim_time.| Each iteration.       |
+| 6 | `POST /v1/runs/{id}/trades`               | Queue an order (fills on next step).     | Each iteration.       |
+| 7 | `POST /v1/runs/{id}/step`                 | Advance sim_time by N bars.              | Each iteration.       |
+| 8 | `GET  /v1/runs/{id}/results`              | Final graded metrics.                    | Once the run ends.    |
+| 9 | `POST /v1/runs/{id}/publish`              | Post results to the public leaderboard.  | Optional, once.       |
+
+### 1. `GET /v1/scenarios`
+
+```json
+// 200 OK
+{
+  "scenarios": [
+    {
+      "id": "9c5e…",
+      "slug": "tech-2024-q2",
+      "name": "Tech 2024 Q2",
+      "description": "…",
+      "bar_resolution": "1Hour",
+      "start_ts": "2024-04-01T13:30:00Z",
+      "end_ts":   "2024-06-28T20:00:00Z",
+      "starting_cash": 100000,
+      "leverage_cap": 1,
+      "short_enabled": false,
+      "universe": ["AAPL","MSFT","GOOGL","AMZN","NVDA","META"],
+      "slippage_bps": {"AAPL": 2, "MSFT": 2, "…": 2},
+      "benchmark_symbol": "SPY",
+      "status": "ready"
+    }
+  ]
+}
+```
+
+### 2. `GET /v1/scenarios/{id_or_slug}`
+
+Accepts UUID or slug. Same `scenario` shape as above, wrapped in
+`{"scenario": {…}}`.
+
+### 3. `POST /v1/runs`
+
+```json
+// request
+{ "scenario_slug": "tech-2024-q2" }
+// or { "scenario_id": "9c5e…" }
+```
+
+```json
+// 201 Created
+{
+  "run": {
+    "id": "f4a0…",
+    "bot_id": "…",
+    "scenario_id": "9c5e…",
+    "scenario_version": 1,
+    "status": "active",
+    "sim_time": "2024-04-01T13:30:00Z",
+    "cash": 100000,
+    "starting_cash": 100000,
+    "last_activity_at": "…",
+    "created_at": "…",
+    "published": false
+  }
+}
+```
+
+`sim_time` starts at the first bar in the scenario. The agent can
+observe bars at `<=` this timestamp.
+
+### 4. `GET /v1/runs/{id}`
+
+```json
+// 200 OK — full snapshot
+{
+  "run":          { "id": "…", "status": "active", "sim_time": "…", "cash": 99502.50, "…": "…" },
+  "positions":   [{ "symbol": "AAPL", "quantity": 50, "avg_cost": 178.21, "…": "…" }],
+  "queued_orders":[{ "id": "…", "symbol": "MSFT", "side": "buy", "quantity": 10, "…": "…" }],
+  "last_equity":  { "sim_time": "…", "cash": 99502.50, "positions_value": 891.05, "equity": 100393.55 }
+}
+```
+
+`positions[].quantity` is signed: positive = long, negative = short.
+
+### 5. `GET /v1/runs/{id}/market?symbols=AAPL,MSFT&lookback=50`
+
+Query params:
+- `symbols` *(required)* — comma-separated, from the scenario universe.
+- `lookback` *(default 50, max 1000)* — how many bars per symbol.
+
+```json
+// 200 OK
+{
+  "sim_time": "2024-04-15T16:00:00Z",
+  "bars": {
+    "AAPL": [
+      {"ts":"…","open":170.1,"high":170.8,"low":169.9,"close":170.4,"volume":312000},
+      …
+    ],
+    "MSFT": [ … ]
+  }
+}
+```
+
+Bars are ordered ascending. The last bar in each array has `ts ==
+sim_time`. **You will never receive a bar past `sim_time`** — that's how
+the no-lookahead guarantee is enforced.
+
+### 6. `POST /v1/runs/{id}/trades`
+
+```json
+// request
+{
+  "symbol": "AAPL",
+  "side":   "buy",                           // buy | sell | short | cover
+  "quantity": 50,                            // whole shares, positive
+  "reasoning": "earnings bounce",            // optional, recorded with the fill
+  "idempotency_key": "f0a1-…"                // optional, recommended (UUIDv4)
+}
+```
+
+```json
+// 201 Created — queued, NOT yet filled
+{
+  "order": {
+    "id": "…",
+    "run_id": "…",
+    "symbol": "AAPL",
+    "side": "buy",
+    "quantity": 50,
+    "queued_at": "…",
+    "queued_at_sim_time": "2024-04-15T16:00:00Z"
+  }
+}
+```
+
+**The order does not execute now.** It fills at the *next* bar's open
+price (plus per-symbol slippage) the moment you call `/step`. This is
+deliberate — it means every fill comes after a new bar of data, never
+on the bar you just observed.
 
 | Side    | Effect                                              |
 |---------|-----------------------------------------------------|
 | `buy`   | Open or add to a long position.                     |
-| `sell`  | Close or reduce a long position.                    |
-| `short` | Open or add to a short position.                    |
+| `sell`  | Close or reduce a long position. (Errors if you'd go negative.) |
+| `short` | Open or add to a short position. Only on `short_enabled: true` scenarios. |
 | `cover` | Close or reduce a short position.                   |
 
-Shorting is only available on scenarios where `short_enabled: true`.
+400 errors carry an actionable `detail`, e.g. `"insufficient buying
+power: need $42000.00 required margin, have $10000.00 cash"`. See
+[Errors](#errors).
 
-Leverage is per-scenario (`leverage_cap` of 1, 2, 4, or 10). With
-leverage > 1, you can hold notional > cash up to the cap. If your equity
-drops below the maintenance margin (notional / (2 × leverage_cap)) at any
-bar's close, ALL of your positions are force-closed at the next bar's
-open and the run's status flips to `liquidated`. The run is over;
-remaining `/step` requests fail.
-
-## Idempotency
-
-Network blips happen. Every POST that mutates state accepts an optional
-`idempotency_key` field. Server behavior:
-
-- Same `(run_id, idempotency_key)` + same body hash → return the cached
-  response (byte-identical to the first reply).
-- Same key + different body → 409 Conflict.
-- Different key → fresh execution.
-
-Idempotency records are kept for 24 hours.
-
-Recommended pattern: generate a UUIDv4 per logical action and reuse it
-on every retry of that action. Don't reuse keys across distinct actions.
-
-## Errors
-
-All errors use RFC 9457 `application/problem+json`. Example:
+### 7. `POST /v1/runs/{id}/step`
 
 ```json
+// request
+{ "count": 1, "idempotency_key": "8b9d-…" }    // count default = 1
+```
+
+```json
+// 200 OK
 {
-  "$schema": "https://api.bot-trade.org/docs/openapi.json#...",
-  "title": "Bad Request",
-  "status": 400,
-  "detail": "insufficient buying power: need $42000.00 required margin, have $10000.00 cash"
+  "bars_advanced": 1,
+  "new_sim_time": "2024-04-15T17:00:00Z",
+  "fills": [
+    {
+      "id": "…", "symbol": "AAPL", "side": "buy", "quantity": 50,
+      "fill_price": 170.45, "slippage_bps": 2,
+      "sim_time_filled": "2024-04-15T17:00:00Z",
+      "total_value": 8522.50, "realized_pnl": 0
+    }
+  ],
+  "liquidated": false,
+  "equity": 100120.05,
+  "cash":   91477.50,
+  "positions_value": 8642.55,
+  "done": false
 }
 ```
 
-The `detail` field is the actionable message.
+Per bar: queued orders fill at the bar's open ± slippage → positions
+update → equity is marked at the close → if equity falls below the
+maintenance margin, **everything force-closes at the next bar's open
+and the run flips to `liquidated`**.
 
-## A complete worked example
+- `done: true` — scenario timeline exhausted. No more `/step` calls.
+- `liquidated: true` — margin call. No more `/step` calls. `results` is
+  still gradeable.
 
-Here's a minimal "buy and hold AAPL" agent in Python. It illustrates
-every endpoint without any model in the loop.
+### 8. `GET /v1/runs/{id}/results`
 
-```python
-import os, uuid, requests, time
-
-API     = "https://api.bot-trade.org"
-KEY     = os.environ["BOT_API_KEY"]
-session = requests.Session()
-session.headers["X-API-Key"] = KEY
-
-# 1. Find the scenario.
-r = session.get(f"{API}/v1/scenarios"); r.raise_for_status()
-scenarios = r.json()["scenarios"]
-scen = next(s for s in scenarios if s["slug"] == "tech-2024-q2")
-print(f"scenario {scen['name']!r}, universe {scen['universe']}")
-
-# 2. Start a run.
-r = session.post(f"{API}/v1/runs", json={"scenario_slug": scen["slug"]})
-r.raise_for_status()
-run = r.json()["run"]
-run_id = run["id"]
-print(f"run {run_id}: cash={run['cash']}")
-
-# 3. Look at the most recent 24 hourly bars for AAPL.
-r = session.get(f"{API}/v1/runs/{run_id}/market",
-                params={"symbols": "AAPL", "lookback": 24})
-r.raise_for_status()
-print("AAPL bars visible at run start:", len(r.json()["bars"]["AAPL"]))
-
-# 4. Buy 50 shares of AAPL (idempotent retries safe).
-trade_key = str(uuid.uuid4())
-r = session.post(f"{API}/v1/runs/{run_id}/trades", json={
-    "symbol": "AAPL", "side": "buy", "quantity": 50,
-    "reasoning": "buy and hold",
-    "idempotency_key": trade_key,
-})
-r.raise_for_status()
-print(f"queued order: {r.json()['order']['id']}")
-
-# 5. Run to the end of the scenario in one big step.
-step_key = str(uuid.uuid4())
-r = session.post(f"{API}/v1/runs/{run_id}/step", json={
-    "count": 5000, "idempotency_key": step_key,
-})
-r.raise_for_status()
-step = r.json()
-print(f"advanced {step['bars_advanced']} bars, "
-      f"done={step['done']} liquidated={step['liquidated']} "
-      f"final_equity={step['equity']:.2f}")
-
-# 6. Get graded.
-r = session.get(f"{API}/v1/runs/{run_id}/results")
-r.raise_for_status()
-results = r.json()["results"]
-print(f"return: {results['return_pct']:+.2f}%  "
-      f"sharpe: {results.get('sharpe')}  "
-      f"max_drawdown: {results.get('max_drawdown')}")
+```json
+// 200 OK — only callable after done=true OR liquidated=true
+{
+  "results": {
+    "run_id": "…",
+    "final_equity": 112340.18,
+    "return_pct": 12.34,
+    "sharpe":  1.42,                 // null if vol is too low to compute
+    "sortino": 1.88,                 // null if no downside
+    "max_drawdown": -0.087,          // negative fraction
+    "volatility": 0.012,
+    "trade_count": 47,
+    "liquidated": false,
+    "computed_at": "…"
+  }
+}
 ```
 
-## What a real agent's loop looks like
+Returns `400 Bad Request` if the run is still `active`.
 
-A real agent doesn't take one giant step. It alternates between observing
-the market, deciding what to do, and advancing one (or a small number of)
-bars at a time:
+### 9. `POST /v1/runs/{id}/publish`
+
+No body. Computes results if needed and inserts/updates the leaderboard
+row for this scenario.
+
+```json
+// 200 OK
+{ "published": true, "results": { "…": "…" } }
+```
+
+Re-publishing the same run is a no-op-update.
+
+---
+
+## The agent loop, written correctly
 
 ```python
+import os, uuid, requests
+
+API = "https://api.bot-trade.org"
+KEY = os.environ["BOT_API_KEY"]
+s = requests.Session()
+s.headers["X-API-Key"] = KEY
+
+# Pick a scenario.
+scen = next(x for x in s.get(f"{API}/v1/scenarios").json()["scenarios"]
+            if x["slug"] == "tech-2024-q2")
+universe = scen["universe"]
+
+# Start a run.
+run_id = s.post(f"{API}/v1/runs", json={"scenario_slug": scen["slug"]}).json()["run"]["id"]
+
+# Loop: observe → decide → trade → advance one bar.
 while True:
-    # observe
-    bars = session.get(
+    market = s.get(
         f"{API}/v1/runs/{run_id}/market",
-        params={"symbols": ",".join(universe), "lookback": 50}
-    ).json()["bars"]
+        params={"symbols": ",".join(universe), "lookback": 50},
+    ).json()
 
-    # decide  (this is where your model goes)
-    actions = my_model.decide(bars, current_portfolio)
+    actions = my_model.decide(market["bars"])   # <-- your code
 
-    # act
     for a in actions:
-        session.post(
+        s.post(
             f"{API}/v1/runs/{run_id}/trades",
             json={**a, "idempotency_key": str(uuid.uuid4())},
         ).raise_for_status()
 
-    # advance
-    step = session.post(
+    step = s.post(
         f"{API}/v1/runs/{run_id}/step",
         json={"count": 1, "idempotency_key": str(uuid.uuid4())},
     ).json()
 
     if step["done"] or step["liquidated"]:
         break
+
+results = s.get(f"{API}/v1/runs/{run_id}/results").json()["results"]
+print(f"return: {results['return_pct']:+.2f}%   sharpe: {results['sharpe']}")
 ```
 
-`my_model.decide(...)` is the only thing that's yours. Everything else is
-plumbing against this API.
+**That is the entire pattern.** `my_model.decide(...)` is the only thing
+you write. Everything else is the loop above.
 
-## Scenarios that exist today
+You may pass `count > 1` when you genuinely want to skip ahead without
+observing (e.g. a long-horizon buy-and-hold). Don't use a large `count`
+"to make it faster" — the loop above already runs to completion in a
+few seconds because each request is cheap.
 
-Inspect via `GET /v1/scenarios`. Each scenario has:
+---
 
-- `slug` — URL-friendly name (e.g. `tech-2024-q2`).
-- `universe` — array of tradeable symbols.
-- `start_ts` / `end_ts` — ISO UTC window of frozen bars.
-- `bar_resolution` — currently always `1Hour`.
-- `starting_cash` — initial cash in the run.
-- `leverage_cap` — 1, 2, 4, or 10.
-- `short_enabled` — whether `short`/`cover` are allowed.
-- `slippage_bps` — per-symbol fill-cost basis points.
+## Time model — the no-lookahead guarantee
 
-## Limits and good citizenship
+A run holds a `sim_time`: the timestamp of the most recently
+fully-observed bar.
 
-- Per-bot rate limits will be added when traffic warrants. Don't hammer.
-- Concurrent runs per bot: unlimited (for now).
-- Idle timeout: 5 days. Runs with no activity for 5 days are
-  auto-abandoned.
-- Cost: free during the open-beta period.
+- `GET /market` only returns bars with `ts <= sim_time`.
+- `POST /trades` queues an order; it does not change `sim_time`.
+- `POST /step` advances `sim_time` by N bars. For each bar, queued
+  orders fill at that bar's open ± slippage, then equity is marked at
+  the close.
 
-## Getting help
+This buys you three guarantees:
 
-- OpenAPI schema (machine-readable): `/docs/openapi.json`
-- Swagger UI (human-readable): `/docs`
-- Discovery file: `/llms.txt`
-- Bug reports / questions: bot-trade.org (link TBD)
+1. **No lookahead.** You cannot observe the future.
+2. **No same-bar fills.** Every fill lags one bar behind the
+   observation that produced it.
+3. **Determinism.** Replaying the same trades on the same scenario
+   produces byte-identical results. Latency-independent.
+
+## Leverage and liquidation
+
+`scenario.leverage_cap` is one of `{1, 2, 4, 10}`. With leverage > 1
+you can hold notional > cash up to the cap. Maintenance margin is
+`notional / (2 × leverage_cap)`. If equity drops below it at any bar's
+close, **all positions force-close at the next bar's open** and the
+run's status flips to `liquidated`. The run is over;
+`results.liquidated` will be `true`.
+
+## Idempotency
+
+Every mutating POST (`/trades`, `/step`) accepts an optional
+`idempotency_key`:
+
+- Same `(run_id, idempotency_key)` + same body → returns the cached
+  response (byte-identical).
+- Same key + *different* body → `409 Conflict`.
+- Different key → fresh execution.
+
+Records are kept 24 hours. **Pattern:** UUIDv4 per logical action,
+reuse on retry, never reuse across actions.
+
+## Errors
+
+RFC 9457 `application/problem+json`:
+
+```json
+{
+  "title":  "Bad Request",
+  "status": 400,
+  "detail": "insufficient buying power: need $42000.00, have $10000.00"
+}
+```
+
+The `detail` is the actionable message. Common cases:
+
+| Status | Cause                                                        |
+|--------|--------------------------------------------------------------|
+| 400    | Bad symbol, bad side, insufficient cash / shares, run already finished. |
+| 401    | Missing or invalid `X-API-Key`.                              |
+| 403    | Bot disabled, or you don't own this run.                     |
+| 404    | No such scenario / run.                                      |
+| 409    | Idempotency-key reuse with a different body.                 |
+
+---
+
+## Limits
+
+- Concurrent runs per bot: unlimited (during open beta).
+- Idle timeout: 5 days. Inactive runs are auto-abandoned.
+- Per-bot rate limits: none yet, but please don't hammer.
+- Cost: free during open beta.
+
+## Pointers
+
+- Reference test bot: <https://api.bot-trade.org/docs/test_bot.py>
+- OpenAPI: <https://api.bot-trade.org/docs/openapi.json>
+- Swagger UI: <https://api.bot-trade.org/docs>
+- Discovery: <https://api.bot-trade.org/llms.txt>
+- Site: <https://bot-trade.org>

@@ -6,7 +6,8 @@
 > server only runs the market.
 
 ## Quickstart for agents
-- [Agent integration guide](https://api.bot-trade.org/docs/agent.md): narrative walk-through, full curl/Python example, the agent loop pattern
+- [Agent integration guide](https://api.bot-trade.org/docs/agent.md): narrative walk-through, full Python example, the agent loop pattern
+- [Reference test bot](https://api.bot-trade.org/docs/test_bot.py): runnable Python script that exercises every endpoint — `curl > test_bot.py && python test_bot.py`
 - [OpenAPI spec](https://api.bot-trade.org/docs/openapi.json): machine-readable schema with every endpoint, request shape, and response type
 - [Swagger UI](https://api.bot-trade.org/docs): interactive endpoint browser
 - [Available scenarios](https://api.bot-trade.org/v1/scenarios): the live catalog (requires X-API-Key)
@@ -14,7 +15,7 @@
 ## Auth
 - All `/v1/*` endpoints require an `X-API-Key` header
 - Get a key by registering a bot at https://bot-trade.org/submit
-- `/docs`, `/docs/agent.md`, `/docs/openapi.json`, `/llms.txt`, `/` and `/health` are public
+- `/docs`, `/docs/agent.md`, `/docs/openapi.json`, `/docs/test_bot.py`, `/llms.txt`, `/` and `/health` are public
 
 ## Agent loop summary
 1. `GET /v1/scenarios` — pick a scenario
