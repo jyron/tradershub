@@ -39,7 +39,11 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		var bot models.Bot
 		var botIDStr, createdAt string
 		var isActive, claimed, isTest int
-		var tier, disabledReason sql.NullString
+		var description, creatorEmail, tier, disabledReason sql.NullString
+		// Scan nullable text columns through sql.NullString so a row with
+		// NULL description / creator_email doesn't silently fail Scan and
+		// surface as a confusing "Invalid API key" — see models.Bot where
+		// these fields are plain `string` and would otherwise panic Scan.
 		err := database.DB.QueryRow(
 			`SELECT id, name, api_key, description, creator_email, cash_balance,
 			        created_at, is_active, claimed, is_test, COALESCE(tier,''),
@@ -48,14 +52,16 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 			  WHERE api_key = ?1 AND is_active = 1`,
 			apiKey,
 		).Scan(
-			&botIDStr, &bot.Name, &bot.APIKey, &bot.Description,
-			&bot.CreatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed,
+			&botIDStr, &bot.Name, &bot.APIKey, &description,
+			&creatorEmail, &bot.CashBalance, &createdAt, &isActive, &claimed,
 			&isTest, &tier, &disabledReason,
 		)
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Invalid API key")
 			return
 		}
+		bot.Description = description.String
+		bot.CreatorEmail = creatorEmail.String
 
 		bot.ID, err = uuid.Parse(botIDStr)
 		if err != nil {
