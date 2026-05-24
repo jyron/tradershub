@@ -3,7 +3,6 @@ package apiv1
 import (
 	"bottrade/database"
 	"database/sql"
-	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -143,18 +142,14 @@ func getLeaderboard(c *fiber.Ctx) error {
 		e.MaxDrawdown = maxDD.Float64
 		e.Liquidated = liquidated != 0
 
-		// Display rule: "{handle} — {bot.name}" for bots on an active/past_due
-		// account with a handle. All others: "bot-<first 8 chars of bot id>".
+		// Display the bot's submitted name. For paid accounts with a handle,
+		// prefix it so one account can publish multiple named bots.
 		subStatus := acctStatus.String
 		hasProHandle := (subStatus == "active" || subStatus == "past_due") && acctHandle.Valid && acctHandle.String != ""
 		if hasProHandle {
-			e.BotName = fmt.Sprintf("%s — %s", acctHandle.String, rawBotName)
+			e.BotName = acctHandle.String + " — " + rawBotName
 		} else {
-			short := e.BotID
-			if len(short) > 8 {
-				short = short[:8]
-			}
-			e.BotName = "bot-" + short
+			e.BotName = rawBotName
 		}
 
 		entries = append(entries, e)
