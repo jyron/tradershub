@@ -1,12 +1,45 @@
 package apiv1
 
 import (
+	"bottrade/database"
 	"bottrade/models"
 	"context"
+	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 )
+
+// quotaFreeLimitError is returned (as HTTP 402) when a free-tier bot has
+// exhausted its 25-run monthly allowance. Its JSON shape matches the spec:
+//
+//	{ "error": "...", "runs_used": N, "runs_limit": 25,
+//	  "checkout_url": "...", "upgrade_hint": "..." }
+type quotaFreeLimitError struct {
+	Err         string `json:"error"`
+	RunsUsed    int    `json:"runs_used"`
+	RunsLimit   int    `json:"runs_limit"`
+	CheckoutURL string `json:"checkout_url"`
+	UpgradeHint string `json:"upgrade_hint"`
+}
+
+func (e *quotaFreeLimitError) Error() string    { return e.Err }
+func (e *quotaFreeLimitError) GetStatus() int   { return http.StatusPaymentRequired }
+
+// quotaProLimitError is returned (as HTTP 429) when a pro-tier bot has
+// exhausted its 500-run monthly allowance. Its JSON shape matches the spec:
+//
+//	{ "error": "...", "runs_used": N, "runs_limit": 500, "resets_at": "..." }
+type quotaProLimitError struct {
+	Err       string `json:"error"`
+	RunsUsed  int    `json:"runs_used"`
+	RunsLimit int    `json:"runs_limit"`
+	ResetsAt  string `json:"resets_at"`
+}
+
+func (e *quotaProLimitError) Error() string  { return e.Err }
+func (e *quotaProLimitError) GetStatus() int { return http.StatusTooManyRequests }
 
 // RunCreateInput accepts EITHER a scenario_id (UUID) or a scenario_slug.
 // Exactly one must be provided; if both are set, scenario_id wins.
@@ -64,6 +97,12 @@ func (h *handlers) registerRuns(api huma.API) {
 
 func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreateOutput, error) {
 	bot := botFrom(ctx)
+
+	// Enforce monthly run quotas before creating the run.
+	if err := h.enforceRunQuota(bot); err != nil {
+		return nil, err
+	}
+
 	scenarioID := in.Body.ScenarioID
 	if scenarioID == "" && in.Body.ScenarioSlug != "" {
 		// Resolve slug → id.
@@ -83,6 +122,61 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	out := &RunCreateOutput{Status: http.StatusCreated}
 	out.Body.Run = run
 	return out, nil
+}
+
+// enforceRunQuota checks the bot's monthly run count against its tier limit.
+// Returns a huma error if the quota is exceeded, nil otherwise.
+func (h *handlers) enforceRunQuota(bot models.Bot) error {
+	// Count runs this UTC calendar month.
+	var runsUsed int
+	err := database.DB.QueryRow(
+		`SELECT COUNT(*) FROM runs
+		  WHERE bot_id = ?1
+		    AND created_at >= datetime('now', 'start of month')`,
+		bot.ID.String(),
+	).Scan(&runsUsed)
+	if err != nil && err != sql.ErrNoRows {
+		// Non-fatal: let the run proceed if we can't count.
+		return nil
+	}
+
+	// Determine effective tier.
+	isPro := false
+	if bot.AccountID != "" {
+		var subStatus string
+		_ = database.DB.QueryRow(
+			`SELECT COALESCE(subscription_status,'') FROM accounts WHERE id = ?1`,
+			bot.AccountID,
+		).Scan(&subStatus)
+		isPro = subStatus == "active" || subStatus == "past_due"
+	}
+
+	if isPro {
+		const limit = 500
+		if runsUsed >= limit {
+			now := time.Now().UTC()
+			nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			return &quotaProLimitError{
+				Err:       "Monthly run limit reached",
+				RunsUsed:  runsUsed,
+				RunsLimit: limit,
+				ResetsAt:  nextMonth.Format(time.RFC3339),
+			}
+		}
+	} else {
+		const limit = 25
+		if runsUsed >= limit {
+			return &quotaFreeLimitError{
+				Err:         "Free tier limit reached",
+				RunsUsed:    runsUsed,
+				RunsLimit:   limit,
+				CheckoutURL: "<call POST /api/v1/billing/checkout to get one>",
+				UpgradeHint: "POST /api/v1/billing/checkout",
+			}
+		}
+	}
+
+	return nil
 }
 
 func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, error) {

@@ -3,6 +3,7 @@ package apiv1
 import (
 	"bottrade/database"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"strings"
 	"time"
@@ -12,11 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// issueKeyRequest is the optional JSON body for POST /v1/keys. Both fields
+// issueKeyRequest is the optional JSON body for POST /v1/keys. All fields
 // are optional — an empty POST is valid and produces an anonymous key.
+// Provide account_token to link the new bot to an existing Pro account.
 type issueKeyRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	AccountToken string `json:"account_token"`
 }
 
 type issueKeyResponse struct {
@@ -64,6 +67,7 @@ func issueKey(c *fiber.Ctx) error {
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.TrimSpace(req.Email)
+	req.AccountToken = strings.TrimSpace(req.AccountToken)
 
 	if len(req.Name) > 60 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -74,6 +78,27 @@ func issueKey(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "email is too long",
 		})
+	}
+
+	// Resolve account_token → account_id if provided.
+	var accountID sql.NullString
+	if req.AccountToken != "" {
+		var accID, subStatus string
+		err := database.DB.QueryRow(
+			`SELECT id, COALESCE(subscription_status,'') FROM accounts WHERE account_token = ?1`,
+			req.AccountToken,
+		).Scan(&accID, &subStatus)
+		if err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "account_token not found",
+			})
+		}
+		if subStatus != "active" && subStatus != "past_due" {
+			return c.Status(fiber.StatusPaymentRequired).JSON(fiber.Map{
+				"error": "account subscription is not active",
+			})
+		}
+		accountID = sql.NullString{String: accID, Valid: true}
 	}
 
 	apiKey, err := generateAPIKey()
@@ -91,9 +116,9 @@ func issueKey(c *fiber.Ctx) error {
 
 	_, err = database.DB.Exec(
 		`INSERT INTO bots
-		   (id, name, api_key, description, creator_email, tier)
-		 VALUES (?1, ?2, ?3, '', ?4, 'challenger')`,
-		botID.String(), name, apiKey, req.Email,
+		   (id, name, api_key, description, creator_email, tier, account_id)
+		 VALUES (?1, ?2, ?3, '', ?4, 'challenger', ?5)`,
+		botID.String(), name, apiKey, req.Email, accountID,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

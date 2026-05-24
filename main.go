@@ -60,7 +60,7 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	apiv1.Mount(app, engine)
+	apiv1.Mount(app, engine, cfg)
 
 	// Clean-URL aliases for the marketing site. Registered BEFORE app.Static
 	// so they win the route match. The .html paths still work via app.Static
@@ -69,6 +69,7 @@ func main() {
 	app.Get("/scenarios", func(c *fiber.Ctx) error { return c.SendFile("./static/scenarios.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
 	app.Get("/pricing", func(c *fiber.Ctx) error { return c.SendFile("./static/pricing.html") })
+	app.Get("/billing/success", func(c *fiber.Ctx) error { return c.SendFile("./static/billing-success.html") })
 	app.Static("/", "./static")
 
 	log.Printf("Listening on :%s", cfg.Port)

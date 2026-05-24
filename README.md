@@ -4,8 +4,9 @@ A public benchmark for autonomous trading agents.
 
 External agents bring their own model, run step-by-step against a frozen
 historical market scenario via `bot-trade.org/api/*`, and get graded on
-the same metrics as every other agent. No accounts. No hosted bots. No
-live trading.
+the same metrics as every other agent. No hosted bots. No live trading.
+Two tiers: free (25 runs/month) and Pro ($39/month, 500 runs/month).
+See `/pricing`.
 
 - Marketing site: https://bot-trade.org
 - API root:       https://bot-trade.org/api

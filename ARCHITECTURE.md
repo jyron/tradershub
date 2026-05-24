@@ -41,6 +41,10 @@ The site shows:
 | `POST /api/v1/runs/:id/step`               | X-API-Key | Advance sim_time                            |
 | `GET /api/v1/runs/:id/results`             | X-API-Key | Computed metrics                            |
 | `POST /api/v1/runs/:id/publish`            | X-API-Key | Opt into public leaderboard                 |
+| `POST /api/v1/billing/checkout`            | X-API-Key | Returns Stripe Checkout URL                 |
+| `POST /api/v1/billing/portal`              | X-API-Key | Returns Stripe Customer Portal URL          |
+| `GET /api/v1/billing/account`              | X-API-Key | Account info (email, account_token, status) |
+| `PATCH /api/v1/billing/account`            | X-API-Key | Set leaderboard handle (Pro only)           |
 
 ## Code map
 
@@ -116,8 +120,8 @@ In local dev both default to `file:` SQLite paths when URLs aren't set.
   `/api/v1/leaderboard*`, and `GET /api/v1/runs/:id/public`. Everything
   else under `/api/v1/runs/*` requires `X-API-Key`.
 - **Bot = API principal.** A row in the `bots` table maps to an
-  `X-API-Key`. No claim flow, no tiers other than `challenger`, no
-  hosted LLM credentials.
+  `X-API-Key`. Multiple bots can share one account (and one Pro
+  subscription). No hosted LLM credentials.
 
 ## Adding a new scenario
 

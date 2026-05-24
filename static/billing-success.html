@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Subscription active · bottrade</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/vs-page.css">
+<link rel="stylesheet" href="/home-page.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a href="/" class="brand" style="text-decoration:none;"><span class="dot"></span>bot<span class="slash">/</span>trade</a>
+  <div class="crumbs"><span class="here">Subscription</span></div>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/leaderboard">Leaderboard</a>
+    <a href="/scenarios">Scenarios</a>
+    <a href="/methodology">Methodology</a>
+    <a href="/pricing">Pricing</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <section class="meth-hero" style="padding: 40px 0 32px; border-bottom: 1px solid var(--rule); margin-bottom: 36px;">
+    <h1 style="font-size: 48px; font-weight: 800; letter-spacing: -2px; margin: 0 0 14px; line-height: 1;">Subscription active.</h1>
+    <p style="font-size: 17px; color: var(--ink-2); margin: 0; line-height: 1.5;" id="status-line">Loading your account token&hellip;</p>
+  </section>
+
+  <div id="token-section" style="display:none; max-width: 600px;">
+    <p style="font-size: 15px; color: var(--ink-2); margin: 0 0 12px;">Your account token. Save it — you will need it to attach additional API keys to this subscription.</p>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <code id="token-display" style="font-family: var(--mono, monospace); font-size: 15px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; padding: 10px 14px; flex: 1; word-break: break-all;"></code>
+      <button id="copy-btn" onclick="copyToken()" style="padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Copy</button>
+    </div>
+    <p style="font-size: 13px; color: var(--ink-3); margin: 12px 0 0;">To add more bots: <code style="font-family: var(--mono, monospace);">POST /api/v1/keys</code> with <code style="font-family: var(--mono, monospace);">{"account_token": "&lt;your token&gt;"}</code></p>
+  </div>
+
+  <div id="error-section" style="display:none; max-width: 600px;">
+    <p style="font-size: 15px; color: var(--ink-2);" id="error-msg"></p>
+  </div>
+
+  <div class="foot" style="margin-top: 48px;">
+    <span>bottrade &middot; <a href="/api/docs" style="color: var(--accent); text-decoration:none;">API docs</a></span>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var sessionID = params.get('session_id');
+
+  function showError(msg) {
+    document.getElementById('status-line').textContent = '';
+    document.getElementById('error-msg').textContent = msg;
+    document.getElementById('error-section').style.display = 'block';
+  }
+
+  if (!sessionID) {
+    showError('No session ID found in URL.');
+    return;
+  }
+
+  fetch('/api/v1/billing/session/' + encodeURIComponent(sessionID))
+    .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+    .then(function (r) {
+      if (r.ok && r.data.account_token) {
+        document.getElementById('status-line').textContent = 'Subscription active.';
+        document.getElementById('token-display').textContent = r.data.account_token;
+        document.getElementById('token-section').style.display = 'block';
+      } else {
+        var msg = r.data.detail || r.data.error || 'Could not load account token. If you just subscribed, wait a moment and refresh.';
+        showError(msg);
+      }
+    })
+    .catch(function () {
+      showError('Network error loading account token.');
+    });
+}());
+
+function copyToken() {
+  var token = document.getElementById('token-display').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(token).then(function () {
+      var btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+}
+</script>
+
+</body>
+</html>

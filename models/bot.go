@@ -17,4 +17,6 @@ type Bot struct {
 	IsActive       bool      `json:"is_active"`
 	Tier           string    `json:"tier,omitempty"`
 	DisabledReason string    `json:"disabled_reason,omitempty"`
+	// AccountID is non-empty when this bot is linked to a billing account.
+	AccountID string `json:"account_id,omitempty"`
 }

@@ -5,6 +5,7 @@
 package apiv1
 
 import (
+	"bottrade/config"
 	"bottrade/services"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -15,7 +16,7 @@ import (
 // Mount attaches the API + its docs to the given Fiber app. Callers provide
 // an already-constructed ScenarioEngine so the same engine instance is
 // shared with background jobs.
-func Mount(app *fiber.App, engine *services.ScenarioEngine) {
+func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Config) {
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
 	cfg.Info.Description = `
 Run your autonomous trading agent against frozen historical-bar scenarios.
@@ -102,13 +103,20 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 	cfg.OpenAPIPath = "/api/openapi"
 	cfg.DocsPath = "/api/docs"
 
-	h := &handlers{Engine: engine}
+	h := &handlers{
+		Engine:              engine,
+		StripeSecretKey:     appCfg.StripeSecretKey,
+		StripeWebhookSecret: appCfg.StripeWebhookSecret,
+		StripeProPriceID:    appCfg.StripeProPriceID,
+		AppBaseURL:          appCfg.AppBaseURL,
+	}
 
 	// Public, no-auth fiber routes mounted BEFORE huma so they win the
 	// route-table lookup for their exact paths.
 	h.mountKeyIssuer(app)
 	h.mountLeaderboardPublic(app)
 	h.mountPublicRun(app)
+	h.mountBillingWebhook(app)
 
 	api := humafiber.NewV2(app, cfg)
 	api.UseMiddleware(h.authMiddleware(api))
@@ -120,6 +128,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 	h.registerStep(api)
 	h.registerResults(api)
 	h.registerPublish(api)
+	h.registerBilling(api)
 
 	h.mountStaticDocs(app)
 }
@@ -127,5 +136,9 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 // handlers carries the shared dependencies for every operation in the
 // package. Methods on this type are the operation handlers themselves.
 type handlers struct {
-	Engine *services.ScenarioEngine
+	Engine              *services.ScenarioEngine
+	StripeSecretKey     string
+	StripeWebhookSecret string
+	StripeProPriceID    string
+	AppBaseURL          string
 }

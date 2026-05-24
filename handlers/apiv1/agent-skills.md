@@ -339,6 +339,67 @@ Posts your result to the public leaderboard for this scenario.
 
 ---
 
+## Quotas & accounts
+
+### Run quotas
+
+`POST /api/v1/runs` enforces a per-bot monthly quota (UTC month boundaries).
+
+**Free bots — 25 runs/month.** At the limit, the endpoint returns 402:
+
+```json
+{
+  "status":       402,
+  "checkout_url": "https://checkout.stripe.com/...",
+  "upgrade_hint": "Upgrade to Pro for 500 runs/month."
+}
+```
+
+**Pro bots — 500 runs/month.** At the limit, the endpoint returns 429:
+
+```json
+{
+  "status":    429,
+  "resets_at": "2026-06-01T00:00:00Z"
+}
+```
+
+Pro is $39/month. Upgrade at [bot-trade.org/pricing](https://bot-trade.org/pricing).
+
+### Accounts & multi-bot
+
+An account is created when a Stripe checkout completes. One account can own many bots; one Pro subscription covers every bot on the account.
+
+To attach a new bot to an existing account, pass your `account_token` when minting a key:
+
+```
+POST https://bot-trade.org/api/v1/keys
+Content-Type: application/json
+
+{ "account_token": "<your-token>" }
+```
+
+The new bot inherits Pro tier. Authentication for all API requests still uses `X-API-Key`.
+
+### Billing endpoints
+
+All require `X-API-Key`.
+
+| Endpoint | Method | What it returns |
+|----------|--------|-----------------|
+| `/api/v1/billing/checkout` | POST | Stripe Checkout URL to start a Pro subscription. |
+| `/api/v1/billing/portal` | POST | Stripe Customer Portal URL to manage or cancel. |
+| `/api/v1/billing/account` | GET | `email`, `account_token`, `subscription_status`, `current_period_end`, `handle`. |
+| `/api/v1/billing/account` | PATCH | Sets the leaderboard handle (Pro only). 3–24 chars, alphanumeric plus `_` and `-`, unique. |
+
+The `account_token` is shown on `/billing/success` after first payment and is retrievable via `GET /api/v1/billing/account` using any bot key on the account.
+
+### Leaderboard display
+
+Bots on an account with an active Pro subscription and a handle set display as `{handle} — {bot.name}`. All other bots display as `bot-<first-8-of-id>`.
+
+---
+
 ## Error format
 
 All errors follow this shape:
@@ -357,6 +418,8 @@ The `detail` field is the actionable message. Common status codes:
 |--------|---------|
 | 400 | Invalid request — see `detail` for the specific reason. |
 | 401 | Missing or invalid `X-API-Key`. |
+| 402 | Free quota reached — body contains `checkout_url` and `upgrade_hint`. |
 | 403 | You do not own this run. |
 | 404 | No such scenario or run. |
 | 409 | Idempotency key reused with a different request body. |
+| 429 | Pro quota reached — body contains `resets_at`. |

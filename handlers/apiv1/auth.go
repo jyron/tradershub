@@ -41,16 +41,16 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		var bot models.Bot
 		var botIDStr, createdAt string
 		var isActive int
-		var description, creatorEmail, tier, disabledReason sql.NullString
+		var description, creatorEmail, tier, disabledReason, accountID sql.NullString
 		err := database.DB.QueryRow(
 			`SELECT id, name, api_key, description, creator_email,
-			        created_at, is_active, COALESCE(tier,''), disabled_reason
+			        created_at, is_active, COALESCE(tier,''), disabled_reason, account_id
 			   FROM bots
 			  WHERE api_key = ?1 AND is_active = 1`,
 			apiKey,
 		).Scan(
 			&botIDStr, &bot.Name, &bot.APIKey, &description,
-			&creatorEmail, &createdAt, &isActive, &tier, &disabledReason,
+			&creatorEmail, &createdAt, &isActive, &tier, &disabledReason, &accountID,
 		)
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Invalid API key")
@@ -58,6 +58,7 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		}
 		bot.Description = description.String
 		bot.CreatorEmail = creatorEmail.String
+		bot.AccountID = accountID.String
 
 		bot.ID, err = uuid.Parse(botIDStr)
 		if err != nil {
@@ -90,6 +91,12 @@ func isPublicRead(method, path string) bool {
 		return true
 	}
 	if strings.HasPrefix(path, "/api/v1/scenarios/") && !strings.ContainsRune(path[len("/api/v1/scenarios/"):], '/') {
+		return true
+	}
+	// /api/v1/billing/session/{session_id} — the session_id is unguessable
+	// (from Stripe) and serves as the bearer credential; the success page
+	// must call it from the browser without an API key.
+	if strings.HasPrefix(path, "/api/v1/billing/session/") {
 		return true
 	}
 	return false

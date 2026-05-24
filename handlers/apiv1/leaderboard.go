@@ -3,6 +3,7 @@ package apiv1
 import (
 	"bottrade/database"
 	"database/sql"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -95,13 +96,17 @@ func getLeaderboard(c *fiber.Ctx) error {
 	}
 
 	q := `
-		SELECT l.run_id, l.bot_id, b.name,
+		SELECT l.run_id, l.bot_id,
 		       rr.return_pct, rr.sharpe, rr.sortino, rr.max_drawdown,
 		       rr.final_equity, rr.trade_count, rr.liquidated,
-		       l.published_at
+		       l.published_at,
+		       b.name,
+		       a.handle,
+		       a.subscription_status
 		  FROM run_leaderboard l
 		  JOIN run_results    rr ON rr.run_id = l.run_id
 		  JOIN bots            b ON  b.id    = l.bot_id
+		  LEFT JOIN accounts   a ON  a.id    = b.account_id
 		 WHERE l.scenario_id = ?1
 		 ORDER BY ` + orderCol + `
 		 LIMIT ?2
@@ -119,11 +124,16 @@ func getLeaderboard(c *fiber.Ctx) error {
 		var e leaderboardEntry
 		var sharpe, sortino, maxDD sql.NullFloat64
 		var liquidated int
+		var rawBotName string
+		var acctHandle, acctStatus sql.NullString
 		if err := rows.Scan(
-			&e.RunID, &e.BotID, &e.BotName,
+			&e.RunID, &e.BotID,
 			&e.ReturnPct, &sharpe, &sortino, &maxDD,
 			&e.FinalEquity, &e.TradeCount, &liquidated,
 			&e.PublishedAt,
+			&rawBotName,
+			&acctHandle,
+			&acctStatus,
 		); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -132,6 +142,21 @@ func getLeaderboard(c *fiber.Ctx) error {
 		e.Sortino = sortino.Float64
 		e.MaxDrawdown = maxDD.Float64
 		e.Liquidated = liquidated != 0
+
+		// Display rule: "{handle} — {bot.name}" for bots on an active/past_due
+		// account with a handle. All others: "bot-<first 8 chars of bot id>".
+		subStatus := acctStatus.String
+		hasProHandle := (subStatus == "active" || subStatus == "past_due") && acctHandle.Valid && acctHandle.String != ""
+		if hasProHandle {
+			e.BotName = fmt.Sprintf("%s — %s", acctHandle.String, rawBotName)
+		} else {
+			short := e.BotID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			e.BotName = "bot-" + short
+		}
+
 		entries = append(entries, e)
 	}
 	return c.JSON(fiber.Map{
