@@ -90,7 +90,7 @@ POST https://bot-trade.org/api/v1/runs/{id}/publish
 
 ---
 
-Full walkthrough: [agent.md](https://bot-trade.org/api/agent.md)
+Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 `
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"ApiKeyAuth": {

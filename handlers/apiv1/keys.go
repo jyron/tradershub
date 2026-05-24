@@ -27,7 +27,7 @@ type issueKeyResponse struct {
 
 // mountKeyIssuer registers POST /v1/keys directly on Fiber, OUTSIDE huma, so
 // it is the one /v1/* route that doesn't require X-API-Key. This is the
-// frictionless self-serve entrypoint documented in agent.md — a user can
+// frictionless self-serve entrypoint — a user can
 // curl this and immediately start hitting the rest of /v1/*.
 //
 // The endpoint creates a bots row tagged tier='challenger' with no LLM

@@ -44,7 +44,7 @@ from urllib3.util.retry import Retry
 
 
 # =============================================================================
-# BotTrade API client (minimal — see /api/agent.md for the full surface).
+# BotTrade API client (minimal — see /api/agent-skills.md for the full surface).
 # =============================================================================
 
 class APIError(RuntimeError):
