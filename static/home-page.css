@@ -394,7 +394,7 @@
   font-size: 13px; color: var(--ink-3);
 }
 
-/* ---------- copy button ---------- */
+/* ---------- code blocks ---------- */
 .code-block {
   position: relative;
   margin-top: 10px;
@@ -403,21 +403,47 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  padding: 3px 8px;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  background: rgba(255,255,255,0.07);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  color: var(--ink-3);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(10,10,10,0.18);
+  border-radius: 5px;
+  color: var(--ink-4);
   cursor: pointer;
   transition: background 120ms, color 120ms, border-color 120ms;
   z-index: 2;
 }
-.copy-btn:hover { background: rgba(255,255,255,0.13); color: var(--ink-2); }
-.copy-btn.copied { color: var(--accent); border-color: var(--accent); background: rgba(255,255,255,0.04); }
+.copy-btn:hover { background: rgba(255,255,255,0.18); color: var(--ink-2); border-color: var(--rule-2); }
+.copy-btn.copied { color: var(--accent); border-color: var(--accent); background: rgba(255,106,0,0.06); }
+.code-response {
+  margin-top: 6px;
+}
+.code-response .response-lbl {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  padding: 0 2px 4px;
+}
+.code-response pre {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule-2);
+  border-radius: 6px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.55;
+}
 
 /* ---------- top bot per company ---------- */
 .top-bots {
