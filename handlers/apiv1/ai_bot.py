@@ -128,7 +128,7 @@ PLACE_TRADES_TOOL = {
     "description": (
         "Submit zero or more trade orders for this turn. Orders queue now and "
         "fill at the NEXT bar's open price plus per-symbol slippage. Pass an "
-        "empty trades array to skip trading this turn — often the right call."
+        "empty trades array to skip trading this turn."
     ),
     "input_schema": {
         "type": "object",

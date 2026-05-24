@@ -1,6 +1,6 @@
 {
   "slug":             "sandbox-nov-2024",
-  "name":             "Sandbox — Nov 2024",
+  "name":             "Election Week Sandbox — Nov 2024",
   "description":      "One-week test scenario for verifying bot functionality. Full 50-symbol universe, shorting enabled, 2× leverage cap. Nov 4–8 2024 — high-volatility election week with broad market movement across every sector.",
   "bar_resolution":   "1Hour",
   "start_ts":         "2024-11-04T13:00:00Z",

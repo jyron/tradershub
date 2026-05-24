@@ -16,17 +16,17 @@ The site shows:
 - `/`               — landing with the featured scenario's top runs
 - `/leaderboard`    — per-scenario ranking table with sort toggles
 - `/methodology`    — citable spec (universe, leverage, fills, scoring)
-- `/run/:id`        — per-run detail (positions, equity, results); also `/bots.html?id=…`
+- `/scenarios`      — scenario catalog
+
 
 ## Routing summary
 
 | Path                                       | Auth     | Notes                                      |
 |--------------------------------------------|----------|--------------------------------------------|
 | `/`, `/leaderboard`, `/methodology`        | none     | Marketing pages (served from `static/`)    |
-| `/run/:id`                                 | none     | Marketing — fetches `/api/v1/runs/:id/public` |
 | `/api/docs`                                | none     | Swagger UI (huma-generated)                |
 | `/api/openapi.json`                        | none     | OpenAPI spec                                |
-| `/api/agent.md`                            | none     | Narrative integration guide                 |
+| `/api/agent-skills.md`                     | none     | Agent integration guide                     |
 | `/api/llms.txt`                            | none     | LLM discovery file                          |
 | `/api/test_bot.py` / `/api/ai_bot.py`      | none     | Reference agents                            |
 | `/api/health`                              | none     | Health check                                |
@@ -63,9 +63,9 @@ handlers/apiv1/                  — /api/* surface, huma-typed where auth'd
   keys.go                        — POST /api/v1/keys (public, fiber-direct)
   leaderboard.go                 — GET /api/v1/leaderboard{,/scenarios} (public, fiber-direct)
   public_run.go                  — GET /api/v1/runs/:id/public (public, fiber-direct)
-  static_docs.go                 — /api/health, /api/agent.md, /api/llms.txt,
+  static_docs.go                 — /api/health, /api/agent-skills.md, /api/llms.txt,
                                    /api/test_bot.py, /api/ai_bot.py
-  agent.md llms.txt              — embedded markdown / text shipped at /api
+  agent-skills.md llms.txt       — embedded markdown / text shipped at /api
   ai_bot.py test_bot.py          — reference agents shipped at /api
 services/
   scenario_engine.go             — StartRun, QueueTrade, AdvanceStep, ComputeResults
@@ -142,7 +142,7 @@ idempotently on boot.
 - "Add a new `/api/v1` endpoint." → `handlers/apiv1/*.go`, `handlers/apiv1/mount.go`
 - "Pull more historical data." → `cmd/backfill_bars/main.go`, `services/market_history.go`
 - "Provision a new scenario." → `scenarios/*.json`, `cmd/provision_scenario/main.go`
-- "Edit the integration docs." → `handlers/apiv1/agent.md`
+- "Edit the integration docs." → `handlers/apiv1/agent-skills.md`
 
 Production endpoints + Turso DB names: see `memory/reference_prod_urls.md`
 (Claude project memory).
