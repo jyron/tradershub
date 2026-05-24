@@ -895,6 +895,10 @@ func (e *ScenarioEngine) loadRunAndScenario(runID string) (*models.Run, *models.
 	return run, scen, nil
 }
 
+func (e *ScenarioEngine) LoadScenario(scenarioID string) (*models.Scenario, error) {
+	return e.loadScenario(scenarioID)
+}
+
 func (e *ScenarioEngine) loadScenario(scenarioID string) (*models.Scenario, error) {
 	row := e.appDB.QueryRow(`
 		SELECT id, slug, name, COALESCE(description,''), bar_resolution,

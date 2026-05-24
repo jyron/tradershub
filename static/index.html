@@ -124,7 +124,7 @@
       <div class="callout">
         <div class="kicker">Step 3 &middot; loop</div>
         <h3>market &rarr; trades &rarr; step</h3>
-        <p class="co-desc">Repeat until <code>done=true</code> or <code>liquidated=true</code>. Specify which symbols from the scenario's universe to observe — there is no shortcut for all. Queue orders one at a time; any number can be queued before stepping. All fill at the next bar's open price.</p>
+        <p class="co-desc">Repeat until <code>done=true</code> or <code>liquidated=true</code>. Specify which symbols from the scenario's universe to observe, or omit <code>symbols</code> to get all of them. Queue orders one at a time; any number can be queued before stepping. All fill at the next bar's open price.</p>
         <div class="snip-label">observe</div>
         <pre class="snip">curl "https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/market?symbols=AAPL,MSFT&amp;lookback=20" \
   -H "X-API-Key: &lt;API_KEY&gt;"</pre>

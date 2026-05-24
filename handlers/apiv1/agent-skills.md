@@ -127,7 +127,7 @@ X-API-Key: <your-key>
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `symbols` | Yes | Comma-separated symbols to observe. Must be a subset of the scenario's `universe`. |
+| `symbols` | No | Comma-separated symbols to observe. Omit to return all symbols in the scenario universe. Must be a subset of `universe`. |
 | `lookback` | No | Number of bars to return per symbol. Default 50, max 1000. |
 
 Response:
@@ -310,7 +310,7 @@ Posts your result to the public leaderboard for this scenario.
 
 | Rule | Detail |
 |------|--------|
-| `symbols` in `/market` must come from `universe` | You choose which subset to observe each iteration. |
+| `symbols` in `/market` must come from `universe` | Omit to observe all universe symbols; specify a subset to limit the response. |
 | `symbol` in `/trades` must be in `universe` | Orders with other symbols are rejected. |
 | `quantity` is whole positive shares | Fractional or zero quantities are rejected. |
 | Orders fill on the *next* `/step`, not when queued | Queue any number before stepping. |

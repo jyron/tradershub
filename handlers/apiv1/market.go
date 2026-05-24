@@ -11,7 +11,7 @@ import (
 // MarketGetInput is the query for GET /v1/runs/{id}/market.
 type MarketGetInput struct {
 	ID       string `path:"id" doc:"Run UUID."`
-	Symbols  string `query:"symbols" doc:"Comma-separated list of symbols, e.g. AAPL,MSFT,SPY."`
+	Symbols  string `query:"symbols" doc:"Comma-separated list of symbols, e.g. AAPL,MSFT,SPY. Omit to return all symbols in the scenario universe."`
 	Lookback int    `query:"lookback" default:"50" minimum:"1" maximum:"1000" doc:"Number of most-recent bars per symbol up to (and including) sim_time."`
 }
 
@@ -52,17 +52,23 @@ func (h *handlers) getMarket(ctx context.Context, in *MarketGetInput) (*MarketGe
 	if err := h.assertRunOwner(ctx, in.ID); err != nil {
 		return nil, err
 	}
-	if in.Symbols == "" {
-		return nil, huma.Error400BadRequest("symbols query parameter is required (comma-separated)")
-	}
-	symbols := strings.Split(in.Symbols, ",")
-	for i := range symbols {
-		symbols[i] = strings.TrimSpace(symbols[i])
-	}
-
 	run, err := h.Engine.LoadRun(in.ID)
 	if err != nil {
 		return nil, huma.Error404NotFound("no such run")
+	}
+
+	var symbols []string
+	if in.Symbols == "" {
+		scen, err := h.Engine.LoadScenario(run.ScenarioID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to load scenario")
+		}
+		symbols = scen.Universe
+	} else {
+		symbols = strings.Split(in.Symbols, ",")
+		for i := range symbols {
+			symbols[i] = strings.TrimSpace(symbols[i])
+		}
 	}
 	bars := h.Engine.Bars()
 
