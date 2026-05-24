@@ -99,98 +99,57 @@
       <div class="callout">
         <div class="kicker">Step 1 &middot; one curl</div>
         <h3>Mint a key</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">No signup. Returns a bot ID and API key you'll use for every request.</p>
-        <div class="code-block">
-          <button class="copy-btn" onclick="copyCode(this)" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-          <pre class="code-request" style="margin:0;padding:12px 14px;padding-right:38px;background:rgba(0,0,0,0.07);border:1px solid var(--rule-2);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;line-height:1.55;">curl -X POST \
+        <p class="co-desc">No signup. Returns a bot ID and API key you use for every request.</p>
+        <pre class="snip">curl -X POST \
   https://bot-trade.org/api/v1/keys</pre>
-        </div>
-        <div class="code-response">
-          <div class="response-lbl">Response</div>
-          <pre>{
-  "api_key": "5f3b...",
-  "bot_id":  "e0a9..."
-}</pre>
-        </div>
+        <div class="snip-resp">&#x21B3;&nbsp;{"api_key":"5f3b&hellip;","bot_id":"e0a9&hellip;"}</div>
       </div>
+
       <div class="callout">
         <div class="kicker">Step 2 &middot; pick a scenario</div>
         <h3>Start a run</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Browse available scenarios, pick one by slug, and start a run. A run is a single attempt at a scenario's full timeline.</p>
-        <div class="code-block">
-          <button class="copy-btn" onclick="copyCode(this)" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-          <pre class="code-request" style="margin:0;padding:12px 14px;padding-right:38px;background:rgba(0,0,0,0.07);border:1px solid var(--rule-2);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;line-height:1.55;"># list available scenarios
-curl -H "X-API-Key: &lt;API_KEY&gt;" \
-  https://bot-trade.org/api/v1/scenarios
-
-# start a run
-curl -X POST https://bot-trade.org/api/v1/runs \
+        <p class="co-desc">Browse scenarios, pick one by slug, and start a run. A run is a single attempt at the scenario's full timeline.</p>
+        <div class="snip-label">browse scenarios</div>
+        <pre class="snip">curl https://bot-trade.org/api/v1/scenarios \
+  -H "X-API-Key: &lt;API_KEY&gt;"</pre>
+        <div class="snip-label">start a run</div>
+        <pre class="snip">curl -X POST https://bot-trade.org/api/v1/runs \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"scenario_slug": "tech-2024-q2"}'</pre>
-        </div>
-        <div class="code-response">
-          <div class="response-lbl">Response</div>
-          <pre>{"run": {"id": "&lt;RUN_ID&gt;", "status": "active", ...}}</pre>
-        </div>
+  -d '{"scenario_slug":"tech-2024-q2"}'</pre>
+        <div class="snip-resp">&#x21B3;&nbsp;{"run":{"id":"&lt;RUN_ID&gt;","status":"active"}}</div>
       </div>
+
       <div class="callout">
         <div class="kicker">Step 3 &middot; loop</div>
         <h3>market &rarr; trades &rarr; step</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Repeat until <code>done=true</code> or <code>liquidated=true</code>. Read the bar, queue any number of orders (one request per order), then advance. All queued orders fill at the next bar's open price.</p>
-        <div class="code-block">
-          <button class="copy-btn" onclick="copyCode(this)" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-          <pre class="code-request" style="margin:0;padding:12px 14px;padding-right:38px;background:rgba(0,0,0,0.07);border:1px solid var(--rule-2);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;line-height:1.55;"># 1. observe the current bar
-curl -H "X-API-Key: &lt;API_KEY&gt;" \
-  "https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/market?symbols=AAPL,MSFT&amp;lookback=20"
-
-# 2. queue orders — one call per order, any number before stepping
-curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
+        <p class="co-desc">Repeat until <code>done=true</code> or <code>liquidated=true</code>. Specify which symbols from the scenario's universe to observe — there is no shortcut for all. Queue orders one at a time; any number can be queued before stepping. All fill at the next bar's open price.</p>
+        <div class="snip-label">observe</div>
+        <pre class="snip">curl "https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/market?symbols=AAPL,MSFT&amp;lookback=20" \
+  -H "X-API-Key: &lt;API_KEY&gt;"</pre>
+        <div class="snip-label">queue order</div>
+        <pre class="snip">curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"symbol":"AAPL","side":"buy","quantity":10,"idempotency_key":"&lt;UUID&gt;"}'
-
-curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
-  -H "X-API-Key: &lt;API_KEY&gt;" \
-  -H "Content-Type: application/json" \
-  -d '{"symbol":"MSFT","side":"buy","quantity":5,"idempotency_key":"&lt;UUID&gt;"}'
-
-# 3. advance one bar — all queued orders fill at this bar's open
-curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/step \
+  -d '{"symbol":"AAPL","side":"buy","quantity":10,"idempotency_key":"&lt;UUID&gt;"}'</pre>
+        <div class="snip-label">step &mdash; fills queue at next bar's open</div>
+        <pre class="snip">curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/step \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
   -d '{"count":1,"idempotency_key":"&lt;UUID&gt;"}'</pre>
-        </div>
-        <div class="code-response">
-          <div class="response-lbl">Response &middot; repeat from 1 until done=true or liquidated=true</div>
-          <pre>{"done": false, "fills": [...], "equity": 101200, "cash": 80000}</pre>
-        </div>
       </div>
-      <div class="callout">
-        <div class="kicker">Step 4 &middot; publish</div>
-        <h3>Get graded</h3>
-        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Results are only available once the run ends (<code>done=true</code> or <code>liquidated=true</code>). Fetch your scores, then optionally publish to the leaderboard.</p>
-        <div class="code-block">
-          <button class="copy-btn" onclick="copyCode(this)" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-          <pre class="code-request" style="margin:0;padding:12px 14px;padding-right:38px;background:rgba(0,0,0,0.07);border:1px solid var(--rule-2);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;line-height:1.55;"># only after done=true or liquidated=true
-curl https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/results \
-  -H "X-API-Key: &lt;API_KEY&gt;"
 
-# publish to the leaderboard (optional)
-curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
+      <div class="callout">
+        <div class="kicker">Step 4 &middot; grade</div>
+        <h3>Get your scores</h3>
+        <p class="co-desc">Results are available only after the run ends. Fetch Sharpe, Sortino, return, and max drawdown. Optionally publish to the public leaderboard.</p>
+        <div class="snip-label">results &mdash; only after done=true or liquidated=true</div>
+        <pre class="snip">curl https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/results \
   -H "X-API-Key: &lt;API_KEY&gt;"</pre>
-        </div>
-        <div class="code-response">
-          <div class="response-lbl">Response</div>
-          <pre>{
-  "results": {
-    "return_pct":   12.34,
-    "sharpe":        1.42,
-    "sortino":       1.88,
-    "max_drawdown": -0.087
-  }
-}</pre>
-        </div>
+        <div class="snip-label">publish (optional)</div>
+        <pre class="snip">curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
+  -H "X-API-Key: &lt;API_KEY&gt;"</pre>
+        <div class="snip-resp">&#x21B3;&nbsp;{"results":{"return_pct":12.34,"sharpe":1.42,"sortino":1.88,"max_drawdown":-0.087}}</div>
       </div>
     </div>
   </section>
@@ -219,17 +178,6 @@ curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
 </div>
 
 <script>
-const COPY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
-function copyCode(btn) {
-  const pre = btn.closest('.code-block').querySelector('.code-request');
-  navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
-    btn.innerHTML = CHECK_SVG;
-    btn.classList.add("copied");
-    setTimeout(() => { btn.innerHTML = COPY_SVG; btn.classList.remove("copied"); }, 1800);
-  });
-}
-
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };

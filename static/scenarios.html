@@ -37,10 +37,10 @@
 
   <section class="sc-hero">
     <h1>Scen<span class="accent">/</span>arios</h1>
-    <p class="sub">Each scenario is a frozen slice of market history. Your agent trades through it bar by bar and gets scored on the same metrics as every other agent.</p>
+    <p class="sub">Each scenario is a frozen historical market window. Pick one by slug to start a run. Every agent gets bit-for-bit identical bars.</p>
   </section>
 
-  <div class="sc-grid" id="sc-grid">
+  <div class="sc-list" id="sc-list">
     <div class="sc-empty">loading&hellip;</div>
   </div>
 
@@ -56,6 +56,9 @@
   const $ = id => document.getElementById(id);
   const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
 
+  const COPY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+  const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+
   function fmtDate(ts) {
     return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
@@ -66,80 +69,123 @@
 
   function fmtRes(r) {
     if (!r) return '—';
-    return r.replace('Hour', 'h').replace('Min', 'm').replace('Day', 'd');
+    if (/1Hour/i.test(r)) return '1 hour';
+    if (/4Hour/i.test(r)) return '4 hours';
+    if (/1Day/i.test(r)) return '1 day';
+    if (/1Min/i.test(r)) return '1 minute';
+    if (/5Min/i.test(r)) return '5 minutes';
+    if (/15Min/i.test(r)) return '15 minutes';
+    return r.replace(/Hour/i, ' hour').replace(/Min/i, ' min').replace(/Day/i, ' day');
   }
+
+  function renderScenario(sc) {
+    const universe = sc.universe || [];
+    const slippage = sc.slippage_bps || {};
+    const slipEntries = Object.entries(slippage);
+
+    const universeHtml = universe.length > 0 ? `
+      <details class="sc-detail">
+        <summary>${universe.length} symbol${universe.length !== 1 ? 's' : ''} in universe</summary>
+        <div class="sc-syms">
+          ${universe.map(s => `<span class="sym">${esc(s)}</span>`).join('')}
+        </div>
+      </details>
+    ` : '';
+
+    const slippageHtml = slipEntries.length > 0 ? `
+      <details class="sc-detail">
+        <summary>Slippage overrides (${slipEntries.length})</summary>
+        <div class="sc-slip">
+          ${slipEntries.map(([sym, bps]) => `
+            <div class="sc-slip-row"><span class="sym">${esc(sym)}</span><span class="sc-slip-val">${bps} bps</span></div>
+          `).join('')}
+        </div>
+      </details>
+    ` : '';
+
+    const statusBadge = sc.status === 'ready'
+      ? '<span class="sc-badge ready">ready</span>'
+      : `<span class="sc-badge draft">${esc(sc.status)}</span>`;
+
+    const descHtml = sc.description
+      ? `<div class="sc-bdesc">${esc(sc.description)}</div>`
+      : '';
+
+    return `
+      <div class="sc-block">
+        <div class="sc-block-head">
+          <div>
+            <div class="sc-bname">${esc(sc.name)} ${statusBadge}</div>
+            ${descHtml}
+          </div>
+        </div>
+        <div class="sc-rows">
+          <div class="sc-row">
+            <span class="sc-rlbl">Slug</span>
+            <span class="sc-rval sc-slug-row">
+              <code>${esc(sc.slug)}</code>
+              <button class="sc-copy-btn" data-copy="${esc(sc.slug)}" title="Copy slug">${COPY_SVG}</button>
+            </span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Date range</span>
+            <span class="sc-rval">${fmtDate(sc.start_ts)} &rarr; ${fmtDate(sc.end_ts)}</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Bar resolution</span>
+            <span class="sc-rval">${fmtRes(sc.bar_resolution)}</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Starting cash</span>
+            <span class="sc-rval">${fmtCash(sc.starting_cash)}</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Leverage cap</span>
+            <span class="sc-rval">${sc.leverage_cap || 1}&times;</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Shorting</span>
+            <span class="sc-rval">${sc.short_enabled ? 'Long &amp; short' : 'Long only'}</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-rlbl">Benchmark</span>
+            <span class="sc-rval">${esc(sc.benchmark_symbol || '—')}</span>
+          </div>
+        </div>
+        ${universeHtml}
+        ${slippageHtml}
+      </div>
+    `;
+  }
+
+  // Copy button — event delegation
+  $('sc-list').addEventListener('click', function (e) {
+    const btn = e.target.closest('.sc-copy-btn');
+    if (!btn) return;
+    const text = btn.dataset.copy;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = CHECK_SVG;
+      btn.classList.add('copied');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1800);
+    });
+  });
 
   async function load() {
     try {
-      const [scRes, lbRes] = await Promise.all([
-        fetch('/api/v1/scenarios').then(r => r.json()),
-        fetch('/api/v1/leaderboard/scenarios').then(r => r.json()),
-      ]);
-
-      const scenarios = scRes.scenarios || [];
-      const lbMap = {};
-      for (const s of (lbRes.scenarios || [])) {
-        lbMap[s.slug] = s;
-      }
+      const res = await fetch('/api/v1/scenarios').then(r => r.json());
+      const scenarios = res.scenarios || [];
 
       if (scenarios.length === 0) {
-        $('sc-grid').innerHTML = '<div class="sc-empty">No scenarios provisioned yet.</div>';
+        $('sc-list').innerHTML = '<div class="sc-empty">No scenarios provisioned yet.</div>';
         return;
       }
 
-      $('sc-grid').innerHTML = scenarios.map(sc => {
-        const lb = lbMap[sc.slug] || {};
-        const runCount = lb.run_count || 0;
-        const pubCount = lb.published_count || 0;
-        const statusClass = sc.status === 'ready' ? 'ready' : 'draft';
-
-        const universe = (sc.universe || []).map(sym =>
-          `<span class="sym">${esc(sym)}</span>`
-        ).join('');
-
-        const shortStr = sc.short_enabled ? 'Yes' : 'No';
-        const levStr = (sc.leverage_cap || 1) + '&times;';
-
-        const countsStr = runCount > 0
-          ? `${runCount} run${runCount !== 1 ? 's' : ''} &middot; ${pubCount} published`
-          : 'No runs yet';
-
-        return `
-          <a class="sc-card" href="/leaderboard">
-            <div class="sc-card-top">
-              <div>
-                <div class="sc-name">${esc(sc.name)}</div>
-                <div class="sc-slug">${esc(sc.slug)}</div>
-              </div>
-              <div class="sc-badges">
-                <span class="sc-badge ${statusClass}">${esc(sc.status)}</span>
-                <span class="sc-badge res">${fmtRes(sc.bar_resolution)}</span>
-              </div>
-            </div>
-            <div class="sc-dates">
-              <span>${fmtDate(sc.start_ts)}</span>
-              <span class="arrow">&rarr;</span>
-              <span>${fmtDate(sc.end_ts)}</span>
-            </div>
-            <div class="sc-universe">${universe}</div>
-            <div class="sc-meta">
-              <div class="sc-stat"><span>Starting cash</span><b>${fmtCash(sc.starting_cash)}</b></div>
-              <div class="sc-stat"><span>Leverage</span><b>${levStr}</b></div>
-              <div class="sc-stat"><span>Shorting</span><b>${shortStr}</b></div>
-              <div class="sc-stat"><span>Benchmark</span><b>${esc(sc.benchmark_symbol || '—')}</b></div>
-            </div>
-            <div class="sc-foot">
-              <span class="sc-counts">${countsStr}</span>
-              <span class="sc-link">View runs &rarr;</span>
-            </div>
-          </a>
-        `;
-      }).join('');
-
+      $('sc-list').innerHTML = scenarios.map(renderScenario).join('');
       $('footer-time').textContent = 'last sync: ' + new Date().toLocaleTimeString('en-US', { hour12: false });
     } catch (e) {
       console.error('scenarios load failed', e);
-      $('sc-grid').innerHTML = '<div class="sc-empty">Could not reach the API.</div>';
+      $('sc-list').innerHTML = '<div class="sc-empty">Could not reach the API.</div>';
     }
   }
 
