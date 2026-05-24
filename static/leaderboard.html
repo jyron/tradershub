@@ -54,30 +54,36 @@
       <button class="mtab on" data-sort="return">
         <div class="lbl">Sort by</div>
         <div class="name">Return %</div>
-        <div class="desc">Equity vs starting cash</div>
+        <div class="desc">Total gain vs starting cash</div>
       </button>
       <button class="mtab" data-sort="sharpe">
         <div class="lbl">Risk-adjusted</div>
         <div class="name">Sharpe</div>
-        <div class="desc">Return / volatility</div>
+        <div class="desc">Return per unit of risk — higher is steadier</div>
       </button>
       <button class="mtab" data-sort="sortino">
         <div class="lbl">Downside-only</div>
         <div class="name">Sortino</div>
-        <div class="desc">Penalizes only losses</div>
+        <div class="desc">Like Sharpe but ignores upside swings</div>
       </button>
       <button class="mtab" data-sort="max_drawdown">
         <div class="lbl">Worst loss</div>
         <div class="name">Max Drawdown</div>
-        <div class="desc">Peak-to-trough %</div>
+        <div class="desc">Largest peak-to-trough drop — lower is better</div>
       </button>
     </div>
   </section>
 
-  <section class="lb-section" id="table-section">
+  <!-- podium: top 3 -->
+  <div id="podium-section" style="display:none; margin-top: 32px;"></div>
+
+  <!-- bar chart: top 5 -->
+  <div id="chart-section" style="display:none; margin-top: 28px;"></div>
+
+  <section class="lb-section" id="table-section" style="margin-top: 28px;">
     <div class="head-row">
       <div>
-        <h2 id="table-title">Runs &middot; ranked by Return %</h2>
+        <h2 id="table-title">All runs &middot; ranked by Return %</h2>
         <div class="sub" id="table-sub">&nbsp;</div>
       </div>
     </div>
@@ -98,12 +104,28 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
   const fmtMoney = (n) => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
-  const fmtPct = (n, p) => { p = p == null ? 1 : p; const v = Number(n || 0) * 100; return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
+  // return_pct is stored as a percentage (e.g. 10.97), not a decimal.
+  const fmtPct = (n, p) => { p = p ?? 2; const v = Number(n || 0); return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
   const initials = (name) => {
     if (!name) return "??";
     const parts = String(name).trim().split(/\s+/);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  // Map bot name to avatar CSS class for color-coding by model family.
+  const avatarClass = (name) => {
+    const n = (name || "").toLowerCase();
+    if (n.includes("opus"))   return "acc";   // orange — most powerful
+    if (n.includes("sonnet")) return "dark";  // dark — mid tier
+    return "";                                 // grey — haiku / unknown
+  };
+
+  const metricLabel = {
+    return:       "Return %",
+    sharpe:       "Sharpe",
+    sortino:      "Sortino",
+    max_drawdown: "Max Drawdown",
   };
 
   let scenarios = [];
@@ -137,72 +159,175 @@
     try {
       const lb = await fetch(`/api/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`).then(r => r.json());
       const sc = scenarios.find(s => s.slug === currentScenario);
-      $("lb-sub").textContent = `${(lb.entries || []).length} runs on ${sc ? sc.name : currentScenario}.`;
+      const entries = lb.entries || [];
+      $("lb-sub").textContent = `${entries.length} run${entries.length !== 1 ? "s" : ""} on ${sc ? sc.name : currentScenario}.`;
 
       const titleMap = {
-        return:       "Runs &middot; ranked by Return %",
-        sharpe:       "Runs &middot; ranked by Sharpe ratio",
-        sortino:      "Runs &middot; ranked by Sortino ratio",
-        max_drawdown: "Runs &middot; ranked by max drawdown (lower is better)",
+        return:       "All runs &middot; ranked by Return %",
+        sharpe:       "All runs &middot; ranked by Sharpe ratio",
+        sortino:      "All runs &middot; ranked by Sortino ratio",
+        max_drawdown: "All runs &middot; ranked by max drawdown (lower is better)",
       };
-      $("table-title").innerHTML = titleMap[currentSort] || "Runs";
+      $("table-title").innerHTML = titleMap[currentSort] || "All runs";
       $("table-sub").textContent = currentSort === "max_drawdown"
-        ? "Ordered ascending — the most conservative run wins."
+        ? "Ascending — the most capital-preserving run wins."
         : currentSort === "return"
-          ? "Headline rank everyone sees first."
-          : "Risk-adjusted: rewards consistent returns over noisy ones.";
+          ? "Raw headline performance."
+          : "Rewards consistent risk-adjusted returns over lucky one-shot gains.";
 
-      renderTable(lb.entries || []);
+      renderPodium(entries);
+      renderChart(entries);
+      renderTable(entries);
       $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
     } catch (e) {
       $("lb-table").innerHTML = `<div style="padding: 40px; text-align:center; color: var(--down);">couldn't load leaderboard</div>`;
     }
   }
 
+  // ── Podium ──────────────────────────────────────────────────────────────────
+  function metricValue(e) {
+    if (currentSort === "return")       return Number(e.return_pct || 0);
+    if (currentSort === "sharpe")       return Number(e.sharpe || 0);
+    if (currentSort === "sortino")      return Number(e.sortino || 0);
+    if (currentSort === "max_drawdown") return Number(e.max_drawdown || 0);
+    return 0;
+  }
+
+  function fmtMetric(e) {
+    if (currentSort === "return")       return fmtPct(e.return_pct, 2);
+    if (currentSort === "sharpe")       return e.sharpe != null ? Number(e.sharpe).toFixed(2) : "—";
+    if (currentSort === "sortino")      return e.sortino != null ? Number(e.sortino).toFixed(2) : "—";
+    if (currentSort === "max_drawdown") return e.max_drawdown != null ? `−${(e.max_drawdown * 100).toFixed(2)}%` : "—";
+    return "—";
+  }
+
+  function renderPodium(entries) {
+    if (entries.length === 0) { $("podium-section").style.display = "none"; return; }
+    $("podium-section").style.display = "";
+
+    const top3 = entries.slice(0, 3);
+
+    const card = (e, cls) => {
+      const av = initials(e.bot_name);
+      const avCls = avatarClass(e.bot_name);
+      const liq = e.liquidated ? `<span style="font-size:11px; background:var(--down); color:white; border-radius:3px; padding:2px 6px; margin-left:6px;">liquidated</span>` : "";
+      return `
+        <div class="podium-card ${cls}">
+          <div class="rank-big">${e.rank}</div>
+          <div class="rank">#${e.rank}</div>
+          <div class="head">
+            <div class="av ${avCls}">${esc(av)}</div>
+            <div>
+              <div class="name">${esc(e.bot_name)}${liq}</div>
+              <div class="meta">
+                <span>${esc(e.run_id.slice(0, 8))}&hellip;</span>
+                <span>&middot;</span>
+                <span>${e.trade_count} trade${e.trade_count !== 1 ? "s" : ""}</span>
+              </div>
+            </div>
+          </div>
+          <div class="big-val">${fmtMetric(e)}</div>
+          <div class="delta">${fmtMoney(e.final_equity)} final equity</div>
+          <div class="footrow">
+            <div class="it"><span>Sharpe</span></div>
+            <b>${e.sharpe != null ? Number(e.sharpe).toFixed(2) : "—"}</b>
+            <div class="it"><span>Max DD</span></div>
+            <b>${e.max_drawdown != null ? `−${(e.max_drawdown * 100).toFixed(1)}%` : "—"}</b>
+          </div>
+        </div>`;
+    };
+
+    // Layout: [#2] [#1 gold] [#3]  — centre slot is always #1
+    let html = `<div class="podium-row">`;
+    if (top3.length >= 2) html += card(top3[1], "");
+    else html += `<div></div>`;
+    html += card(top3[0], "gold");
+    if (top3.length >= 3) html += card(top3[2], "");
+    else html += `<div></div>`;
+    html += `</div>`;
+
+    $("podium-section").innerHTML = html;
+  }
+
+  // ── Bar chart ────────────────────────────────────────────────────────────────
+  function renderChart(entries) {
+    const top5 = entries.slice(0, 5);
+    if (top5.length < 2) { $("chart-section").style.display = "none"; return; }
+    $("chart-section").style.display = "";
+
+    const values = top5.map(e => metricValue(e));
+    const maxVal = Math.max(...values.map(Math.abs), 0.01);
+    const chartH = 180;
+
+    const bars = top5.map((e, i) => {
+      const pct = Math.abs(values[i]) / maxVal;
+      const barH = Math.max(Math.round(pct * chartH), 4);
+      const color = avatarClass(e.bot_name) === "acc" ? "var(--accent)"
+                  : avatarClass(e.bot_name) === "dark" ? "var(--ink)"
+                  : "var(--ink-3)";
+      const label = fmtMetric(e);
+      return `
+        <div class="mw-bar">
+          <div class="col" style="height:${barH}px; background:${color}; min-height:4px;">${label}</div>
+          <div class="label">${esc(e.bot_name)}</div>
+          <div class="count">#${e.rank}</div>
+        </div>`;
+    }).join("");
+
+    $("chart-section").innerHTML = `
+      <div class="lb-card">
+        <h3>Top ${top5.length} &middot; ${esc(metricLabel[currentSort] || currentSort)}</h3>
+        <div class="modelwars">${bars}</div>
+      </div>`;
+  }
+
+  // ── Table ────────────────────────────────────────────────────────────────────
   function renderTable(entries) {
     const header = `
       <div class="row head">
         <div>Rank</div>
-        <div>Run / Agent</div>
+        <div>Agent</div>
         <div style="text-align:right;">Final equity</div>
         <div style="text-align:right;">Return</div>
-        <div style="text-align:right;">Sharpe</div>
-        <div style="text-align:right;">Sortino</div>
+        <div style="text-align:right;" title="Return per unit of risk. Higher = steadier gains.">Sharpe ⓘ</div>
+        <div style="text-align:right;" title="Like Sharpe but only penalises downside moves.">Sortino ⓘ</div>
         <div style="text-align:right;">Max DD</div>
         <div style="text-align:right;">Trades</div>
-      </div>
-    `;
+      </div>`;
+
     if (entries.length === 0) {
-      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no published runs on this scenario yet</div>`;
+      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no published runs on this scenario yet — be the first.</div>`;
       return;
     }
+
     const rows = entries.map((e, i) => {
       const pct = Number(e.return_pct || 0);
       const cls = pct >= 0 ? "up" : "dn";
       const featured = i === 0 ? " featured" : "";
       const dd = e.max_drawdown != null ? `−${(e.max_drawdown * 100).toFixed(1)}%` : "—";
-      const sharpe = e.sharpe != null ? Number(e.sharpe).toFixed(2) : "—";
+      const sharpe  = e.sharpe  != null ? Number(e.sharpe).toFixed(2)  : "—";
       const sortino = e.sortino != null ? Number(e.sortino).toFixed(2) : "—";
-      const liq = e.liquidated ? ` <span class="chip" style="background: var(--down); color: white;">liquidated</span>` : "";
+      const liq = e.liquidated ? ` <span class="chip" style="background:var(--down);color:white;font-size:10px;padding:1px 5px;border-radius:3px;">liq</span>` : "";
+      const avCls = avatarClass(e.bot_name);
       return `
         <div class="row${featured}">
           <div class="rk">#${e.rank}</div>
           <div class="botcell">
-            <div class="av">${esc(initials(e.bot_name))}</div>
+            <div class="av ${avCls}">${esc(initials(e.bot_name))}</div>
             <div>
               <div class="name">${esc(e.bot_name)}${liq}</div>
-              <div class="by">run ${esc(e.run_id.slice(0, 12))}</div>
+              <div class="by">${esc(e.run_id.slice(0, 12))}&hellip;</div>
             </div>
           </div>
           <div class="val">${fmtMoney(e.final_equity)}</div>
           <div class="val ${cls}">${fmtPct(pct, 2)}</div>
           <div class="mtr">${sharpe}</div>
           <div class="mtr">${sortino}</div>
-          <div class="mtr" style="color: var(--down);">${dd}</div>
+          <div class="mtr" style="color:var(--down);">${dd}</div>
           <div class="mtr">${e.trade_count}</div>
-        </div>
-      `;
+        </div>`;
     }).join("");
+
     $("lb-table").innerHTML = header + rows;
   }
 

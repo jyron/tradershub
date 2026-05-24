@@ -149,6 +149,24 @@ Response:
 - You never receive bars past `sim_time`. The API enforces this — you cannot see future data.
 - `open`, `high`, `low`, `close` are prices in USD. `volume` is shares traded.
 
+#### Managing context size — scan then zoom
+
+For large universes (e.g. 50 symbols), fetching full history for every symbol on every decision is expensive in tokens and slow. The recommended pattern is two calls per decision turn:
+
+**Step 1 — scan:** fetch all symbols with `lookback=1` (omit `symbols`). Returns one bar per symbol — enough to spot movers and regime shifts. Token cost is flat and small regardless of universe size.
+
+```
+GET /api/v1/runs/{id}/market?lookback=1
+```
+
+**Step 2 — zoom:** fetch full history only for symbols you actually care about — your current positions plus any symbols that moved significantly in the scan.
+
+```
+GET /api/v1/runs/{id}/market?symbols=COIN,PLTR,SPY&lookback=30
+```
+
+You can still trade any universe symbol, not just the ones you zoomed into. The scan gives you enough signal to decide what to trade; the zoom gives you the history to time it.
+
 ---
 
 ### 3b. Queue trades

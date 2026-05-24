@@ -86,7 +86,12 @@ class BotTradeClient:
     def get_run(self, run_id: str) -> dict:
         return self._req("GET", f"/api/v1/runs/{run_id}")
 
+    def scan_market(self, run_id: str) -> dict:
+        """Fetch the current bar for every universe symbol (compact breadth view)."""
+        return self._req("GET", f"/api/v1/runs/{run_id}/market", params={"lookback": 1})
+
     def get_market(self, run_id: str, symbols: list[str], lookback: int) -> dict:
+        """Fetch N bars of history for a specific subset of symbols (detail view)."""
         return self._req("GET", f"/api/v1/runs/{run_id}/market", params={
             "symbols": ",".join(symbols),
             "lookback": lookback,
@@ -118,9 +123,25 @@ class BotTradeClient:
 PRICING = {
     "claude-haiku-4-5":  {"input": 1.00, "output":  5.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    "claude-opus-4-7":   {"input": 5.00, "output": 25.00},
-    "claude-opus-4-6":   {"input": 5.00, "output": 25.00},
+    "claude-opus-4-7":   {"input": 15.00, "output": 75.00},
 }
+
+
+def _pick_focus(scan: dict, held_symbols: set[str], top_n: int = 8) -> list[str]:
+    """Return symbols worth a detailed lookback: held positions + biggest intrabar movers."""
+    focus = set(held_symbols)
+    movers: list[tuple[float, str]] = []
+    for sym, bars in scan["bars"].items():
+        if not bars:
+            continue
+        b = bars[-1]
+        if b["open"] > 0:
+            pct = abs(b["close"] - b["open"]) / b["open"]
+            movers.append((pct, sym))
+    movers.sort(reverse=True)
+    for _, sym in movers[:top_n]:
+        focus.add(sym)
+    return sorted(focus)
 
 
 PLACE_TRADES_TOOL = {
@@ -176,12 +197,18 @@ def build_system_prompt(scen: dict) -> str:
     slip = scen.get("slippage_bps") or {}
     slip_lines = "\n".join(f"  {s}: {slip.get(s, '?')} bps" for s in universe)
 
-    return f"""You are a quantitative trading agent operating a portfolio over a frozen historical-bar scenario on the BotTrade Benchmark API. Goal: maximize risk-adjusted return (return %, Sharpe, low drawdown) over the timeline.
+    return f"""You are a quantitative trading agent on the BotTrade Benchmark API. Goal: maximize risk-adjusted return (return %, Sharpe, low drawdown) over the scenario timeline.
+
+MARKET DATA FORMAT
+Each turn you receive two sections:
+1. UNIVERSE SNAPSHOT — the current bar for every symbol in the universe. Use this to scan for movers and macro regime.
+2. DETAIL BARS — full history (multiple bars) for your held positions plus the biggest intrabar movers. Use this for timing and trend analysis.
+You may trade any symbol in the universe regardless of whether it appears in DETAIL BARS.
 
 MARKET MODEL
-- One bar at a time. You see OHLCV bars up to and including the current sim_time. No lookahead.
-- Orders you queue this turn fill at the NEXT bar's open price plus per-symbol slippage. No same-bar fills.
-- You'll receive feedback on the previous turn's fills and any rejected orders at the start of each turn.
+- One bar at a time. You see OHLCV bars up to and including sim_time. No lookahead.
+- Orders queue this turn and fill at the NEXT bar's open price plus per-symbol slippage. No same-bar fills.
+- Prior-turn fills and rejections are shown at the top of each turn.
 
 DECISION TOOL
 You have one tool, `place_trades`. Each call submits zero or more orders.
@@ -200,26 +227,24 @@ SCENARIO
 {slip_lines}
 
 RISK
-- Equity below maintenance margin (notional / (2 × {lev})) → all positions force-close at the next bar's open. Run over.
-- You cannot sell shares you don't own. You cannot cover a short you don't hold.
-- Insufficient buying power → order is rejected outright; you'll see the rejection next turn.
+- Equity below maintenance margin (notional / (2 × {lev})) → all positions force-close at next bar's open. Run over.
+- You cannot sell shares you don't own or cover shorts you don't hold.
+- Insufficient buying power → order rejected; you'll see the rejection next turn.
 
 STYLE
 - Be decisive but patient. Every fill pays slippage. Over-trading erodes returns.
-- Empty turns are common in good strategies. Don't trade just because you can.
-- The `rationale` you write is the only memory you carry forward — say WHY in one sentence (signal, regime, event) so future-you can reason about it next turn."""
+- Empty turns are common in good strategies. Don't trade just to trade.
+- The `rationale` you write is the only memory you carry forward — say WHY in one sentence so future-you can reason from it."""
 
 
 def build_user_message(
-    market: dict,
+    scan: dict,
+    detail: dict,
     run_snap: dict,
     last_step_fills: list[dict],
     last_rejections: list[str],
 ) -> str:
-    """Per-turn state — bars, positions, cash, prior-turn outcomes.
-
-    Everything that changes turn-to-turn lives here so the cached system
-    prefix stays valid."""
+    """Per-turn state — scan snapshot, detail bars, positions, cash, prior-turn outcomes."""
     pos = {p["symbol"]: p["quantity"] for p in (run_snap.get("positions") or [])}
     eq = run_snap.get("last_equity") or {}
     run = run_snap.get("run", {})
@@ -227,24 +252,15 @@ def build_user_message(
     equity = eq.get("equity", cash)
     starting = run.get("starting_cash", 100000) or 100000
     pnl_pct = (equity / starting - 1) * 100 if starting else 0.0
-
-    bars_lines: list[str] = []
-    for sym, bars in market["bars"].items():
-        bars_lines.append(f"  {sym}:")
-        for b in bars:
-            bars_lines.append(
-                f"    {b['ts']} O={b['open']:.2f} H={b['high']:.2f} "
-                f"L={b['low']:.2f} C={b['close']:.2f} V={int(b['volume'])}"
-            )
-
     pos_str = ", ".join(f"{s}:{q}" for s, q in pos.items()) if pos else "(none)"
 
     sections = [
-        f"sim_time: {market['sim_time']}",
+        f"sim_time: {scan['sim_time']}",
         f"cash:     ${cash:,.2f}",
         f"equity:   ${equity:,.2f}  ({pnl_pct:+.2f}% vs start)",
         f"positions: {pos_str}",
     ]
+
     if last_step_fills:
         sections.append("LAST TURN'S FILLS:")
         for f in last_step_fills:
@@ -257,8 +273,30 @@ def build_user_message(
         sections.append("LAST TURN'S REJECTIONS:")
         for r in last_rejections:
             sections.append(f"  {r}")
-    sections.append("RECENT BARS:")
-    sections.extend(bars_lines)
+
+    # Compact snapshot: one line per symbol showing intrabar move.
+    sections.append("UNIVERSE SNAPSHOT (current bar, all symbols):")
+    for sym, bars in scan["bars"].items():
+        if not bars:
+            continue
+        b = bars[-1]
+        pct = (b["close"] - b["open"]) / b["open"] * 100 if b["open"] else 0.0
+        held = " ←held" if sym in pos else ""
+        sections.append(
+            f"  {sym:<6} O={b['open']:>8.2f}  C={b['close']:>8.2f}  "
+            f"({pct:+.1f}%){held}"
+        )
+
+    # Full OHLCV history for held positions + top movers.
+    sections.append(f"DETAIL BARS (held positions + top movers, last {len(next(iter(detail['bars'].values()), []))} bars):")
+    for sym, bars in detail["bars"].items():
+        sections.append(f"  {sym}:")
+        for b in bars:
+            sections.append(
+                f"    {b['ts']} O={b['open']:.2f} H={b['high']:.2f} "
+                f"L={b['low']:.2f} C={b['close']:.2f} V={int(b['volume'])}"
+            )
+
     sections.append("\nCall `place_trades` with your decision for this turn.")
     return "\n".join(sections)
 
@@ -288,14 +326,15 @@ class ClaudeAgent:
 
     def decide(
         self,
-        market: dict,
+        scan: dict,
+        detail: dict,
         run_snap: dict,
         last_step_fills: list[dict],
         last_rejections: list[str],
     ) -> Decision:
         assert self.system_prompt is not None, "call set_scenario() first"
 
-        user_msg = build_user_message(market, run_snap, last_step_fills, last_rejections)
+        user_msg = build_user_message(scan, detail, run_snap, last_step_fills, last_rejections)
 
         # cache_control on the last system block caches both the tool schemas
         # (rendered first) and the system prompt. The user message — which
@@ -372,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="Anthropic API key. Defaults to $ANTHROPIC_API_KEY.")
     p.add_argument("--api-base", default="https://bot-trade.org",
                    help="Override for local testing.")
-    p.add_argument("--scenario", default="tech-2024-q2",
+    p.add_argument("--scenario", default="sandbox-nov-2024",
                    help="Scenario slug to trade.")
     p.add_argument("--model", default="claude-haiku-4-5",
                    help="Anthropic model id (default claude-haiku-4-5 for cost).")
@@ -422,10 +461,15 @@ def main(argv: list[str] | None = None) -> int:
     while step_count < args.max_bars:
         if step_count % args.decide_every == 0 and decisions_made < args.max_decisions:
             run_snap = api.get_run(run["id"])
-            market = api.get_market(run["id"], scen["universe"], args.lookback)
+            # Two-tier market fetch: compact scan of all symbols (1 bar each) for
+            # breadth, then full history only for held positions + top movers.
+            scan = api.scan_market(run["id"])
+            held = {p["symbol"] for p in (run_snap.get("positions") or [])}
+            focus = _pick_focus(scan, held)
+            detail = api.get_market(run["id"], focus, args.lookback) if focus else scan
 
             try:
-                decision = claude.decide(market, run_snap, last_step_fills, last_rejections)
+                decision = claude.decide(scan, detail, run_snap, last_step_fills, last_rejections)
             except anthropic.APIError as e:
                 print(f"  [llm error: {e}] — skipping decision this turn")
                 decision = Decision(rationale=f"llm error: {e}", trades=[])
