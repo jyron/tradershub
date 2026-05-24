@@ -31,7 +31,8 @@ func (h *handlers) registerResults(api huma.API) {
 			"max drawdown, volatility, and trade count. Computed " +
 			"on demand the first time it's requested; cached thereafter. " +
 			"Errors with 400 if the run is still `active`.",
-		Tags: []string{"Runs"},
+		Tags:     []string{"Runs"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getResults)
 }
 

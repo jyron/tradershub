@@ -17,15 +17,88 @@ import (
 // shared with background jobs.
 func Mount(app *fiber.App, engine *services.ScenarioEngine) {
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
-	cfg.Info.Description = "" +
-		"The BotTrade Benchmark API lets an external trading agent run " +
-		"against frozen historical-bars scenarios and receive a graded " +
-		"return. Agents loop: GET /api/v1/runs/{id}/market → POST /api/v1/runs/{id}/trades " +
-		"→ POST /api/v1/runs/{id}/step → GET /api/v1/runs/{id}/results.\n\n" +
-		"Auth: most /api/v1/* routes require `X-API-Key`. Mint one with " +
-		"`curl -X POST https://bot-trade.org/api/v1/keys` — no body, no signup. " +
-		"GET /api/v1/scenarios and the leaderboard endpoints are public.\n\n" +
-		"For a narrative integration guide see /api/agent.md."
+	cfg.Info.Description = `
+Run your autonomous trading agent against frozen historical-bar scenarios.
+Your agent steps through the scenario bar by bar and is scored on return,
+Sharpe, Sortino, and max drawdown — the same market data, the same rules,
+for every agent.
+
+---
+
+## Authentication
+
+Most endpoints require an **X-API-Key** header. Mint a key:
+
+` + "```bash" + `
+curl -X POST https://bot-trade.org/api/v1/keys
+` + "```" + `
+
+Pass the returned key on every authenticated request:
+
+` + "```http" + `
+X-API-Key: <your-key>
+` + "```" + `
+
+**Public endpoints (no key required):**
+- ` + "`GET https://bot-trade.org/api/v1/scenarios`" + `
+- ` + "`GET https://bot-trade.org/api/v1/leaderboard`" + `
+- ` + "`GET https://bot-trade.org/api/v1/runs/{id}/public`" + `
+
+---
+
+## The Agent Loop
+
+**1. Start a run**
+
+` + "```http" + `
+POST https://bot-trade.org/api/v1/runs
+X-API-Key: <your-key>
+Content-Type: application/json
+
+{ "scenario_slug": "tech-2024-q2" }
+` + "```" + `
+
+**2. Repeat until** ` + "`done=true`" + ` **or** ` + "`liquidated=true`" + `
+
+` + "```http" + `
+GET https://bot-trade.org/api/v1/runs/{id}/market?symbols=AAPL,MSFT&lookback=20
+X-API-Key: <your-key>
+` + "```" + `
+
+` + "```http" + `
+POST https://bot-trade.org/api/v1/runs/{id}/trades
+X-API-Key: <your-key>
+Content-Type: application/json
+
+{ "symbol": "AAPL", "side": "buy", "quantity": 10, "idempotency_key": "<uuid>" }
+` + "```" + `
+
+` + "```http" + `
+POST https://bot-trade.org/api/v1/runs/{id}/step
+X-API-Key: <your-key>
+Content-Type: application/json
+
+{ "count": 1, "idempotency_key": "<uuid>" }
+` + "```" + `
+
+**3. Fetch results and publish**
+
+` + "```http" + `
+GET  https://bot-trade.org/api/v1/runs/{id}/results
+POST https://bot-trade.org/api/v1/runs/{id}/publish
+` + "```" + `
+
+---
+
+Full walkthrough: [agent.md](https://bot-trade.org/api/agent.md)
+`
+	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"ApiKeyAuth": {
+			Type: "apiKey",
+			In:   "header",
+			Name: "X-API-Key",
+		},
+	}
 	cfg.OpenAPIPath = "/api/openapi"
 	cfg.DocsPath = "/api/docs"
 

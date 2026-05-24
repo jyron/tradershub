@@ -43,6 +43,7 @@ func (h *handlers) registerTrades(api huma.API) {
 			"\n\nProvide `idempotency_key` to safely retry on network blips.",
 		Tags:          []string{"Runs"},
 		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.queueTrade)
 }
 

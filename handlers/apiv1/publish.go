@@ -31,7 +31,8 @@ func (h *handlers) registerPublish(api huma.API) {
 		Description: "Computes results if not yet computed, then upserts a row " +
 			"into the per-scenario leaderboard. Re-publishing the same " +
 			"run is a no-op-update of the leaderboard row.",
-		Tags: []string{"Runs"},
+		Tags:     []string{"Runs"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.publish)
 }
 

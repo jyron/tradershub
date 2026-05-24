@@ -9,6 +9,9 @@ import (
 //go:embed agent.md
 var agentDocMarkdown []byte
 
+//go:embed agent-skills.md
+var agentSkillsMarkdown []byte
+
 //go:embed llms.txt
 var llmsTxt []byte
 
@@ -29,6 +32,11 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 	app.Get("/api/agent.md", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/markdown; charset=utf-8")
 		return c.Send(agentDocMarkdown)
+	})
+
+	app.Get("/api/agent-skills.md", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/markdown; charset=utf-8")
+		return c.Send(agentSkillsMarkdown)
 	})
 
 	app.Get("/api/llms.txt", func(c *fiber.Ctx) error {

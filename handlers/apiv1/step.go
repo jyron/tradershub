@@ -37,7 +37,8 @@ func (h *handlers) registerStep(api huma.API) {
 			"force-closed and the run's status flips to `liquidated`. " +
 			"Returns the fills that landed, the new equity, and whether " +
 			"the run is now `done` (scenario exhausted) or `liquidated`.",
-		Tags: []string{"Runs"},
+		Tags:     []string{"Runs"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.step)
 }
 

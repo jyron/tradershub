@@ -43,7 +43,8 @@ func (h *handlers) registerMarket(api huma.API) {
 			"only including bars with timestamp ≤ run.sim_time. " +
 			"This is how the agent observes price history without ever " +
 			"seeing the future.",
-		Tags: []string{"Market"},
+		Tags:     []string{"Market"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getMarket)
 }
 

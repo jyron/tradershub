@@ -46,6 +46,7 @@ func (h *handlers) registerRuns(api huma.API) {
 			"Provide either scenario_id or scenario_slug.",
 		Tags:          []string{"Runs"},
 		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.createRun)
 
 	huma.Register(api, huma.Operation{
@@ -56,7 +57,8 @@ func (h *handlers) registerRuns(api huma.API) {
 		Description: "Returns the run, all open positions, all queued (unfilled) " +
 			"orders, and the most recent equity sample. Only the run's own " +
 			"bot can access this endpoint.",
-		Tags: []string{"Runs"},
+		Tags:     []string{"Runs"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getRun)
 }
 

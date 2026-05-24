@@ -38,7 +38,8 @@ func (h *handlers) registerScenarios(api huma.API) {
 		Summary:     "List available scenarios",
 		Description: "Returns every scenario currently in status `ready` " +
 			"or `archived`. Drafts (still being provisioned) are hidden.",
-		Tags: []string{"Scenarios"},
+		Tags:     []string{"Scenarios"},
+		Security: []map[string][]string{},
 	}, h.listScenarios)
 
 	huma.Register(api, huma.Operation{
@@ -50,7 +51,8 @@ func (h *handlers) registerScenarios(api huma.API) {
 			"per-symbol slippage tiers, the leverage cap, and the date " +
 			"window. The `id` path parameter accepts either the scenario's " +
 			"UUID or its human-readable slug.",
-		Tags: []string{"Scenarios"},
+		Tags:     []string{"Scenarios"},
+		Security: []map[string][]string{},
 	}, h.getScenario)
 }
 

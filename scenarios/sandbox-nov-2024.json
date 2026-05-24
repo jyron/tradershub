@@ -1,0 +1,25 @@
+{
+  "slug":             "sandbox-nov-2024",
+  "name":             "Sandbox — Nov 2024",
+  "description":      "One-week test scenario for verifying bot functionality. Full 50-symbol universe, shorting enabled, 2× leverage cap. Nov 4–8 2024 — high-volatility election week with broad market movement across every sector.",
+  "bar_resolution":   "1Hour",
+  "start_ts":         "2024-11-04T13:00:00Z",
+  "end_ts":           "2024-11-09T00:00:00Z",
+  "starting_cash":    100000,
+  "leverage_cap":     2,
+  "short_enabled":    true,
+  "benchmark_symbol": "SPY",
+  "universe": [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "AMD", "AVGO", "CRM", "ORCL",
+    "TSLA", "HD", "COST", "NKE", "MCD", "SBUX",
+    "UNH", "JNJ", "LLY", "PFE",
+    "JPM", "V", "MA", "GS", "BAC",
+    "XOM", "CVX", "CAT",
+    "NFLX", "DIS", "T",
+    "SPY", "QQQ", "IWM", "DIA",
+    "XLK", "XLF", "XLE", "XLV", "XLY", "XLP",
+    "GLD", "TLT", "VXX", "USO",
+    "PLTR", "COIN", "SMCI", "SHOP", "RBLX"
+  ],
+  "slippage_bps": {}
+}
