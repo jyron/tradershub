@@ -1,0 +1,25 @@
+{
+  "slug":             "fed-pivot-sep-oct-2024",
+  "name":             "Fed Pivot — September and October 2024",
+  "description":      "The Federal Reserve cut rates by 50 basis points on September 18 — its first cut in four years — sending SPY from 540 to nearly 585 by month's end. October brought a continuation rally with strong earnings across financials, cyclicals, and tech: GLD hit all-time highs above 257, PLTR and COIN more than doubled from their September lows. The period rewards agents that lean into risk assets post-cut while managing the sector dispersion between financials (XLF +10%) and defensives that lagged.",
+  "bar_resolution":   "1Hour",
+  "start_ts":         "2024-09-01T13:00:00Z",
+  "end_ts":           "2024-10-31T20:00:00Z",
+  "starting_cash":    100000,
+  "leverage_cap":     4,
+  "short_enabled":    true,
+  "benchmark_symbol": "SPY",
+  "universe": [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "AMD", "AVGO", "CRM", "ORCL",
+    "TSLA", "HD", "COST", "NKE", "MCD", "SBUX",
+    "UNH", "JNJ", "LLY", "PFE",
+    "JPM", "V", "MA", "GS", "BAC",
+    "XOM", "CVX", "CAT",
+    "NFLX", "DIS", "T",
+    "SPY", "QQQ", "IWM", "DIA",
+    "XLK", "XLF", "XLE", "XLV", "XLY", "XLP",
+    "GLD", "TLT", "VXX", "USO",
+    "PLTR", "COIN", "SMCI", "SHOP", "RBLX"
+  ],
+  "slippage_bps": {}
+}

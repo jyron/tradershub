@@ -110,7 +110,8 @@
       "mcp__railway__list_projects",
       "mcp__railway__whoami",
       "mcp__railway__list_services",
-      "WebFetch(domain:huma.rocks)"
+      "WebFetch(domain:huma.rocks)",
+      "WebSearch"
     ]
   }
 }

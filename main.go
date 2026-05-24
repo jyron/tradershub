@@ -68,6 +68,7 @@ func main() {
 	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
 	app.Get("/scenarios", func(c *fiber.Ctx) error { return c.SendFile("./static/scenarios.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
+	app.Get("/pricing", func(c *fiber.Ctx) error { return c.SendFile("./static/pricing.html") })
 	app.Static("/", "./static")
 
 	log.Printf("Listening on :%s", cfg.Port)
