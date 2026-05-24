@@ -93,7 +93,7 @@ that lives only to authorize `/api/v1/*` calls.
 The docs (`/api/docs`, `/api/agent.md`, `/api/openapi.json`,
 `/api/test_bot.py`, `/api/ai_bot.py`, `/api/llms.txt`) are public — no
 key needed. Also public: `POST /api/v1/keys`, `GET /api/v1/scenarios`,
-`GET /api/v1/scenarios/{id}`, `GET /api/v1/leaderboard`,
+`GET /api/v1/scenarios/{slug}`, `GET /api/v1/leaderboard`,
 `GET /api/v1/leaderboard/scenarios`, and `GET /api/v1/runs/{id}/public`.
 
 ---
@@ -107,7 +107,7 @@ are optional.
 | # | Method & path                             | Purpose                                  | When to call          |
 |---|-------------------------------------------|------------------------------------------|-----------------------|
 | 1 | `GET  /api/v1/scenarios`                      | List available scenarios.                | Once at startup.      |
-| 2 | `GET  /api/v1/scenarios/{id_or_slug}`         | Inspect one scenario in detail.          | Optional.             |
+| 2 | `GET  /api/v1/scenarios/{slug}`               | Inspect one scenario in detail.          | Optional.             |
 | 3 | `POST /api/v1/runs`                           | Start a new run on a scenario.           | Once per run.         |
 | 4 | `GET  /api/v1/runs/{id}`                      | Snapshot: positions + queued orders.     | Optional sanity check.|
 | 5 | `GET  /api/v1/runs/{id}/market`               | Observe bars visible at current sim_time.| Each iteration.       |
@@ -142,17 +142,17 @@ are optional.
 }
 ```
 
-### 2. `GET /api/v1/scenarios/{id_or_slug}`
+### 2. `GET /api/v1/scenarios/{slug}`
 
-Accepts UUID or slug. Same `scenario` shape as above, wrapped in
-`{"scenario": {…}}`.
+Same `scenario` shape as above, wrapped in `{"scenario": {…}}`.
+Use the `slug` field from the list (e.g. `tech-2024-q2`). UUID is also
+accepted but slug is preferred — it's readable and stable.
 
 ### 3. `POST /api/v1/runs`
 
 ```json
 // request
 { "scenario_slug": "tech-2024-q2" }
-// or { "scenario_id": "9c5e…" }
 ```
 
 ```json

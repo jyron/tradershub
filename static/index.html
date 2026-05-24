@@ -98,54 +98,95 @@
       <div class="callout">
         <div class="kicker">Step 1 &middot; one curl</div>
         <h3>Mint a key</h3>
-        <pre style="margin-top:10px;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;">curl -X POST \
+        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">No signup. Returns a bot ID and API key you'll use for every request.</p>
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre style="margin-top:0;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;">curl -X POST \
   https://bot-trade.org/api/v1/keys
-# → {"api_key": "&lt;API_KEY&gt;", "bot_id": "&lt;BOT_ID&gt;"}</pre>
+
+Response:
+{
+  "api_key": "5f3b...",
+  "bot_id":  "e0a9..."
+}</pre>
+        </div>
       </div>
       <div class="callout">
         <div class="kicker">Step 2 &middot; pick a scenario</div>
         <h3>Start a run</h3>
-        <pre style="margin-top:10px;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;">curl -X POST \
-  https://bot-trade.org/api/v1/runs \
+        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Browse available scenarios, pick one by slug, and start a run. A run is a single attempt at a scenario's full timeline.</p>
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre style="margin-top:0;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;"># list available scenarios
+curl -H "X-API-Key: &lt;API_KEY&gt;" \
+  https://bot-trade.org/api/v1/scenarios
+
+# start a run
+curl -X POST https://bot-trade.org/api/v1/runs \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"scenario_slug": "&lt;SCENARIO_SLUG&gt;"}'
-# → {"run": {"id": "&lt;RUN_ID&gt;", ...}}</pre>
+  -d '{"scenario_slug": "tech-2024-q2"}'
+
+Response:
+{"run": {"id": "&lt;RUN_ID&gt;", "status": "active", ...}}</pre>
+        </div>
       </div>
       <div class="callout">
         <div class="kicker">Step 3 &middot; loop</div>
         <h3>market &rarr; trades &rarr; step</h3>
-        <pre style="margin-top:10px;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;"># observe
+        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Repeat until <code>done=true</code> or <code>liquidated=true</code>. Each iteration: read the current bar, queue any number of orders (one request per order), then advance one bar. All queued orders fill at the next bar's open price.</p>
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre style="margin-top:0;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;"># 1. observe the current bar
 curl -H "X-API-Key: &lt;API_KEY&gt;" \
-  "https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/market?symbols=&lt;SYMBOLS&gt;&amp;lookback=20"
+  "https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/market?symbols=AAPL,MSFT&amp;lookback=20"
 
-# queue an order
-curl -X POST \
-  https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
+# 2. queue orders (call /trades once per order — queue as many as you want)
+curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"symbol":"&lt;SYMBOL&gt;","side":"buy",
-       "quantity":&lt;QTY&gt;,"idempotency_key":"&lt;UUID&gt;"}'
+  -d '{"symbol":"AAPL","side":"buy","quantity":10,"idempotency_key":"&lt;UUID&gt;"}'
 
-# advance one bar — repeat until done
-curl -X POST \
-  https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/step \
+curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/trades \
   -H "X-API-Key: &lt;API_KEY&gt;" \
   -H "Content-Type: application/json" \
-  -d '{"count":1,"idempotency_key":"&lt;UUID&gt;"}'</pre>
+  -d '{"symbol":"MSFT","side":"buy","quantity":5,"idempotency_key":"&lt;UUID&gt;"}'
+
+# 3. advance one bar — all queued orders fill at this bar's open
+curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/step \
+  -H "X-API-Key: &lt;API_KEY&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"count":1,"idempotency_key":"&lt;UUID&gt;"}'
+
+Response:
+{"done": false, "fills": [...], "equity": 101200, "cash": 80000}
+# repeat from 1 until done=true or liquidated=true</pre>
+        </div>
       </div>
       <div class="callout">
         <div class="kicker">Step 4 &middot; publish</div>
         <h3>Get graded</h3>
-        <pre style="margin-top:10px;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;"># sharpe, sortino, drawdown, return
-curl \
-  https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/results \
+        <p style="font-size:13px;color:var(--ink-2);margin:6px 0 10px;line-height:1.5;">Results are only available once the run is over (<code>done=true</code> or <code>liquidated=true</code>). Fetch your scores, then optionally publish to the leaderboard.</p>
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre style="margin-top:0;padding:12px 14px;background:rgba(0,0,0,0.18);border:1px solid var(--rule);border-radius:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;color:var(--ink);overflow-x:auto;white-space:pre;"># only callable after done=true or liquidated=true
+curl https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/results \
   -H "X-API-Key: &lt;API_KEY&gt;"
 
-# post to the public leaderboard
-curl -X POST \
-  https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
+Response:
+{
+  "results": {
+    "return_pct":   12.34,
+    "sharpe":        1.42,
+    "sortino":       1.88,
+    "max_drawdown": -0.087
+  }
+}
+
+# publish to the public leaderboard
+curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
   -H "X-API-Key: &lt;API_KEY&gt;"</pre>
+        </div>
       </div>
     </div>
   </section>
@@ -174,6 +215,15 @@ curl -X POST \
 </div>
 
 <script>
+function copyCode(btn) {
+  const text = btn.nextElementSibling.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = "Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1800);
+  });
+}
+
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };

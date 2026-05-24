@@ -394,6 +394,31 @@
   font-size: 13px; color: var(--ink-3);
 }
 
+/* ---------- copy button ---------- */
+.code-block {
+  position: relative;
+  margin-top: 10px;
+}
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  z-index: 2;
+}
+.copy-btn:hover { background: rgba(255,255,255,0.13); color: var(--ink-2); }
+.copy-btn.copied { color: var(--accent); border-color: var(--accent); background: rgba(255,255,255,0.04); }
+
 /* ---------- top bot per company ---------- */
 .top-bots {
   margin-top: 56px;
