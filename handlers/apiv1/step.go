@@ -53,6 +53,9 @@ func (h *handlers) step(ctx context.Context, in *StepInput) (*StepOutput, error)
 	return idempotent(in.ID, in.Body.IdempotencyKey, in.Body, func() (*StepOutput, error) {
 		result, err := h.Engine.AdvanceStep(in.ID, count)
 		if err != nil {
+			if transient := transientDBError(err); transient != nil {
+				return nil, transient
+			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 		return &StepOutput{Body: *result}, nil

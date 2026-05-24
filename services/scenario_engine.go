@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ type ScenarioEngine struct {
 	marketDB *sql.DB
 	bars     *ScenarioBarCache
 	locks    sync.Map // map[string]*sync.Mutex, key = run_id
+	writes   chan struct{}
 }
 
 func NewScenarioEngine(appDB, marketDB *sql.DB) *ScenarioEngine {
@@ -32,6 +34,7 @@ func NewScenarioEngine(appDB, marketDB *sql.DB) *ScenarioEngine {
 		appDB:    appDB,
 		marketDB: marketDB,
 		bars:     NewScenarioBarCache(marketDB),
+		writes:   make(chan struct{}, 8),
 	}
 }
 
@@ -49,6 +52,34 @@ func (e *ScenarioEngine) lockRun(runID string) func() {
 	mu := v.(*sync.Mutex)
 	mu.Lock()
 	return func() { mu.Unlock() }
+}
+
+func (e *ScenarioEngine) withWriteRetry(fn func() error) error {
+	var last error
+	for attempt := 0; attempt < 6; attempt++ {
+		e.writes <- struct{}{}
+		err := fn()
+		<-e.writes
+		if err == nil {
+			return nil
+		}
+		last = err
+		if !isTransientDBErr(err) {
+			return err
+		}
+		time.Sleep(time.Duration(75*(attempt+1)*(attempt+1)) * time.Millisecond)
+	}
+	return last
+}
+
+func isTransientDBErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "SQLITE_BUSY") ||
+		strings.Contains(msg, "SQLITE_LOCKED")
 }
 
 // ----------------------------------------------------------------------------
@@ -80,25 +111,32 @@ func (e *ScenarioEngine) StartRun(botID, scenarioID string) (*models.Run, error)
 	runID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339)
 	startTime := timeline[0]
-	_, err = e.appDB.Exec(`
-		INSERT INTO runs (
-			id, bot_id, scenario_id, scenario_version, status,
-			sim_time, cash, starting_cash, last_activity_at, created_at
-		) VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9)`,
-		runID, botID, scen.ID, scen.CurrentVersion,
-		startTime.UTC().Format(time.RFC3339),
-		scen.StartingCash, scen.StartingCash, now, now,
-	)
-	if err != nil {
+	if err := e.withWriteRetry(func() error {
+		tx, err := e.appDB.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`
+			INSERT INTO runs (
+				id, bot_id, scenario_id, scenario_version, status,
+				sim_time, cash, starting_cash, last_activity_at, created_at
+			) VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9)`,
+			runID, botID, scen.ID, scen.CurrentVersion,
+			startTime.UTC().Format(time.RFC3339),
+			scen.StartingCash, scen.StartingCash, now, now,
+		); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO run_equity (run_id, sim_time, cash, positions_value, equity)
+			VALUES (?1, ?2, ?3, 0, ?3)
+		`, runID, startTime.UTC().Format(time.RFC3339), scen.StartingCash); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}); err != nil {
 		return nil, fmt.Errorf("insert run: %w", err)
-	}
-
-	// Write initial equity sample at sim_time so the curve has a starting point.
-	if _, err := e.appDB.Exec(`
-		INSERT INTO run_equity (run_id, sim_time, cash, positions_value, equity)
-		VALUES (?1, ?2, ?3, 0, ?3)
-	`, runID, startTime.UTC().Format(time.RFC3339), scen.StartingCash); err != nil {
-		return nil, fmt.Errorf("insert initial equity: %w", err)
 	}
 
 	return e.LoadRun(runID)
@@ -224,18 +262,26 @@ func (e *ScenarioEngine) QueueTrade(runID string, req QueueTradeRequest) (*model
 
 	orderID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = e.appDB.Exec(`
-		INSERT INTO run_orders
-			(id, run_id, symbol, side, quantity, reasoning, queued_at, queued_at_sim_time)
-		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-	`, orderID, runID, req.Symbol, side, req.Quantity, req.Reasoning, now,
-		run.SimTime.UTC().Format(time.RFC3339))
-	if err != nil {
-		return nil, fmt.Errorf("insert order: %w", err)
-	}
-
-	if _, err := e.appDB.Exec(`UPDATE runs SET last_activity_at = ?1 WHERE id = ?2`, now, runID); err != nil {
-		return nil, fmt.Errorf("touch run: %w", err)
+	if err := e.withWriteRetry(func() error {
+		tx, err := e.appDB.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`
+			INSERT INTO run_orders
+				(id, run_id, symbol, side, quantity, reasoning, queued_at, queued_at_sim_time)
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+		`, orderID, runID, req.Symbol, side, req.Quantity, req.Reasoning, now,
+			run.SimTime.UTC().Format(time.RFC3339)); err != nil {
+			return fmt.Errorf("insert order: %w", err)
+		}
+		if _, err := tx.Exec(`UPDATE runs SET last_activity_at = ?1 WHERE id = ?2`, now, runID); err != nil {
+			return fmt.Errorf("touch run: %w", err)
+		}
+		return tx.Commit()
+	}); err != nil {
+		return nil, err
 	}
 
 	return &models.RunOrder{
@@ -328,107 +374,104 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 	}
 
 	cur := run.Cash
-	for step := 0; step < count; step++ {
-		nextIdx := idx + 1
-		if nextIdx >= len(timeline) {
-			result.Done = true
-			break
-		}
-		nextTs := timeline[nextIdx]
-
-		// 1. Fill queued orders at nextTs's open.
-		orders, err := e.loadOrders(runID)
+	if err := e.withWriteRetry(func() error {
+		tx, err := e.appDB.Begin()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		fills, newCash, err := e.executeOrders(runID, scen, orders, nextTs, cur)
-		if err != nil {
-			return nil, fmt.Errorf("execute orders at %s: %w", nextTs, err)
-		}
-		result.Fills = append(result.Fills, fills...)
-		cur = newCash
+		defer tx.Rollback()
 
-		// 2. Mark-to-market at nextTs's close.
-		positions, err := e.loadPositions(runID)
-		if err != nil {
-			return nil, err
-		}
-		positionsValue := 0.0
-		notional := 0.0
-		for _, p := range positions {
-			bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
-			if !ok {
-				bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
-			}
-			if !ok {
-				continue
-			}
-			positionsValue += float64(p.Quantity) * bar.Close
-			notional += math.Abs(float64(p.Quantity) * bar.Close)
-		}
-		equity := cur + positionsValue
-
-		// 3. Liquidation check (only meaningful when leverage > 1).
-		if scen.LeverageCap > 1.0 && notional > 0 {
-			initialMargin := notional / scen.LeverageCap
-			maintenanceMargin := initialMargin / 2.0
-			if equity < maintenanceMargin {
-				// Force-close every position at nextTs's open + slippage.
-				// We're already at nextTs after fills above; close-all
-				// runs "at this same bar" effectively at the close price
-				// for simplicity (in real life this would be the next
-				// bar's open; for MVP we accept the simplification).
-				closingFills, postLiqCash, err := e.liquidatePositions(runID, scen, positions, nextTs, cur)
-				if err != nil {
-					return nil, fmt.Errorf("liquidate at %s: %w", nextTs, err)
-				}
-				result.Fills = append(result.Fills, closingFills...)
-				cur = postLiqCash
-				// Recompute final equity post-liquidation
-				equity = cur
-				positionsValue = 0
-				result.Liquidated = true
-				liqTs := nextTs
-				result.LiquidationAtTs = &liqTs
-				idx = nextIdx
+		for step := 0; step < count; step++ {
+			nextIdx := idx + 1
+			if nextIdx >= len(timeline) {
+				result.Done = true
 				break
 			}
+			nextTs := timeline[nextIdx]
+
+			// 1. Fill queued orders at nextTs's open.
+			orders, err := e.loadOrdersTx(tx, runID)
+			if err != nil {
+				return err
+			}
+			fills, newCash, err := e.executeOrdersTx(tx, runID, scen, orders, nextTs, cur)
+			if err != nil {
+				return fmt.Errorf("execute orders at %s: %w", nextTs, err)
+			}
+			result.Fills = append(result.Fills, fills...)
+			cur = newCash
+
+			// 2. Mark-to-market at nextTs's close.
+			positions, err := e.loadPositionsTx(tx, runID)
+			if err != nil {
+				return err
+			}
+			positionsValue := 0.0
+			notional := 0.0
+			for _, p := range positions {
+				bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
+				if !ok {
+					bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
+				}
+				if !ok {
+					continue
+				}
+				positionsValue += float64(p.Quantity) * bar.Close
+				notional += math.Abs(float64(p.Quantity) * bar.Close)
+			}
+			equity := cur + positionsValue
+
+			// 3. Liquidation check (only meaningful when leverage > 1).
+			if scen.LeverageCap > 1.0 && notional > 0 {
+				initialMargin := notional / scen.LeverageCap
+				maintenanceMargin := initialMargin / 2.0
+				if equity < maintenanceMargin {
+					// Force-close every position at nextTs's open + slippage.
+					// We're already at nextTs after fills above; close-all
+					// runs "at this same bar" effectively at the close price
+					// for simplicity (in real life this would be the next
+					// bar's open; for MVP we accept the simplification).
+					closingFills, postLiqCash, err := e.liquidatePositionsTx(tx, runID, scen, positions, nextTs, cur)
+					if err != nil {
+						return fmt.Errorf("liquidate at %s: %w", nextTs, err)
+					}
+					result.Fills = append(result.Fills, closingFills...)
+					cur = postLiqCash
+					result.Liquidated = true
+					liqTs := nextTs
+					result.LiquidationAtTs = &liqTs
+					idx = nextIdx
+					break
+				}
+			}
+
+			idx = nextIdx
 		}
 
-		idx = nextIdx
-	}
+		newSimTime := timeline[idx]
 
-	newSimTime := timeline[idx]
+		// Update run, write equity sample.
+		now := time.Now().UTC().Format(time.RFC3339)
+		newStatus := "active"
+		completedAt := sql.NullString{}
+		if result.Liquidated {
+			newStatus = "liquidated"
+			completedAt = sql.NullString{String: now, Valid: true}
+		} else if result.Done {
+			newStatus = "completed"
+			completedAt = sql.NullString{String: now, Valid: true}
+		}
 
-	// Update run, write equity sample.
-	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := e.appDB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+		if _, err := tx.Exec(`
+			UPDATE runs SET sim_time = ?1, cash = ?2, status = ?3, last_activity_at = ?4, completed_at = ?5
+			 WHERE id = ?6
+		`, newSimTime.UTC().Format(time.RFC3339), cur, newStatus, now, completedAt, runID); err != nil {
+			return fmt.Errorf("update run: %w", err)
+		}
 
-	newStatus := "active"
-	completedAt := sql.NullString{}
-	if result.Liquidated {
-		newStatus = "liquidated"
-		completedAt = sql.NullString{String: now, Valid: true}
-	} else if result.Done {
-		newStatus = "completed"
-		completedAt = sql.NullString{String: now, Valid: true}
-	}
-
-	if _, err := tx.Exec(`
-		UPDATE runs SET sim_time = ?1, cash = ?2, status = ?3, last_activity_at = ?4, completed_at = ?5
-		 WHERE id = ?6
-	`, newSimTime.UTC().Format(time.RFC3339), cur, newStatus, now, completedAt, runID); err != nil {
-		return nil, fmt.Errorf("update run: %w", err)
-	}
-
-	// Compute positionsValue at the final sim_time for the sample.
-	positionsValue := 0.0
-	{
-		positions, _ := e.loadPositions(runID)
+		// Compute positionsValue at the final sim_time for the sample.
+		positionsValue := 0.0
+		positions, _ := e.loadPositionsTx(tx, runID)
 		for _, p := range positions {
 			bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, newSimTime)
 			if !ok {
@@ -438,28 +481,31 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 				positionsValue += float64(p.Quantity) * bar.Close
 			}
 		}
-	}
-	equity := cur + positionsValue
-	if _, err := tx.Exec(`
-		INSERT INTO run_equity (run_id, sim_time, cash, positions_value, equity)
-		VALUES (?1, ?2, ?3, ?4, ?5)
-		ON CONFLICT (run_id, sim_time) DO UPDATE SET
-			cash = excluded.cash,
-			positions_value = excluded.positions_value,
-			equity = excluded.equity
-	`, runID, newSimTime.UTC().Format(time.RFC3339), cur, positionsValue, equity); err != nil {
-		return nil, fmt.Errorf("insert equity sample: %w", err)
-	}
+		equity := cur + positionsValue
+		if _, err := tx.Exec(`
+			INSERT INTO run_equity (run_id, sim_time, cash, positions_value, equity)
+			VALUES (?1, ?2, ?3, ?4, ?5)
+			ON CONFLICT (run_id, sim_time) DO UPDATE SET
+				cash = excluded.cash,
+				positions_value = excluded.positions_value,
+				equity = excluded.equity
+		`, runID, newSimTime.UTC().Format(time.RFC3339), cur, positionsValue, equity); err != nil {
+			return fmt.Errorf("insert equity sample: %w", err)
+		}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit: %w", err)
+		}
 
-	result.BarsAdvanced = idx - timelineIndex(timeline, run.SimTime)
-	result.NewSimTime = newSimTime
-	result.NewCash = cur
-	result.PositionsValue = positionsValue
-	result.NewEquity = equity
+		result.BarsAdvanced = idx - timelineIndex(timeline, run.SimTime)
+		result.NewSimTime = newSimTime
+		result.NewCash = cur
+		result.PositionsValue = positionsValue
+		result.NewEquity = equity
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -475,6 +521,17 @@ func (e *ScenarioEngine) executeOrders(runID string, scen *models.Scenario, orde
 	}
 	defer tx.Rollback()
 
+	fills, cash, err := e.executeOrdersTx(tx, runID, scen, orders, at, cashIn)
+	if err != nil {
+		return nil, cashIn, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, cashIn, fmt.Errorf("commit fills: %w", err)
+	}
+	return fills, cash, nil
+}
+
+func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.Scenario, orders []models.RunOrder, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
 	cash := cashIn
 	fills := []models.RunTrade{}
 	for _, o := range orders {
@@ -549,10 +606,6 @@ func (e *ScenarioEngine) executeOrders(runID string, scen *models.Scenario, orde
 			Reasoning:     o.Reasoning,
 		})
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, cashIn, fmt.Errorf("commit fills: %w", err)
-	}
 	return fills, cash, nil
 }
 
@@ -569,6 +622,20 @@ func (e *ScenarioEngine) liquidatePositions(runID string, scen *models.Scenario,
 	}
 	defer tx.Rollback()
 
+	fills, cash, err := e.liquidatePositionsTx(tx, runID, scen, positions, at, cashIn)
+	if err != nil {
+		return nil, cashIn, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, cashIn, fmt.Errorf("commit liq: %w", err)
+	}
+	return fills, cash, nil
+}
+
+func (e *ScenarioEngine) liquidatePositionsTx(tx *sql.Tx, runID string, scen *models.Scenario, positions []models.RunPosition, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
+	if len(positions) == 0 {
+		return nil, cashIn, nil
+	}
 	cash := cashIn
 	fills := []models.RunTrade{}
 	for _, p := range positions {
@@ -636,10 +703,6 @@ func (e *ScenarioEngine) liquidatePositions(runID string, scen *models.Scenario,
 	// Also drop any remaining queued orders — they're meaningless post-liquidation.
 	if _, err := tx.Exec(`DELETE FROM run_orders WHERE run_id = ?1`, runID); err != nil {
 		return nil, cashIn, fmt.Errorf("drop orders: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, cashIn, fmt.Errorf("commit liq: %w", err)
 	}
 	return fills, cash, nil
 }
@@ -947,6 +1010,28 @@ func (e *ScenarioEngine) loadPositions(runID string) ([]models.RunPosition, erro
 	return out, nil
 }
 
+func (e *ScenarioEngine) loadPositionsTx(tx *sql.Tx, runID string) ([]models.RunPosition, error) {
+	rows, err := tx.Query(`
+		SELECT run_id, symbol, quantity, avg_cost, updated_at
+		  FROM run_positions WHERE run_id = ?1
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.RunPosition
+	for rows.Next() {
+		var p models.RunPosition
+		var updated string
+		if err := rows.Scan(&p.RunID, &p.Symbol, &p.Quantity, &p.AvgCost, &updated); err != nil {
+			return nil, err
+		}
+		p.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updated)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (e *ScenarioEngine) loadOrders(runID string) ([]models.RunOrder, error) {
 	rows, err := e.appDB.Query(`
 		SELECT id, run_id, symbol, side, quantity, COALESCE(reasoning,''),
@@ -969,6 +1054,30 @@ func (e *ScenarioEngine) loadOrders(runID string) ([]models.RunOrder, error) {
 		out = append(out, o)
 	}
 	return out, nil
+}
+
+func (e *ScenarioEngine) loadOrdersTx(tx *sql.Tx, runID string) ([]models.RunOrder, error) {
+	rows, err := tx.Query(`
+		SELECT id, run_id, symbol, side, quantity, COALESCE(reasoning,''),
+		       queued_at, queued_at_sim_time
+		  FROM run_orders WHERE run_id = ?1 ORDER BY queued_at ASC
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.RunOrder
+	for rows.Next() {
+		var o models.RunOrder
+		var queuedAt, queuedSim string
+		if err := rows.Scan(&o.ID, &o.RunID, &o.Symbol, &o.Side, &o.Quantity, &o.Reasoning, &queuedAt, &queuedSim); err != nil {
+			return nil, err
+		}
+		o.QueuedAt, _ = time.Parse(time.RFC3339, queuedAt)
+		o.QueuedAtSimTime, _ = time.Parse(time.RFC3339, queuedSim)
+		out = append(out, o)
+	}
+	return out, rows.Err()
 }
 
 func (e *ScenarioEngine) loadLastEquity(runID string) (*models.RunEquity, error) {

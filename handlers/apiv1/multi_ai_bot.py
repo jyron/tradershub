@@ -12,7 +12,7 @@ Requirements:
 Examples:
     python handlers/apiv1/multi_ai_bot.py --provider openai --scenario tech-2024-q2 --publish
     python handlers/apiv1/multi_ai_bot.py --provider xai --model grok-3-mini --scenario fed-pivot-sep-oct-2024 --publish
-    python handlers/apiv1/multi_ai_bot.py --provider google --model gemini-2.0-flash --scenario trump-trade-q4-2024 --publish
+    python handlers/apiv1/multi_ai_bot.py --provider google --model gemini-2.5-flash --scenario trump-trade-q4-2024 --publish
 """
 from __future__ import annotations
 
@@ -60,6 +60,26 @@ class BotTrade:
             return r.json() if r.content else None
         raise RuntimeError(f"{method} {path} failed: HTTP {r.status_code}: {r.text}")
 
+    def retry_req(self, method: str, path: str, attempts: int = 6, **kwargs) -> Any:
+        last = None
+        for i in range(attempts):
+            try:
+                return self.req(method, path, **kwargs)
+            except RuntimeError as e:
+                last = e
+                msg = str(e)
+                retryable = (
+                    "HTTP 502" in msg
+                    or "HTTP 503" in msg
+                    or "database is locked" in msg
+                    or "SQLITE_BUSY" in msg
+                    or "SQLITE_LOCKED" in msg
+                )
+                if not retryable or i == attempts - 1:
+                    raise
+                time.sleep(min(20, 1.5 * (i + 1)))
+        raise last  # type: ignore[misc]
+
     def scenario(self, slug: str) -> dict:
         return self.req("GET", f"/api/v1/scenarios/{slug}")["scenario"]
 
@@ -76,7 +96,7 @@ class BotTrade:
         return self.req("GET", f"/api/v1/runs/{run_id}/market", params=params)
 
     def trade(self, run_id: str, symbol: str, side: str, quantity: int, reasoning: str) -> None:
-        self.req("POST", f"/api/v1/runs/{run_id}/trades", json={
+        self.retry_req("POST", f"/api/v1/runs/{run_id}/trades", json={
             "symbol": symbol,
             "side": side,
             "quantity": quantity,
@@ -85,7 +105,7 @@ class BotTrade:
         })
 
     def step(self, run_id: str) -> dict:
-        return self.req("POST", f"/api/v1/runs/{run_id}/step", json={
+        return self.retry_req("POST", f"/api/v1/runs/{run_id}/step", json={
             "count": 1,
             "idempotency_key": str(uuid.uuid4()),
         })

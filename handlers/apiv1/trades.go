@@ -59,6 +59,9 @@ func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQ
 			Reasoning: in.Body.Reasoning,
 		})
 		if err != nil {
+			if transient := transientDBError(err); transient != nil {
+				return nil, transient
+			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 		out := &TradeQueueOutput{}

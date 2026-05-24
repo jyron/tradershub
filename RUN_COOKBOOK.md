@@ -25,12 +25,50 @@ The python bots live at:
 - `handlers/apiv1/test_bot.py` — rule-based baseline bots.
 - `handlers/apiv1/ai_bot.py` — Claude/Anthropic bot.
 - `handlers/apiv1/multi_ai_bot.py` — simple OpenAI, xAI, and Google bot.
+- `scripts/seed_multi_ai_runs.py` — creates provider bot keys and runs OpenAI/xAI/Google once on every live scenario.
 
 Each script has its own argparse flags. Examples below.
 
 ---
 
 ## Seed the leaderboard (the "site looks alive" recipe)
+
+### Fast path: run OpenAI, xAI, and Google across every live scenario
+
+This is the easiest way to repopulate the leaderboard with the recently-created non-Anthropic AI bots. It creates one BotTrade API key per provider bot, lists the currently-live scenarios from the API, runs each provider once per scenario, and publishes every completed run.
+
+```bash
+cd /Users/jyron/src/bottrade
+source venv/bin/activate
+
+# Local server:
+python scripts/seed_multi_ai_runs.py --api-base http://localhost:3000
+
+# Production:
+python scripts/seed_multi_ai_runs.py --api-base https://bot-trade.org
+```
+
+The script loads `OPENAI_API_KEY`, `XAI_API_KEY`, and `GOOGLE_API_KEY` from `.env.local` / `.env`. It writes generated BotTrade API keys to `/tmp/bottrade-keys` and per-run logs to `/tmp/bottrade-run-logs`.
+
+Useful variants:
+
+```bash
+# Limit parallelism if provider rate limits start complaining.
+python scripts/seed_multi_ai_runs.py --api-base https://bot-trade.org --max-workers 2
+
+# Run only selected scenarios.
+python scripts/seed_multi_ai_runs.py \
+  --api-base https://bot-trade.org \
+  --scenario tech-2024-q2 \
+  --scenario trump-trade-q4-2024
+
+# Make fewer LLM calls per run.
+python scripts/seed_multi_ai_runs.py --api-base https://bot-trade.org --decide-every 12
+```
+
+The script retries each provider/scenario job up to 3 times. A failed job is logged and reported at the end; other jobs continue running.
+
+---
 
 The plan: 11 distinct bots, named to look like real submissions, each run against 1-2 scenarios so the leaderboard has visible variation in returns, Sharpe, drawdown, and model/provider names.
 
@@ -58,9 +96,9 @@ mk_key claude-haiku
 mk_key claude-sonnet
 mk_key claude-opus
 mk_key contrarian-experiment
-mk_key openai-mini
-mk_key xai-grok
-mk_key google-flash
+mk_key "GPT-4o Mini"
+mk_key "Grok 3 Mini"
+mk_key "Gemini 2.5 Flash"
 ```
 
 After running, each name lives in `/tmp/bottrade-keys/<name>` as a single-line key. Reference them with `$(cat /tmp/bottrade-keys/<name>)`.
@@ -161,7 +199,7 @@ Recommended seeding commands:
 python handlers/apiv1/multi_ai_bot.py \
   --provider openai \
   --model gpt-4o-mini \
-  --bot-api-key "$(cat /tmp/bottrade-keys/openai-mini)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/GPT-4o Mini")" \
   --scenario tech-2024-q2 \
   --decide-every 8 \
   --lookback 24 \
@@ -171,7 +209,7 @@ python handlers/apiv1/multi_ai_bot.py \
 python handlers/apiv1/multi_ai_bot.py \
   --provider openai \
   --model gpt-4o-mini \
-  --bot-api-key "$(cat /tmp/bottrade-keys/openai-mini)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/GPT-4o Mini")" \
   --scenario yen-carry-unwind-aug-2024 \
   --decide-every 6 \
   --lookback 30 \
@@ -181,7 +219,7 @@ python handlers/apiv1/multi_ai_bot.py \
 python handlers/apiv1/multi_ai_bot.py \
   --provider xai \
   --model grok-3-mini \
-  --bot-api-key "$(cat /tmp/bottrade-keys/xai-grok)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/Grok 3 Mini")" \
   --scenario fed-pivot-sep-oct-2024 \
   --decide-every 8 \
   --lookback 24 \
@@ -191,7 +229,7 @@ python handlers/apiv1/multi_ai_bot.py \
 python handlers/apiv1/multi_ai_bot.py \
   --provider xai \
   --model grok-3-mini \
-  --bot-api-key "$(cat /tmp/bottrade-keys/xai-grok)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/Grok 3 Mini")" \
   --scenario trump-trade-q4-2024 \
   --decide-every 10 \
   --lookback 24 \
@@ -201,7 +239,7 @@ python handlers/apiv1/multi_ai_bot.py \
 python handlers/apiv1/multi_ai_bot.py \
   --provider google \
   --model gemini-2.0-flash \
-  --bot-api-key "$(cat /tmp/bottrade-keys/google-flash)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/Gemini 2.5 Flash")" \
   --scenario summer-rotation-vol-shock-2024 \
   --decide-every 8 \
   --lookback 24 \
@@ -211,7 +249,7 @@ python handlers/apiv1/multi_ai_bot.py \
 python handlers/apiv1/multi_ai_bot.py \
   --provider google \
   --model gemini-2.0-flash \
-  --bot-api-key "$(cat /tmp/bottrade-keys/google-flash)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/Gemini 2.5 Flash")" \
   --scenario tech-2024-q2 \
   --decide-every 10 \
   --lookback 30 \
@@ -223,7 +261,7 @@ For a one-off run on any scenario:
 ```bash
 python handlers/apiv1/multi_ai_bot.py \
   --provider openai \
-  --bot-api-key "$(cat /tmp/bottrade-keys/openai-mini)" \
+  --bot-api-key "$(cat "/tmp/bottrade-keys/GPT-4o Mini")" \
   --scenario SCENARIO_SLUG_HERE \
   --publish
 ```
