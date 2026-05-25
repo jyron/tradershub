@@ -10,7 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// ScenarioListOutput is the payload of GET /v1/scenarios.
+// ScenarioListOutput is the payload of GET /api/v1/scenarios.
 type ScenarioListOutput struct {
 	Body struct {
 		Scenarios []models.Scenario `json:"scenarios"`
@@ -22,7 +22,7 @@ type ScenarioGetInput struct {
 	ID string `path:"id" example:"tech-2024-q2" doc:"Scenario UUID or slug."`
 }
 
-// ScenarioGetOutput is the payload of GET /v1/scenarios/{id}.
+// ScenarioGetOutput is the payload of GET /api/v1/scenarios/{id}.
 type ScenarioGetOutput struct {
 	Body struct {
 		Scenario models.Scenario `json:"scenario"`

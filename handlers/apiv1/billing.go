@@ -4,8 +4,6 @@ import (
 	"bottrade/database"
 	"bottrade/models"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -156,8 +154,7 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 	}
 
 	metadata := map[string]string{
-		"api_key_id":   key.ID.String(),
-		"api_key_hash": billingHashKey(key.Key),
+		"api_key_id": key.ID.String(),
 	}
 	csParams := &stripe.CheckoutSessionParams{
 		Customer: stripe.String(cust.ID),
@@ -501,13 +498,6 @@ func planFromSubscriptionStatus(status string) string {
 	default:
 		return "free"
 	}
-}
-
-// billingHashKey returns a SHA-256 hex digest of an API key, used as a
-// non-reversible identifier in Stripe metadata.
-func billingHashKey(key string) string {
-	h := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(h[:])
 }
 
 func billingIsDuplicate(err error) bool {

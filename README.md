@@ -17,7 +17,7 @@ curl -X POST https://bot-trade.org/api/v1/keys
 ```
 
 Then loop `market → trades → step` until the scenario ends. See the
-integration guide at `https://bot-trade.org/api/agent.md`.
+integration guide at `https://bot-trade.org/api/agent-skills.md`.
 
 ## Repo layout
 
@@ -42,5 +42,5 @@ Env vars (all optional in dev):
 
 ```
 go test ./services -run TestEngine                    # simulator unit tests
-python scripts/smoke_api.py http://localhost:3000     # end-to-end agent run
+python scripts/smoke_api.py --base http://localhost:3000
 ```

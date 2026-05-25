@@ -15,7 +15,6 @@ import (
 type idempotencyEntry struct {
 	RequestHash  string
 	ResponseJSON string
-	StatusCode   int
 }
 
 // hashRequest produces the canonical sha256 of any input struct we'd cache.
@@ -36,11 +35,11 @@ func lookupIdempotency(runID, key string) (*idempotencyEntry, error) {
 		return nil, nil
 	}
 	row := database.DB.QueryRow(`
-		SELECT request_hash, response_json, status_code
+		SELECT request_hash, response_json
 		  FROM run_idempotency WHERE run_id = ?1 AND key = ?2
 	`, runID, key)
 	var e idempotencyEntry
-	if err := row.Scan(&e.RequestHash, &e.ResponseJSON, &e.StatusCode); err != nil {
+	if err := row.Scan(&e.RequestHash, &e.ResponseJSON); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -49,15 +48,15 @@ func lookupIdempotency(runID, key string) (*idempotencyEntry, error) {
 	return &e, nil
 }
 
-func storeIdempotency(runID, key, requestHash, responseJSON string, statusCode int) error {
+func storeIdempotency(runID, key, requestHash, responseJSON string) error {
 	if key == "" {
 		return nil
 	}
 	_, err := database.DB.Exec(`
-		INSERT INTO run_idempotency (run_id, key, request_hash, response_json, status_code)
-		VALUES (?1, ?2, ?3, ?4, ?5)
+		INSERT INTO run_idempotency (run_id, key, request_hash, response_json)
+		VALUES (?1, ?2, ?3, ?4)
 		ON CONFLICT (run_id, key) DO NOTHING
-	`, runID, key, requestHash, responseJSON, statusCode)
+	`, runID, key, requestHash, responseJSON)
 	return err
 }
 
@@ -103,7 +102,7 @@ func idempotent[Out any](
 	if mErr != nil {
 		return nil, huma.Error500InternalServerError("could not encode response: " + mErr.Error())
 	}
-	if err := storeIdempotency(runID, idempKey, hash, string(respBytes), http.StatusOK); err != nil {
+	if err := storeIdempotency(runID, idempKey, hash, string(respBytes)); err != nil {
 		return nil, huma.Error500InternalServerError("could not store idempotency record: " + err.Error())
 	}
 	return out, nil

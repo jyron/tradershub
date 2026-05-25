@@ -7,8 +7,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// mountLeaderboardPublic registers GET /v1/leaderboard and
-// GET /v1/leaderboard/scenarios outside huma so they can be hit without
+// mountLeaderboardPublic registers GET /api/v1/leaderboard and
+// GET /api/v1/leaderboard/scenarios outside huma so they can be hit without
 // an X-API-Key. Both endpoints return data that is already public by
 // design (the published run_leaderboard table).
 func (h *handlers) mountLeaderboardPublic(app *fiber.App) {

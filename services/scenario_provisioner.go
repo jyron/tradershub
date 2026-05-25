@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bottrade/database"
 	"bottrade/models"
 	"database/sql"
 	"encoding/json"
@@ -285,6 +284,3 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
-
-// Ensure unused references compile if database package is referenced elsewhere.
-var _ = database.DB

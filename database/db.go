@@ -64,6 +64,7 @@ func Connect(databaseURL, authToken string) error {
 // applyLocalPragmas tunes the embedded SQLite for concurrent use by the Go
 // server alongside Python bot scripts that open the same file.
 //
+//   - foreign_keys=ON makes local SQLite enforce the schema's REFERENCES.
 //   - journal_mode=WAL lets readers and writers proceed without blocking each
 //     other (default `delete` mode takes an exclusive lock per transaction).
 //     The setting is persisted in the DB file, but re-applying is cheap.
@@ -73,6 +74,7 @@ func Connect(databaseURL, authToken string) error {
 //     commit isn't needed when WAL already journals durably.
 func applyLocalPragmas(db *sql.DB) error {
 	pragmas := []string{
+		"PRAGMA foreign_keys = ON",
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA busy_timeout = 5000",
 		"PRAGMA synchronous = NORMAL",

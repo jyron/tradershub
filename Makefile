@@ -1,18 +1,14 @@
 # bottrade dev/prod tooling.
 #
-# Local dev uses .env.local (file:./bottrade.db, ADMIN_SECRET=dev) so we never
-# touch Turso. Production reads .env. The Go binary loads both — .env.local
-# wins where it overlaps.
+# Local dev uses .env.local (file:./bottrade.db) so we never touch Turso.
+# Production reads .env. The Go binary loads both — .env.local wins where it
+# overlaps.
 
 BINARY        := bottrade
-DEV_BINARY    := /tmp/bottrade-dev
 DEV_DB        := ./bottrade.db
 DEV_PORT      ?= 3000
-ADMIN_SECRET  ?= dev
-BASE_URL      ?= http://localhost:$(DEV_PORT)
 
-.PHONY: help dev run build prod-bin reset seed smoke test fmt vet tidy clean stop logs \
-        seed-official replay-bots replay-claude replay-gpt replay-gemini replay-grok
+.PHONY: help dev run build prod-bin reset test fmt vet tidy clean stop logs
 
 help:
 	@echo "Targets:"
@@ -20,22 +16,12 @@ help:
 	@echo "  build           compile $(BINARY) for the current platform"
 	@echo "  prod-bin        compile a stripped/optimized linux/amd64 binary"
 	@echo "  reset           wipe local SQLite DB"
-	@echo "  seed            bootstrap a claimed bot + pending season for fast iteration"
-	@echo "  smoke           hit the running dev server with a curl-based sanity check"
 	@echo "  test            go test ./..."
 	@echo "  fmt             gofmt -w ."
 	@echo "  vet             go vet ./..."
 	@echo "  tidy            go mod tidy"
 	@echo "  stop            kill any locally-running bottrade process"
 	@echo "  clean           remove built binaries and dev state files"
-	@echo
-	@echo "Official-bot showdown (bots/README.md for details):"
-	@echo "  seed-official   register the 4 official benchmark bots (idempotent)"
-	@echo "  replay-bots     run 90-day historical replay for all 4 providers"
-	@echo "  replay-claude   replay just Claude"
-	@echo "  replay-gpt      replay just GPT"
-	@echo "  replay-gemini   replay just Gemini"
-	@echo "  replay-grok     replay just Grok"
 
 dev: stop
 	@echo "→ starting dev server on :$(DEV_PORT) against $(DEV_DB)"
@@ -56,12 +42,6 @@ reset: stop
 	@rm -f $(DEV_DB) $(DEV_DB)-wal $(DEV_DB)-shm $(DEV_DB)-journal
 	@rm -f .dev_bot.json .test_workflow_state
 	@echo "✓ local state cleared. Next 'make dev' starts fresh."
-
-seed:
-	@ADMIN_SECRET=$(ADMIN_SECRET) BASE_URL=$(BASE_URL) ./scripts/seed_dev.sh
-
-smoke:
-	@BASE_URL=$(BASE_URL) ./scripts/smoke.sh
 
 test:
 	go test ./...
@@ -87,31 +67,5 @@ logs:
 	@tail -f /tmp/bottrade-dev.log 2>/dev/null || echo "no dev log at /tmp/bottrade-dev.log"
 
 clean: stop
-	@rm -f $(BINARY) $(DEV_BINARY) .dev_bot.json
+	@rm -f $(BINARY) .dev_bot.json
 	@echo "✓ cleaned"
-
-# Official-bot showdown ----------------------------------------------
-# `seed-official` is safe to run repeatedly: it skips providers whose bot
-# already exists. `replay-bots` runs all 4 providers in parallel — each bot's
-# output is prefixed with [provider] so interleaved logs stay readable. One
-# provider failing does not abort the others.
-
-REPLAY_DAYS ?= 90
-
-seed-official:
-	@BASE_URL=$(BASE_URL) python3 scripts/seed_official_bots.py
-
-replay-claude:
-	@python3 -u -m bots.claude_bot --replay $(REPLAY_DAYS) --verbose
-
-replay-gpt:
-	@python3 -u -m bots.gpt_bot --replay $(REPLAY_DAYS) --verbose
-
-replay-gemini:
-	@python3 -u -m bots.gemini_bot --replay $(REPLAY_DAYS) --verbose
-
-replay-grok:
-	@python3 -u -m bots.grok_bot --replay $(REPLAY_DAYS) --verbose
-
-replay-bots:
-	@scripts/replay_parallel.sh $(REPLAY_DAYS)

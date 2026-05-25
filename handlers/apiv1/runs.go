@@ -51,7 +51,7 @@ type RunCreateInput struct {
 	}
 }
 
-// RunCreateOutput is returned on successful POST /v1/runs.
+// RunCreateOutput is returned on successful POST /api/v1/runs.
 type RunCreateOutput struct {
 	Status int `header:"-"`
 	Body   struct {
@@ -89,8 +89,8 @@ func (h *handlers) registerRuns(api huma.API) {
 		Path:        "/api/v1/runs/{id}",
 		Summary:     "Get the current state of a run",
 		Description: "Returns the run, all open positions, all queued (unfilled) " +
-			"orders, and the most recent equity sample. Only the run's own " +
-			"bot can access this endpoint.",
+			"orders, and the most recent equity sample. Only the API key " +
+			"that created the run can access this endpoint.",
 		Tags:     []string{"Runs"},
 		Security: []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getRun)
@@ -180,7 +180,7 @@ func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, 
 	return &RunGetOutput{Body: *snap}, nil
 }
 
-// assertRunOwner returns nil iff the authenticated bot owns the run.
+// assertRunOwner returns nil iff the authenticated API key owns the run.
 // Returned errors are already huma errors with the correct status — callers
 // should propagate as-is.
 func (h *handlers) assertRunOwner(ctx context.Context, runID string) error {

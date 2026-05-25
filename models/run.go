@@ -80,7 +80,7 @@ type RunResults struct {
 	ComputedAt  time.Time `json:"computed_at"`
 }
 
-// RunSnapshot is the GET /v1/runs/:id response payload.
+// RunSnapshot is the GET /api/v1/runs/:id response payload.
 type RunSnapshot struct {
 	Run          Run           `json:"run"`
 	Positions    []RunPosition `json:"positions"`

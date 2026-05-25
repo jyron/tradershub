@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// MarketGetInput is the query for GET /v1/runs/{id}/market.
+// MarketGetInput is the query for GET /api/v1/runs/{id}/market.
 type MarketGetInput struct {
 	ID       string `path:"id" doc:"Run UUID."`
 	Symbols  string `query:"symbols" doc:"Comma-separated list of symbols, e.g. AAPL,MSFT,SPY. Omit to return all symbols in the scenario universe."`
@@ -25,7 +25,7 @@ type MarketBar struct {
 	Volume int64   `json:"volume"`
 }
 
-// MarketGetOutput is the payload of GET /v1/runs/{id}/market.
+// MarketGetOutput is the payload of GET /api/v1/runs/{id}/market.
 type MarketGetOutput struct {
 	Body struct {
 		SimTime string                  `json:"sim_time" doc:"Current run sim_time (ISO 8601 UTC)."`
@@ -57,20 +57,25 @@ func (h *handlers) getMarket(ctx context.Context, in *MarketGetInput) (*MarketGe
 		return nil, huma.Error404NotFound("no such run")
 	}
 
-	var symbols []string
-	if in.Symbols == "" {
-		scen, err := h.Engine.LoadScenario(run.ScenarioID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load scenario")
-		}
-		symbols = scen.Universe
-	} else {
-		symbols = strings.Split(in.Symbols, ",")
-		for i := range symbols {
-			symbols[i] = strings.TrimSpace(symbols[i])
-		}
+	scen, err := h.Engine.LoadScenario(run.ScenarioID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load scenario")
 	}
 	bars := h.Engine.Bars()
+	if err := bars.Load(run.ScenarioID, run.ScenarioVersion); err != nil {
+		return nil, huma.Error500InternalServerError("failed to load market data")
+	}
+
+	var symbols []string
+	if in.Symbols == "" {
+		symbols = scen.Universe
+	} else {
+		for _, symbol := range strings.Split(in.Symbols, ",") {
+			if symbol = strings.TrimSpace(symbol); symbol != "" {
+				symbols = append(symbols, symbol)
+			}
+		}
+	}
 
 	out := &MarketGetOutput{}
 	out.Body.SimTime = run.SimTime.UTC().Format("2006-01-02T15:04:05Z")

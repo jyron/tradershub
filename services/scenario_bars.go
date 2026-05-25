@@ -30,21 +30,14 @@ type ScenarioBar struct {
 // × 5 numbers per bar) one year of one scenario fits in well under 5 MB
 // per scenario. A handful of active scenarios is negligible memory.
 type ScenarioBarCache struct {
-	db    *sql.DB
-	mu    sync.RWMutex
-	// scenarios[scenarioKey] = loaded data
+	db        *sql.DB
+	mu        sync.RWMutex
 	scenarios map[string]*loadedScenario
 }
 
-type scenarioKey struct {
-	ScenarioID string
-	Version    int
-}
-
 type loadedScenario struct {
-	Timeline    []time.Time                       // sorted, distinct ts of benchmark_symbol
-	BySymTs     map[string]map[string]ScenarioBar // bars[symbol][ts.Format(RFC3339)] = bar
-	LastBefore  map[string]map[string]ScenarioBar // last-known close for (symbol, ts)
+	Timeline []time.Time                       // sorted, distinct ts of benchmark_symbol
+	BySymTs  map[string]map[string]ScenarioBar // bars[symbol][ts.Format(RFC3339)] = bar
 }
 
 func keyOf(scenarioID string, version int) string {
@@ -191,7 +184,7 @@ func (c *ScenarioBarCache) LastBarAtOrBefore(scenarioID string, version int, sym
 }
 
 // Lookback returns the last n bars for symbol with ts ≤ asOf, sorted
-// ascending by ts. Used by GET /v1/runs/:id/market.
+// ascending by ts. Used by GET /api/v1/runs/:id/market.
 func (c *ScenarioBarCache) Lookback(scenarioID string, version int, symbol string, asOf time.Time, n int) []ScenarioBar {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

@@ -27,27 +27,6 @@ type Scenario struct {
 	CreatedAt       time.Time      `json:"created_at"`
 }
 
-// ScenarioVersion records each time a scenario's bars are frozen. Runs
-// pin to a version so future re-freezes don't change historical results.
-type ScenarioVersion struct {
-	ScenarioID   string    `json:"scenario_id"`
-	Version      int       `json:"version"`
-	BarsFrozenAt time.Time `json:"bars_frozen_at"`
-	BarCount     int       `json:"bar_count"`
-}
-
-// MarshalUniverse returns the JSON array form stored in scenarios.universe_json.
-func MarshalUniverse(symbols []string) (string, error) {
-	b, err := json.Marshal(symbols)
-	return string(b), err
-}
-
-// MarshalSlippage returns the JSON object form stored in scenarios.slippage_json.
-func MarshalSlippage(slippage map[string]int) (string, error) {
-	b, err := json.Marshal(slippage)
-	return string(b), err
-}
-
 // UnmarshalUniverse parses universe_json.
 func UnmarshalUniverse(s string) ([]string, error) {
 	var out []string

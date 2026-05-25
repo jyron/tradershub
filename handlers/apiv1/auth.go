@@ -22,7 +22,7 @@ type apiKeyContextKey struct{}
 // the key row on the context. Returns 403 if the row has a non-empty
 // disabled_reason (abuse short-circuit).
 //
-// GET /v1/scenarios and GET /v1/scenarios/:id are exempt — the scenario
+// GET /api/v1/scenarios and GET /api/v1/scenarios/:id are exempt — the scenario
 // catalog is public-readable so visitors browsing the marketing site can
 // see which scenarios exist, their universes, and their time windows.
 func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
@@ -109,8 +109,7 @@ func loadAPIKeyByID(id string) (models.APIKey, error) {
 	return loadAPIKeyBySecret(secret)
 }
 
-// isPublicRead returns true for huma operations that should bypass the
-// X-API-Key check. Today: GET /v1/scenarios and GET /v1/scenarios/:id.
+// isPublicRead returns true for huma operations that should bypass X-API-Key auth.
 func isPublicRead(method, path string) bool {
 	if method == http.MethodPost && path == "/api/v1/billing/checkout" {
 		return true
@@ -134,7 +133,7 @@ func isPublicRead(method, path string) bool {
 }
 
 // apiKeyFrom extracts the authenticated API key from the operation context.
-// Returns the zero bot if the middleware didn't run (which would be a
+// Returns the zero key if the middleware didn't run (which would be a
 // programming error — every operation should be behind authMiddleware).
 func apiKeyFrom(ctx context.Context) models.APIKey {
 	v := ctx.Value(apiKeyContextKey{})

@@ -19,7 +19,7 @@
 - Public, no-auth: `POST /api/v1/keys`, `POST /api/v1/billing/checkout`, `GET /api/v1/scenarios`, `GET /api/v1/scenarios/{id}`, `GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/scenarios`, `GET /api/v1/runs/{id}/public`, `/api/docs`, `/api/agent-skills.md`, `/api/openapi.json`, `/api/test_bot.py`, `/api/ai_bot.py`, `/api/llms.txt`, `/api/health`
 
 ## Quotas & billing
-- Free keys: 25 benchmark runs per UTC month. Usage is counted per API key, no matter how many bots or scripts use it. `POST /api/v1/runs` returns 402 with `{"checkout_url": "...", "upgrade_hint": "..."}` when quota is reached.
+- Free keys: 25 benchmark runs per UTC month. Usage is counted per API key, no matter how many strategies or scripts use it. `POST /api/v1/runs` returns 402 with `{"checkout_url": "...", "upgrade_hint": "..."}` when quota is reached.
 - Pro keys: 500 benchmark runs per UTC month ($39/month). Returns 429 with `{"resets_at": "..."}` at limit.
 - Billing endpoints: `POST /api/v1/billing/checkout` → Stripe Checkout URL, with or without an existing X-API-Key; `POST /api/v1/billing/portal` → Stripe Customer Portal URL; `GET /api/v1/billing/account` → key_id, plan, billing_email, subscription_status, current_period_end, handle; `PATCH /api/v1/billing/account` → set leaderboard handle (Pro only; 3–24 chars, alphanumeric plus `_` and `-`).
 - The checkout success page returns the Pro API key. If checkout started with an existing key, it returns that key; otherwise it returns the newly-created key.

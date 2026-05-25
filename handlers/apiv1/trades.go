@@ -39,7 +39,7 @@ func (h *handlers) registerTrades(api huma.API) {
 		Description: "Inserts an order into the run's queue. The order is " +
 			"validated against the scenario universe, leverage cap, and " +
 			"current position. It is NOT filled here; it fills at the next " +
-			"bar's open + slippage when you call POST /v1/runs/{id}/step. " +
+			"bar's open + slippage when you call POST /api/v1/runs/{id}/step. " +
 			"\n\nProvide `idempotency_key` to safely retry on network blips.",
 		Tags:          []string{"Runs"},
 		DefaultStatus: http.StatusCreated,

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,19 +21,17 @@ import (
 // API process. Cross-process safety would need row-version checks; out of
 // scope for MVP.
 type ScenarioEngine struct {
-	appDB    *sql.DB
-	marketDB *sql.DB
-	bars     *ScenarioBarCache
-	locks    sync.Map // map[string]*sync.Mutex, key = run_id
-	writes   chan struct{}
+	appDB  *sql.DB
+	bars   *ScenarioBarCache
+	locks  sync.Map // map[string]*sync.Mutex, key = run_id
+	writes chan struct{}
 }
 
 func NewScenarioEngine(appDB, marketDB *sql.DB) *ScenarioEngine {
 	return &ScenarioEngine{
-		appDB:    appDB,
-		marketDB: marketDB,
-		bars:     NewScenarioBarCache(marketDB),
-		writes:   make(chan struct{}, 8),
+		appDB:  appDB,
+		bars:   NewScenarioBarCache(marketDB),
+		writes: make(chan struct{}, 8),
 	}
 }
 
@@ -42,7 +39,7 @@ func NewScenarioEngine(appDB, marketDB *sql.DB) *ScenarioEngine {
 // to do their own queries (ownership checks, leaderboard inserts).
 func (e *ScenarioEngine) AppDB() *sql.DB { return e.appDB }
 
-// Bars exposes the bar cache so handlers (e.g. GET /v1/runs/:id/market)
+// Bars exposes the bar cache so handlers (e.g. GET /api/v1/runs/:id/market)
 // can serve lookback queries without re-loading.
 func (e *ScenarioEngine) Bars() *ScenarioBarCache { return e.bars }
 
@@ -176,7 +173,7 @@ func (e *ScenarioEngine) GetRunState(runID string) (*models.RunSnapshot, error) 
 // QueueTrade
 // ----------------------------------------------------------------------------
 
-// QueueTradeRequest is what comes in from POST /v1/runs/:id/trades.
+// QueueTradeRequest is what comes in from POST /api/v1/runs/:id/trades.
 type QueueTradeRequest struct {
 	Symbol    string
 	Side      string // buy | sell | short | cover
@@ -246,14 +243,11 @@ func (e *ScenarioEngine) QueueTrade(runID string, req QueueTradeRequest) (*model
 			return nil, fmt.Errorf("no bar yet for %s at or before sim_time", req.Symbol)
 		}
 		estPrice := bar.Close
-		projected, err := e.projectedNotional(runID, scen, req.Symbol, side, req.Quantity, estPrice)
+		projected, err := e.projectedNotional(runID, scen, run.SimTime, req.Quantity, estPrice)
 		if err != nil {
 			return nil, err
 		}
-		// Required equity for the projected book = total notional / leverage.
-		bp := run.Cash + run.Cash*0 // base buying power = cash for MVP
-		// Equity available = cash + equity_in_positions; we use cash for the
-		// pre-check (conservative). At fill time we mark-to-market.
+		bp := run.Cash
 		required := projected / scen.LeverageCap
 		if required > bp {
 			return nil, fmt.Errorf("insufficient buying power: need $%.2f required margin, have $%.2f cash", required, bp)
@@ -298,14 +292,14 @@ func (e *ScenarioEngine) QueueTrade(runID string, req QueueTradeRequest) (*model
 
 // projectedNotional returns the absolute total notional the run would have
 // AFTER adding the new order, using estPrice as the marker for the new order.
-func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, addSym, addSide string, addQty int, estPrice float64) (float64, error) {
+func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, asOf time.Time, addQty int, estPrice float64) (float64, error) {
 	positions, err := e.loadPositions(runID)
 	if err != nil {
 		return 0, err
 	}
 	total := 0.0
 	for _, p := range positions {
-		bar, ok := e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, time.Now())
+		bar, ok := e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, asOf)
 		if !ok {
 			continue
 		}
@@ -509,28 +503,6 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 	return result, nil
 }
 
-// executeOrders fills every queued order at `at` (the new bar's timestamp).
-// Returns the slice of RunTrade records inserted and the new cash balance.
-func (e *ScenarioEngine) executeOrders(runID string, scen *models.Scenario, orders []models.RunOrder, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
-	if len(orders) == 0 {
-		return nil, cashIn, nil
-	}
-	tx, err := e.appDB.Begin()
-	if err != nil {
-		return nil, cashIn, err
-	}
-	defer tx.Rollback()
-
-	fills, cash, err := e.executeOrdersTx(tx, runID, scen, orders, at, cashIn)
-	if err != nil {
-		return nil, cashIn, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, cashIn, fmt.Errorf("commit fills: %w", err)
-	}
-	return fills, cash, nil
-}
-
 func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.Scenario, orders []models.RunOrder, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
 	cash := cashIn
 	fills := []models.RunTrade{}
@@ -570,7 +542,7 @@ func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.
 			cash += totalValue
 		case "cover":
 			realized = (pos.AvgCost - fillPrice) * float64(o.Quantity)
-			pos = applyReduce(pos, -o.Quantity)
+			pos = applyReduce(pos, o.Quantity)
 			cash -= totalValue
 		}
 
@@ -605,29 +577,6 @@ func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.
 			RealizedPnL:   realized,
 			Reasoning:     o.Reasoning,
 		})
-	}
-	return fills, cash, nil
-}
-
-// liquidatePositions forcibly closes every open position at `at` close
-// price minus slippage. Used by the margin-check path. Returns the close
-// fills and the final cash balance.
-func (e *ScenarioEngine) liquidatePositions(runID string, scen *models.Scenario, positions []models.RunPosition, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
-	if len(positions) == 0 {
-		return nil, cashIn, nil
-	}
-	tx, err := e.appDB.Begin()
-	if err != nil {
-		return nil, cashIn, err
-	}
-	defer tx.Rollback()
-
-	fills, cash, err := e.liquidatePositionsTx(tx, runID, scen, positions, at, cashIn)
-	if err != nil {
-		return nil, cashIn, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, cashIn, fmt.Errorf("commit liq: %w", err)
 	}
 	return fills, cash, nil
 }
@@ -731,9 +680,7 @@ func applyAdd(pos models.RunPosition, delta int, price float64) models.RunPositi
 	return pos
 }
 
-// applyReduce reduces the magnitude of a position. delta carries the sign
-// of the reduction direction (sell reduces a long → negative; cover
-// reduces a short → positive). avg_cost stays the same.
+// applyReduce reduces the magnitude of a position by qty. avg_cost stays the same.
 func applyReduce(pos models.RunPosition, qty int) models.RunPosition {
 	if pos.Quantity > 0 {
 		pos.Quantity -= qty
@@ -1196,6 +1143,3 @@ func scenarioMaxDrawdown(equities []float64) float64 {
 	}
 	return worst
 }
-
-// Ensure sort.Sort import isn't pruned in some builds.
-var _ = sort.Sort

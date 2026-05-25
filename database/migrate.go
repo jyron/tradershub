@@ -184,8 +184,7 @@ func isDuplicateColumnErr(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate column") ||
-		strings.Contains(msg, "already exists")
+	return strings.Contains(msg, "duplicate column")
 }
 
 func firstLine(s string) string {

@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// mountPublicRun registers GET /v1/runs/{id}/public — a read-only view of
+// mountPublicRun registers GET /api/v1/runs/{id}/public — a read-only view of
 // a run that has been published to the public leaderboard. Mounted outside
 // huma so it works for visitors browsing the leaderboard without an
 // X-API-Key. Returns 404 for unpublished runs (don't leak existence).

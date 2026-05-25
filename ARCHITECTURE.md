@@ -59,6 +59,8 @@ database/
   migrations/001_initial.sql     — legacy bootstrap schema
   migrations/003_api_keys.sql    — current app schema shape (api_keys,
                                    runs, run_*, run_results, leaderboard)
+  migrations/004_drop_idempotency_status_code.sql
+                                 — removes unused idempotency status bookkeeping
   migrations_market/             — market DB (bars, scenario_bars)
 handlers/apiv1/                  — /api/* surface, huma-typed where auth'd
   mount.go                       — wires huma + public fiber routes
@@ -74,12 +76,11 @@ handlers/apiv1/                  — /api/* surface, huma-typed where auth'd
   ai_bot.py test_bot.py          — reference agents shipped at /api
 services/
   scenario_engine.go             — StartRun, QueueTrade, AdvanceStep, ComputeResults
-  scenario_bars.go               — in-process LRU bar cache (reads MarketDB)
+  scenario_bars.go               — in-process bar cache (reads MarketDB)
   scenario_provisioner.go        — FreezeScenario (bars → scenario_bars)
   scenario_universe.go           — 50-symbol catalog + default slippage tiers
   alpaca_client.go market_history.go
                                  — Alpaca SDK + GetHistoricalCandles
-  metrics.go                     — Sharpe/Sortino/maxDD helpers
   scenario_engine_test.go        — unit tests for the engine
 models/api_key.go run.go scenario.go — the three model types
 jobs/
@@ -101,7 +102,7 @@ static/                          — site HTML/CSS (4 pages, no build step)
 
 - **`tradershub-v2`** (app DB) — API keys, scenarios, runs, results, leaderboard.
   `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`. App migrations end at
-  `database/migrations/003_api_keys.sql`.
+  `database/migrations/004_drop_idempotency_status_code.sql`.
 - **`tradershub-market`** (market DB) — `bars` (hourly OHLCV from Alpaca)
   and `scenario_bars` (immutable per-scenario-version frozen bars). 90k+
   bars covering 2024-01-02 → present. `TURSO_MARKET_DATABASE_URL` /
@@ -121,8 +122,8 @@ In local dev both default to `file:` SQLite paths when URLs aren't set.
   `/api/v1/leaderboard*`, and `GET /api/v1/runs/:id/public`. Everything
   else under `/api/v1/runs/*` requires `X-API-Key`.
 - **API key = API principal.** A row in `api_keys` maps to an `X-API-Key`,
-  subscription state, and one monthly usage bucket. Any number of bots or
-  scripts can use the same key. No hosted LLM credentials.
+  subscription state, and one monthly usage bucket. Any number of strategies
+  or scripts can use the same key. No hosted LLM credentials.
 
 ## Adding a new scenario
 
@@ -143,11 +144,8 @@ idempotently on boot.
 ## Where to look first
 
 - "Leaderboard surface." → `handlers/apiv1/leaderboard.go`, `static/leaderboard.html`
-- "How a trade fills." → `services/scenario_engine.go::executeOrders`
+- "How a trade fills." → `services/scenario_engine.go::executeOrdersTx`
 - "Add a new `/api/v1` endpoint." → `handlers/apiv1/*.go`, `handlers/apiv1/mount.go`
 - "Pull more historical data." → `cmd/backfill_bars/main.go`, `services/market_history.go`
 - "Provision a new scenario." → `scenarios/*.json`, `cmd/provision_scenario/main.go`
 - "Edit the integration docs." → `handlers/apiv1/agent-skills.md`
-
-Production endpoints + Turso DB names: see `memory/reference_prod_urls.md`
-(Claude project memory).

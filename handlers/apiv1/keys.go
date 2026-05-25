@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// issueKeyRequest is the optional JSON body for POST /v1/keys. All fields
+// issueKeyRequest is the optional JSON body for POST /api/v1/keys. All fields
 // are optional — an empty POST is valid and produces an anonymous key.
 type issueKeyRequest struct {
 	Name  string `json:"name"`
@@ -26,13 +26,13 @@ type issueKeyResponse struct {
 	Plan   string `json:"plan"`
 }
 
-// mountKeyIssuer registers POST /v1/keys directly on Fiber, OUTSIDE huma, so
-// it is the one /v1/* route that doesn't require X-API-Key. This is the
+// mountKeyIssuer registers POST /api/v1/keys directly on Fiber, OUTSIDE huma,
+// so it is the one /api/v1/* route that doesn't require X-API-Key. This is the
 // frictionless self-serve entrypoint — a user can
-// curl this and immediately start hitting the rest of /v1/*.
+// curl this and immediately start hitting the rest of /api/v1/*.
 //
 // The endpoint creates a free API key. The key is the usage and billing
-// principal; callers can use it with any number of bots or scripts.
+// principal; callers can use it with any number of strategies or scripts.
 func (h *handlers) mountKeyIssuer(app *fiber.App) {
 	keysLimiter := limiter.New(limiter.Config{
 		Max:        10,
