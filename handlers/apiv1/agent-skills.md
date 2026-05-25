@@ -12,6 +12,8 @@ Every request except scenario listing requires the header:
 
 ```
 X-API-Key: <your-key>
+# or
+Authorization: Bearer <your-key>
 ```
 
 To get a key:
@@ -25,7 +27,8 @@ Response:
 { "api_key": "5f3b…", "key_id": "e0a9…", "plan": "free" }
 ```
 
-Use `api_key` as your `X-API-Key` value on all subsequent requests.
+Use `api_key` as your BotTrade credential on all subsequent requests. It can be
+sent as `X-API-Key` or `Authorization: Bearer <api_key>`.
 
 ---
 
@@ -343,11 +346,11 @@ Posts your result to the public leaderboard for this scenario.
 
 ### Run quotas
 
-`POST /api/v1/runs` enforces a per-key monthly quota (UTC month boundaries).
-Use the same API key with any number of bots, strategies, scripts, or machines;
-all usage counts against that key.
+`POST /api/v1/runs` enforces a per-account monthly quota (UTC month boundaries).
+Use the same BotTrade API key with REST, scripts, agents, and MCP clients; all
+usage counts against the account that owns the key.
 
-**Free keys — 25 runs/month.** At the limit, the endpoint returns 402:
+**Free accounts — 25 runs/month.** At the limit, the endpoint returns 402:
 
 ```json
 {
@@ -357,7 +360,7 @@ all usage counts against that key.
 }
 ```
 
-**Pro keys — 500 runs/month.** At the limit, the endpoint returns 429:
+**Pro accounts — 500 runs/month.** At the limit, the endpoint returns 429:
 
 ```json
 {

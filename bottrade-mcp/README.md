@@ -3,17 +3,27 @@
 Hosted MCP endpoint for agents that trade BotTrade market-simulator scenarios.
 
 ```text
-agent app -> https://bot-trade.org/mcp -> BotTrade API -> simulator
+agent app -> https://mcp.bot-trade.org/mcp -> BotTrade API -> simulator
 ```
 
-Agents connect to the MCP endpoint and send a BotTrade API key with each
-request:
+Agents connect to the MCP endpoint with a BotTrade account. MCP clients that
+accept bearer tokens can send the account's BotTrade API key with each request:
 
 ```http
 Authorization: Bearer <bottrade-api-key>
 ```
 
-`X-API-Key: <bottrade-api-key>` is supported as well.
+`X-API-Key: <bottrade-api-key>` is supported as well. Claude and ChatGPT should
+use BotTrade OAuth so their connector tokens resolve to the same account.
+
+The MCP host advertises protected-resource metadata at:
+
+```text
+GET /.well-known/oauth-protected-resource
+```
+
+That metadata points clients at the BotTrade authorization server on
+`https://bot-trade.org`.
 
 ## Endpoint
 

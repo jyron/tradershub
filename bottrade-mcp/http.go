@@ -5,15 +5,24 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
 type HTTPMCPServer struct {
-	baseURL string
+	baseURL   string
+	publicURL string
 }
 
 func NewHTTPMCPServer(baseURL string) *HTTPMCPServer {
-	return &HTTPMCPServer{baseURL: strings.TrimRight(baseURL, "/")}
+	publicURL := strings.TrimSpace(os.Getenv("BOTTRADE_MCP_PUBLIC_URL"))
+	if publicURL == "" {
+		publicURL = "https://mcp.bot-trade.org"
+	}
+	return &HTTPMCPServer{
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		publicURL: strings.TrimRight(publicURL, "/"),
+	}
 }
 
 func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -25,11 +34,27 @@ func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/health":
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/.well-known/oauth-protected-resource":
+		s.handleProtectedResourceMetadata(w, r)
 	case "/mcp":
 		s.handleMCP(w, r)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown endpoint"})
 	}
+}
+
+func (s *HTTPMCPServer) handleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "metadata endpoint accepts GET requests"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resource":                 s.publicURL + "/mcp",
+		"authorization_servers":    []string{"https://bot-trade.org"},
+		"bearer_methods_supported": []string{"header"},
+		"scopes_supported":         []string{"bottrade:trade"},
+	})
 }
 
 func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +98,7 @@ func apiKeyFromRequest(r *http.Request) string {
 
 func setMCPHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Session-Id, X-API-Key")
 	w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
 	w.Header().Set("MCP-Protocol-Version", protocolVersion)

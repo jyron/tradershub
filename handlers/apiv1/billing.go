@@ -51,7 +51,7 @@ func (h *handlers) registerBilling(api huma.API) {
 		OperationID: "getBillingAccount",
 		Method:      http.MethodGet,
 		Path:        "/api/v1/billing/account",
-		Summary:     "Get API key billing info",
+		Summary:     "Get account billing info",
 		Tags:        []string{"Billing"},
 		Security:    []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getBillingAccount)
@@ -92,6 +92,7 @@ type PortalOutput struct {
 
 type AccountOutput struct {
 	Body struct {
+		AccountID          string `json:"account_id"`
 		KeyID              string `json:"key_id"`
 		Name               string `json:"name"`
 		Plan               string `json:"plan"`
@@ -144,6 +145,7 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 	}
 
 	metadata := map[string]string{
+		"account_id": key.AccountID.String(),
 		"api_key_id": key.ID.String(),
 	}
 	csParams := &stripe.CheckoutSessionParams{
@@ -202,7 +204,7 @@ func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutpu
 	stripe.Key = h.StripeSecretKey
 
 	if key.StripeCustomerID == "" || key.StripeSubscriptionID == "" {
-		return nil, huma.Error402PaymentRequired("this API key does not have a Stripe-managed subscription")
+		return nil, huma.Error402PaymentRequired("this account does not have a Stripe-managed subscription")
 	}
 
 	url, err := h.createPortalSession(key.StripeCustomerID)
@@ -229,6 +231,7 @@ func (h *handlers) createPortalSession(stripeCustomerID string) (string, error) 
 func (h *handlers) getBillingAccount(ctx context.Context, _ *struct{}) (*AccountOutput, error) {
 	key := apiKeyFrom(ctx)
 	out := &AccountOutput{}
+	out.Body.AccountID = key.AccountID.String()
 	out.Body.KeyID = key.ID.String()
 	out.Body.Name = key.Name
 	out.Body.Plan = key.Plan
@@ -251,8 +254,8 @@ func (h *handlers) patchBillingAccount(ctx context.Context, in *PatchAccountInpu
 	}
 
 	_, err := database.DB.Exec(
-		`UPDATE api_keys SET handle = ?1 WHERE id = ?2`,
-		handle, key.ID.String(),
+		`UPDATE accounts SET handle = ?1 WHERE id = ?2`,
+		handle, key.AccountID.String(),
 	)
 	if err != nil {
 		if billingIsDuplicate(err) {
@@ -277,15 +280,21 @@ func (h *handlers) getBillingSession(ctx context.Context, in *SessionInput) (*Se
 		return nil, huma.Error404NotFound("session not paid")
 	}
 
+	accountID := cs.Metadata["account_id"]
 	keyID := cs.Metadata["api_key_id"]
-	if keyID == "" {
-		return nil, huma.Error404NotFound("session is missing API key metadata")
+	if accountID == "" && keyID == "" {
+		return nil, huma.Error404NotFound("session is missing account metadata")
 	}
 	if err := h.applyCheckoutSession(cs); err != nil {
-		return nil, huma.NewError(http.StatusInternalServerError, "failed to activate API key: "+err.Error())
+		return nil, huma.NewError(http.StatusInternalServerError, "failed to activate account: "+err.Error())
 	}
 
-	key, err := loadAPIKeyByID(keyID)
+	var key models.APIKey
+	if accountID != "" {
+		key, err = loadAPIKeyByAccountID(accountID)
+	} else {
+		key, err = loadAPIKeyByID(keyID)
+	}
 	if err != nil {
 		return nil, huma.Error404NotFound("API key not found")
 	}
@@ -356,8 +365,17 @@ func (h *handlers) handleCheckoutCompleted(event stripe.Event) {
 }
 
 func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
-	keyID := cs.Metadata["api_key_id"]
-	if keyID == "" {
+	accountID := cs.Metadata["account_id"]
+	if accountID == "" {
+		keyID := cs.Metadata["api_key_id"]
+		if keyID != "" {
+			_ = database.DB.QueryRow(
+				`SELECT COALESCE(account_id, id) FROM api_keys WHERE id = ?1`,
+				keyID,
+			).Scan(&accountID)
+		}
+	}
+	if accountID == "" {
 		return nil
 	}
 
@@ -389,7 +407,7 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 	}
 
 	_, err := database.DB.Exec(`
-		UPDATE api_keys
+		UPDATE accounts
 		   SET plan = ?1,
 		       stripe_customer_id = COALESCE(NULLIF(?2, ''), stripe_customer_id),
 		       stripe_subscription_id = COALESCE(NULLIF(?3, ''), stripe_subscription_id),
@@ -397,7 +415,7 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 		       current_period_end = COALESCE(NULLIF(?5, ''), current_period_end),
 		       billing_email = COALESCE(NULLIF(?6, ''), billing_email)
 		 WHERE id = ?7
-	`, plan, stripeCustomerID, stripeSubscriptionID, subStatus, periodEnd, email, keyID)
+	`, plan, stripeCustomerID, stripeSubscriptionID, subStatus, periodEnd, email, accountID)
 	return err
 }
 
@@ -418,15 +436,21 @@ func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
 		return
 	}
 
-	keyID := sub.Metadata["api_key_id"]
-	if keyID == "" {
+	accountID := sub.Metadata["account_id"]
+	if accountID == "" {
 		_ = database.DB.QueryRow(
-			`SELECT id FROM api_keys WHERE stripe_customer_id = ?1`,
+			`SELECT id FROM accounts WHERE stripe_customer_id = ?1`,
 			sub.Customer,
-		).Scan(&keyID)
+		).Scan(&accountID)
 	}
-	if keyID == "" {
-		log.Printf("stripe webhook subscription upsert: no api_key_id for customer=%s", sub.Customer)
+	if accountID == "" && sub.Metadata["api_key_id"] != "" {
+		_ = database.DB.QueryRow(
+			`SELECT COALESCE(account_id, id) FROM api_keys WHERE id = ?1`,
+			sub.Metadata["api_key_id"],
+		).Scan(&accountID)
+	}
+	if accountID == "" {
+		log.Printf("stripe webhook subscription upsert: no account_id for customer=%s", sub.Customer)
 		return
 	}
 
@@ -436,14 +460,14 @@ func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
 	}
 
 	_, err := database.DB.Exec(`
-		UPDATE api_keys
+		UPDATE accounts
 		   SET plan = ?1,
 		       stripe_customer_id = ?2,
 		       stripe_subscription_id = ?3,
 		       subscription_status = ?4,
 		       current_period_end = COALESCE(NULLIF(?5, ''), current_period_end)
 		 WHERE id = ?6
-	`, planFromSubscriptionStatus(sub.Status), sub.Customer, sub.ID, sub.Status, periodEnd, keyID)
+	`, planFromSubscriptionStatus(sub.Status), sub.Customer, sub.ID, sub.Status, periodEnd, accountID)
 	if err != nil {
 		log.Printf("stripe webhook subscription upsert: %v", err)
 	}
@@ -458,7 +482,7 @@ func (h *handlers) handleSubscriptionDeleted(event stripe.Event) {
 		return
 	}
 	if _, err := database.DB.Exec(
-		`UPDATE api_keys
+		`UPDATE accounts
 		    SET plan = 'free', subscription_status = 'canceled'
 		  WHERE stripe_customer_id = ?1`,
 		sub.Customer,
@@ -476,7 +500,7 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 		return
 	}
 	if _, err := database.DB.Exec(
-		`UPDATE api_keys
+		`UPDATE accounts
 		    SET plan = 'pro', subscription_status = 'past_due'
 		  WHERE stripe_customer_id = ?1`,
 		inv.Customer,

@@ -18,9 +18,9 @@ import (
 // nothing outside this package can collide.
 type apiKeyContextKey struct{}
 
-// authMiddleware validates X-API-Key against the `api_keys` table and stashes
-// the key row on the context. Returns 403 if the row has a non-empty
-// disabled_reason (abuse short-circuit).
+// authMiddleware validates a BotTrade API key against the `api_keys` table and
+// stashes the account-owned credential on the context. Clients can pass the key
+// as X-API-Key or Authorization: Bearer <key>.
 //
 // GET /api/v1/scenarios and GET /api/v1/scenarios/:id are exempt — the scenario
 // catalog is public-readable so visitors browsing the marketing site can
@@ -31,14 +31,17 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 			next(ctx)
 			return
 		}
-		apiKey := ctx.Header("X-API-Key")
+		apiKey := apiKeySecretFromHeaders(ctx.Header("X-API-Key"), ctx.Header("Authorization"))
 		if apiKey == "" {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized,
-				"X-API-Key header required")
+				"BotTrade API key required")
 			return
 		}
 
 		key, err := loadAPIKeyBySecret(apiKey)
+		if err != nil {
+			key, err = loadAPIKeyByOAuthAccessToken(apiKey)
+		}
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Invalid API key")
 			return
@@ -53,32 +56,65 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 			return
 		}
 
+		recordUsageEvent(key, "rest", ctx.URL().Path, ctx.Method())
 		ctx = huma.WithValue(ctx, apiKeyContextKey{}, key)
 		next(ctx)
 	}
 }
 
+func apiKeySecretFromHeaders(xAPIKey, authorization string) string {
+	if key := strings.TrimSpace(xAPIKey); key != "" {
+		return key
+	}
+	auth := strings.TrimSpace(authorization)
+	const bearer = "Bearer "
+	if strings.HasPrefix(auth, bearer) {
+		return strings.TrimSpace(strings.TrimPrefix(auth, bearer))
+	}
+	return ""
+}
+
 func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
 	var key models.APIKey
-	var keyIDStr, createdAt string
+	var keyIDStr, accountIDStr, createdAt string
 	var isActive int
 	var description, creatorEmail, disabledReason sql.NullString
 	var stripeCustomerID, stripeSubscriptionID, subStatus sql.NullString
 	var currentPeriodEnd, billingEmail, handle sql.NullString
 	err := database.DB.QueryRow(
-		`SELECT id, name, api_key, description, creator_email,
-		        created_at, is_active, disabled_reason, plan,
-		        stripe_customer_id, stripe_subscription_id,
-		        subscription_status, current_period_end, billing_email, handle
-		   FROM api_keys
-		  WHERE api_key = ?1`,
+		`SELECT k.id,
+		        COALESCE(k.account_id, k.id) AS account_id,
+		        k.name,
+		        k.api_key,
+		        k.description,
+		        k.creator_email,
+		        k.created_at,
+		        CASE
+		          WHEN k.is_active = 1 AND COALESCE(a.is_active, 1) = 1 THEN 1
+		          ELSE 0
+		        END AS is_active,
+		        COALESCE(NULLIF(a.disabled_reason, ''), k.disabled_reason),
+		        COALESCE(NULLIF(a.plan, ''), k.plan),
+		        COALESCE(a.stripe_customer_id, k.stripe_customer_id),
+		        COALESCE(a.stripe_subscription_id, k.stripe_subscription_id),
+		        COALESCE(a.subscription_status, k.subscription_status),
+		        COALESCE(a.current_period_end, k.current_period_end),
+		        COALESCE(a.billing_email, k.billing_email),
+		        COALESCE(a.handle, k.handle)
+		   FROM api_keys k
+		   LEFT JOIN accounts a ON a.id = k.account_id
+		  WHERE k.api_key = ?1`,
 		secret,
 	).Scan(
-		&keyIDStr, &key.Name, &key.Key, &description,
+		&keyIDStr, &accountIDStr, &key.Name, &key.Key, &description,
 		&creatorEmail, &createdAt, &isActive, &disabledReason, &key.Plan,
 		&stripeCustomerID, &stripeSubscriptionID, &subStatus,
 		&currentPeriodEnd, &billingEmail, &handle,
 	)
+	if err != nil {
+		return key, err
+	}
+	key.AccountID, err = uuid.Parse(accountIDStr)
 	if err != nil {
 		return key, err
 	}
@@ -101,12 +137,59 @@ func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
 	return key, nil
 }
 
+func loadAPIKeyByAccountID(accountID string) (models.APIKey, error) {
+	var secret string
+	if err := database.DB.QueryRow(
+		`SELECT api_key
+		   FROM api_keys
+		  WHERE account_id = ?1
+		  ORDER BY created_at ASC
+		  LIMIT 1`,
+		accountID,
+	).Scan(&secret); err != nil {
+		return models.APIKey{}, err
+	}
+	return loadAPIKeyBySecret(secret)
+}
+
+func loadAPIKeyByOAuthAccessToken(token string) (models.APIKey, error) {
+	var accountID, clientID, expiresAt, revokedAt string
+	err := database.DB.QueryRow(
+		`SELECT account_id, client_id, expires_at, COALESCE(revoked_at, '')
+		   FROM oauth_access_tokens
+		  WHERE token_hash = ?1`,
+		hashToken(token),
+	).Scan(&accountID, &clientID, &expiresAt, &revokedAt)
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	exp, _ := time.Parse(time.RFC3339, expiresAt)
+	if revokedAt != "" || time.Now().UTC().After(exp) {
+		return models.APIKey{}, sql.ErrNoRows
+	}
+	key, err := ensureAccountAPIKey(accountID, "", "")
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	key.OAuthClientID = clientID
+	return key, nil
+}
+
 func loadAPIKeyByID(id string) (models.APIKey, error) {
 	var secret string
 	if err := database.DB.QueryRow(`SELECT api_key FROM api_keys WHERE id = ?1`, id).Scan(&secret); err != nil {
 		return models.APIKey{}, err
 	}
 	return loadAPIKeyBySecret(secret)
+}
+
+func recordUsageEvent(key models.APIKey, surface, action, method string) {
+	_, _ = database.DB.Exec(
+		`INSERT INTO usage_events
+		   (id, account_id, credential_id, client_id, surface, action, method)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+		uuid.NewString(), key.AccountID.String(), key.ID.String(), key.OAuthClientID, surface, action, method,
+	)
 }
 
 // isPublicRead returns true for huma operations that should bypass X-API-Key auth.

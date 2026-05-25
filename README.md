@@ -16,6 +16,10 @@ curl -X POST https://bot-trade.org/api/v1/keys
 # → {"api_key": "...", "key_id": "...", "plan": "free"}
 ```
 
+The key authenticates to a BotTrade account. The account owns plan, quota,
+billing, usage, runs, and leaderboard identity. Use the same key from REST,
+scripts, custom agents, and MCP clients that accept bearer tokens.
+
 Then loop `market → trades → step` until the scenario ends. See the
 integration guide at `https://bot-trade.org/api/agent-skills.md`.
 
@@ -36,6 +40,8 @@ Env vars (all optional in dev):
 - `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` — app DB (API keys, runs, results).
 - `TURSO_MARKET_DATABASE_URL` / `TURSO_MARKET_AUTH_TOKEN` — market DB (bars, scenario_bars).
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — required for the hourly bar-ingest job.
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — Google sign-in for hosted MCP OAuth.
+- `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` — GitHub sign-in for hosted MCP OAuth.
 - `PORT` — defaults `3000`.
 
 ## Tests

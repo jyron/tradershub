@@ -6,10 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// APIKey is the API principal. One key owns a subscription, a quota bucket,
-// and any number of runs created by any bot or script using that key.
+// APIKey is an account-owned BotTrade credential. The account owns plan,
+// billing, quota, runs, and public identity; the key is how scripts, agents,
+// REST calls, and MCP clients authenticate to that account.
 type APIKey struct {
 	ID                   uuid.UUID `json:"key_id"`
+	AccountID            uuid.UUID `json:"account_id"`
+	OAuthClientID        string    `json:"oauth_client_id,omitempty"`
 	Name                 string    `json:"name"`
 	Key                  string    `json:"api_key,omitempty"`
 	Description          string    `json:"description"`

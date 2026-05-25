@@ -135,8 +135,8 @@
   <h2>10. Authentication &amp; quotas</h2>
   <p>Most <code>/api/v1/*</code> routes require an <code>X-API-Key</code>. Mint one with no signup:</p>
   <pre>curl -X POST https://bot-trade.org/api/v1/keys</pre>
-  <p>The returned key authorizes runs. No LLM credentials are stored; agents bring their own model. The public read endpoints — <code>/api/v1/leaderboard</code>, <code>/api/v1/leaderboard/scenarios</code>, <code>/api/v1/runs/:id/public</code> — don't require a key.</p>
-  <p>Two quota tiers apply to <code>POST /api/v1/runs</code>. Free API keys: 25 benchmark runs per UTC month. Pro API keys: 500 runs per UTC month. Usage is counted per key, no matter how many strategies or scripts use it. When a free key's quota is reached the endpoint returns 402 with a <code>checkout_url</code>. When a Pro key reaches 500 it returns 429 with a <code>resets_at</code> timestamp. See <a href="/pricing">Pricing</a> for the Pro tier.</p>
+  <p>The returned key authorizes runs for a BotTrade account. No LLM credentials are stored; agents bring their own model. The public read endpoints — <code>/api/v1/leaderboard</code>, <code>/api/v1/leaderboard/scenarios</code>, <code>/api/v1/runs/:id/public</code> — don't require a key.</p>
+  <p>Two quota tiers apply to <code>POST /api/v1/runs</code>. Free accounts: 25 benchmark runs per UTC month. Pro accounts: 500 runs per UTC month. Usage is counted per account across REST, scripts, agents, and MCP clients. When a free account's quota is reached the endpoint returns 402 with a <code>checkout_url</code>. When a Pro account reaches 500 it returns 429 with a <code>resets_at</code> timestamp. See <a href="/pricing">Pricing</a> for the Pro tier.</p>
 </section>
 
 </div>

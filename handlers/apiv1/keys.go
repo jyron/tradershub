@@ -2,6 +2,7 @@ package apiv1
 
 import (
 	"bottrade/database"
+	"bottrade/models"
 	"crypto/rand"
 	"encoding/hex"
 	"strings"
@@ -20,19 +21,18 @@ type issueKeyRequest struct {
 }
 
 type issueKeyResponse struct {
-	APIKey string `json:"api_key"`
-	KeyID  string `json:"key_id"`
-	Name   string `json:"name"`
-	Plan   string `json:"plan"`
+	APIKey    string `json:"api_key"`
+	KeyID     string `json:"key_id"`
+	AccountID string `json:"account_id"`
+	Name      string `json:"name"`
+	Plan      string `json:"plan"`
 }
 
 // mountKeyIssuer registers POST /api/v1/keys directly on Fiber, OUTSIDE huma,
 // so it is the one /api/v1/* route that doesn't require X-API-Key. This is the
-// frictionless self-serve entrypoint — a user can
-// curl this and immediately start hitting the rest of /api/v1/*.
-//
-// The endpoint creates a free API key. The key is the usage and billing
-// principal; callers can use it with any number of strategies or scripts.
+// frictionless self-serve entrypoint. It creates a BotTrade account with one
+// API key. The account owns usage and billing; the key is the reusable
+// credential callers can use from scripts, REST clients, and MCP clients.
 func (h *handlers) mountKeyIssuer(app *fiber.App) {
 	keysLimiter := limiter.New(limiter.Config{
 		Max:        10,
@@ -86,6 +86,11 @@ func issueKey(c *fiber.Ctx) error {
 }
 
 func createAPIKey(requestedName, email, plan string) (issueKeyResponse, error) {
+	accountID := uuid.New()
+	return createAccountAPIKey(accountID, requestedName, email, plan)
+}
+
+func createAccountAPIKey(accountID uuid.UUID, requestedName, email, plan string) (issueKeyResponse, error) {
 	apiKey, err := generateAPIKey()
 	if err != nil {
 		return issueKeyResponse{}, err
@@ -102,21 +107,60 @@ func createAPIKey(requestedName, email, plan string) (issueKeyResponse, error) {
 		plan = "free"
 	}
 
-	_, err = database.DB.Exec(
-		`INSERT INTO api_keys
-		   (id, name, api_key, description, creator_email, plan)
-		 VALUES (?1, ?2, ?3, '', ?4, ?5)`,
-		keyID.String(), name, apiKey, email, plan,
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return issueKeyResponse{}, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	_, err = tx.Exec(
+		`INSERT INTO accounts
+		   (id, name, email, billing_email, plan)
+		 VALUES (?1, ?2, ?3, ?3, ?4)
+		 ON CONFLICT(id) DO NOTHING`,
+		accountID.String(), name, email, plan,
 	)
 	if err != nil {
 		return issueKeyResponse{}, err
 	}
+	_, err = tx.Exec(
+		`INSERT INTO api_keys
+		   (id, account_id, name, api_key, description, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)`,
+		keyID.String(), accountID.String(), name, apiKey, email, plan,
+	)
+	if err != nil {
+		return issueKeyResponse{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return issueKeyResponse{}, err
+	}
 	return issueKeyResponse{
-		APIKey: apiKey,
-		KeyID:  keyID.String(),
-		Name:   name,
-		Plan:   plan,
+		APIKey:    apiKey,
+		KeyID:     keyID.String(),
+		AccountID: accountID.String(),
+		Name:      name,
+		Plan:      plan,
 	}, nil
+}
+
+func ensureAccountAPIKey(accountID, name, email string) (models.APIKey, error) {
+	key, err := loadAPIKeyByAccountID(accountID)
+	if err == nil {
+		return key, nil
+	}
+	parsed, err := uuid.Parse(accountID)
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	resp, err := createAccountAPIKey(parsed, name, email, "free")
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	return loadAPIKeyBySecret(resp.APIKey)
 }
 
 // generateAPIKey returns 64 hex chars of CSPRNG output.

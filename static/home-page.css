@@ -206,6 +206,79 @@
   background: var(--down); animation: pulse 1.4s infinite;
 }
 
+/* ---------- MCP connect ---------- */
+.mcp-connect {
+  margin-top: 36px;
+  padding: 28px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  display:grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 28px;
+  align-items:start;
+  background: var(--bg);
+}
+@media (max-width: 920px) { .mcp-connect { grid-template-columns: 1fr; padding: 22px; } }
+.mcp-connect .kicker {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.mcp-connect h2 {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  margin: 0 0 10px;
+}
+.mcp-connect .p {
+  font-size: 15px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin: 0;
+}
+.mcp-steps {
+  display:grid;
+  gap: 12px;
+}
+.mcp-step {
+  display:grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items:start;
+}
+.mcp-step span {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display:grid;
+  place-items:center;
+  background: var(--ink);
+  color: white;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+.mcp-step b {
+  display:block;
+  font-size: 14px;
+  margin-bottom: 3px;
+}
+.mcp-step p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mcp-step code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--accent);
+  word-break: break-word;
+}
+
 /* ---------- chart ---------- */
 .race-chart {
   padding: 36px 0 0;

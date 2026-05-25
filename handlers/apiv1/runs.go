@@ -11,7 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// quotaFreeLimitError is returned (as HTTP 402) when a free-tier API key has
+// quotaFreeLimitError is returned (as HTTP 402) when a free-tier account has
 // exhausted its 25-run monthly allowance. Its JSON shape matches the spec:
 //
 //	{ "error": "...", "runs_used": N, "runs_limit": 25,
@@ -27,7 +27,7 @@ type quotaFreeLimitError struct {
 func (e *quotaFreeLimitError) Error() string  { return e.Err }
 func (e *quotaFreeLimitError) GetStatus() int { return http.StatusPaymentRequired }
 
-// quotaProLimitError is returned (as HTTP 429) when a pro-tier API key has
+// quotaProLimitError is returned (as HTTP 429) when a pro-tier account has
 // exhausted its 500-run monthly allowance. Its JSON shape matches the spec:
 //
 //	{ "error": "...", "runs_used": N, "runs_limit": 500, "resets_at": "..." }
@@ -89,7 +89,7 @@ func (h *handlers) registerRuns(api huma.API) {
 		Path:        "/api/v1/runs/{id}",
 		Summary:     "Get the current state of a run",
 		Description: "Returns the run, all open positions, all queued (unfilled) " +
-			"orders, and the most recent equity sample. Only the API key " +
+			"orders, and the most recent equity sample. Only the account " +
 			"that created the run can access this endpoint.",
 		Tags:     []string{"Runs"},
 		Security: []map[string][]string{{"ApiKeyAuth": {}}},
@@ -125,16 +125,18 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	return out, nil
 }
 
-// enforceRunQuota checks the API key's monthly run count against its plan limit.
+// enforceRunQuota checks the account's monthly run count against its plan limit.
 // Returns a huma error if the quota is exceeded, nil otherwise.
 func (h *handlers) enforceRunQuota(key models.APIKey) error {
 	// Count runs this UTC calendar month.
 	var runsUsed int
 	err := database.DB.QueryRow(
-		`SELECT COUNT(*) FROM runs
-		  WHERE api_key_id = ?1
-		    AND created_at >= datetime('now', 'start of month')`,
-		key.ID.String(),
+		`SELECT COUNT(*)
+		   FROM runs r
+		   JOIN api_keys k ON k.id = r.api_key_id
+		  WHERE COALESCE(k.account_id, k.id) = ?1
+		    AND r.created_at >= datetime('now', 'start of month')`,
+		key.AccountID.String(),
 	).Scan(&runsUsed)
 	if err != nil && err != sql.ErrNoRows {
 		// Non-fatal: let the run proceed if we can't count.
@@ -180,19 +182,23 @@ func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, 
 	return &RunGetOutput{Body: *snap}, nil
 }
 
-// assertRunOwner returns nil iff the authenticated API key owns the run.
+// assertRunOwner returns nil iff the authenticated account owns the run.
 // Returned errors are already huma errors with the correct status — callers
 // should propagate as-is.
 func (h *handlers) assertRunOwner(ctx context.Context, runID string) error {
 	key := apiKeyFrom(ctx)
-	var ownerID string
+	var ownerAccountID string
 	err := h.Engine.AppDB().QueryRow(
-		`SELECT api_key_id FROM runs WHERE id = ?1`, runID,
-	).Scan(&ownerID)
+		`SELECT COALESCE(k.account_id, k.id)
+		   FROM runs r
+		   JOIN api_keys k ON k.id = r.api_key_id
+		  WHERE r.id = ?1`,
+		runID,
+	).Scan(&ownerAccountID)
 	if err != nil {
 		return huma.Error404NotFound("no such run")
 	}
-	if ownerID != key.ID.String() {
+	if ownerAccountID != key.AccountID.String() {
 		return huma.Error403Forbidden("you do not own this run")
 	}
 	return nil

@@ -28,17 +28,21 @@ for every agent.
 
 ## Authentication
 
-Most endpoints require an **X-API-Key** header. Mint a key:
+Most endpoints require a BotTrade API key. Mint a key:
 
 ` + "```bash" + `
 curl -X POST https://bot-trade.org/api/v1/keys
 ` + "```" + `
 
-Pass the returned key on every authenticated request:
+Pass the returned key on every authenticated request. Both forms work:
 
 ` + "```http" + `
 X-API-Key: <your-key>
+Authorization: Bearer <your-key>
 ` + "```" + `
+
+The key authenticates to a BotTrade account. The account owns plan, quota,
+billing, runs, and public leaderboard identity.
 
 **Public endpoints (no key required):**
 - ` + "`GET https://bot-trade.org/api/v1/scenarios`" + `
@@ -99,6 +103,10 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 			In:   "header",
 			Name: "X-API-Key",
 		},
+		"BearerAuth": {
+			Type:   "http",
+			Scheme: "bearer",
+		},
 	}
 	cfg.OpenAPIPath = "/api/openapi"
 	cfg.DocsPath = "/api/docs"
@@ -109,6 +117,10 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 		StripeWebhookSecret: appCfg.StripeWebhookSecret,
 		StripeProPriceID:    appCfg.StripeProPriceID,
 		AppBaseURL:          appCfg.AppBaseURL,
+		GoogleClientID:      appCfg.GoogleOAuthClientID,
+		GoogleClientSecret:  appCfg.GoogleOAuthClientSecret,
+		GitHubClientID:      appCfg.GitHubOAuthClientID,
+		GitHubClientSecret:  appCfg.GitHubOAuthClientSecret,
 	}
 
 	// Public, no-auth fiber routes mounted BEFORE huma so they win the
@@ -117,6 +129,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 	h.mountLeaderboardPublic(app)
 	h.mountPublicRun(app)
 	h.mountBillingWebhook(app)
+	h.mountOAuth(app)
 
 	api := humafiber.NewV2(app, cfg)
 	api.UseMiddleware(h.authMiddleware(api))
@@ -141,4 +154,8 @@ type handlers struct {
 	StripeWebhookSecret string
 	StripeProPriceID    string
 	AppBaseURL          string
+	GoogleClientID      string
+	GoogleClientSecret  string
+	GitHubClientID      string
+	GitHubClientSecret  string
 }

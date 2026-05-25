@@ -21,6 +21,7 @@ bottrade
 
 # Output of the go coverage tool
 *.out
+.gocache/
 
 # Dependency directories
 vendor/

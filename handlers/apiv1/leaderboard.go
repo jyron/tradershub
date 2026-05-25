@@ -100,11 +100,12 @@ func getLeaderboard(c *fiber.Ctx) error {
 		       rr.final_equity, rr.trade_count, rr.liquidated,
 		       l.published_at,
 		       COALESCE(NULLIF(l.bot_name, ''), k.name),
-		       k.handle,
-		       k.plan
+		       a.handle,
+		       a.plan
 		  FROM run_leaderboard l
 		  JOIN run_results    rr ON rr.run_id = l.run_id
 		  JOIN api_keys       k  ON k.id     = l.api_key_id
+		  JOIN accounts       a  ON a.id     = COALESCE(k.account_id, k.id)
 		 WHERE l.scenario_id = ?1
 		 ORDER BY ` + orderCol + `
 		 LIMIT ?2

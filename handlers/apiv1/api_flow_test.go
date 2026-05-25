@@ -267,6 +267,55 @@ func TestAPIProUpgradeUnlocksFreeQuota(t *testing.T) {
 	requireStatus(t, status, http.StatusCreated, runBody)
 }
 
+func TestAPIAcceptsBearerAPIKey(t *testing.T) {
+	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 2.0, true)
+
+	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
+		"name": "bearer auth",
+	})
+	requireStatus(t, status, http.StatusCreated, keyBody)
+	key := requireString(t, keyBody, "api_key")
+
+	status, scenarios := env.requestWithBearer(http.MethodGet, "/api/v1/billing/account", key, nil)
+	requireStatus(t, status, http.StatusOK, scenarios)
+	if got := requireString(t, scenarios, "account_id"); got == "" {
+		t.Fatalf("account_id empty")
+	}
+}
+
+func TestAPIAcceptsOAuthBearerToken(t *testing.T) {
+	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 2.0, true)
+
+	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
+		"name": "oauth bearer",
+	})
+	requireStatus(t, status, http.StatusCreated, keyBody)
+	accountID := requireString(t, keyBody, "account_id")
+	token := "bt_oat_test"
+	_, err := env.appDB.Exec(
+		`INSERT INTO oauth_clients (id, name, redirect_uris)
+		 VALUES ('test-client', 'Test Client', '["https://client.example/callback"]')`,
+	)
+	if err != nil {
+		t.Fatalf("insert oauth client: %v", err)
+	}
+	_, err = env.appDB.Exec(
+		`INSERT INTO oauth_access_tokens
+		   (token_hash, account_id, client_id, scope, resource, expires_at)
+		 VALUES (?1, ?2, 'test-client', 'bottrade:trade', 'https://mcp.bot-trade.org/mcp', ?3)`,
+		hashToken(token), accountID, time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+	)
+	if err != nil {
+		t.Fatalf("insert oauth token: %v", err)
+	}
+
+	status, account := env.requestWithBearer(http.MethodGet, "/api/v1/billing/account", token, nil)
+	requireStatus(t, status, http.StatusOK, account)
+	if got := requireString(t, account, "account_id"); got != accountID {
+		t.Fatalf("account_id = %q, want %q", got, accountID)
+	}
+}
+
 func newAPITestEnv(t *testing.T, bars [][]apiTestBar, startingCash, leverageCap float64, shortEnabled bool) *apiTestEnv {
 	t.Helper()
 
@@ -414,6 +463,16 @@ func defaultAPITestBars() [][]apiTestBar {
 
 func (env *apiTestEnv) request(method, path, key string, payload any) (int, map[string]any) {
 	env.t.Helper()
+	return env.requestWithHeaders(method, path, map[string]string{"X-API-Key": key}, payload)
+}
+
+func (env *apiTestEnv) requestWithBearer(method, path, key string, payload any) (int, map[string]any) {
+	env.t.Helper()
+	return env.requestWithHeaders(method, path, map[string]string{"Authorization": "Bearer " + key}, payload)
+}
+
+func (env *apiTestEnv) requestWithHeaders(method, path string, headers map[string]string, payload any) (int, map[string]any) {
+	env.t.Helper()
 
 	var reader io.Reader
 	if payload != nil {
@@ -427,8 +486,10 @@ func (env *apiTestEnv) request(method, path, key string, payload any) (int, map[
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if key != "" {
-		req.Header.Set("X-API-Key", key)
+	for k, v := range headers {
+		if v != "" {
+			req.Header.Set(k, v)
+		}
 	}
 	resp, err := env.app.Test(req, -1)
 	if err != nil {
