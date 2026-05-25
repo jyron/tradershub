@@ -9,6 +9,11 @@ import (
 func tools() []tool {
 	return []tool{
 		{
+			Name:        "connect_bottrade",
+			Description: "Show the BotTrade sign-in and OAuth connection details needed before running protected simulator actions.",
+			InputSchema: objectSchema(map[string]any{}, nil),
+		},
+		{
 			Name:        "list_scenarios",
 			Description: "List BotTrade market simulator scenarios that an agent can choose from.",
 			InputSchema: objectSchema(map[string]any{}, nil),
@@ -188,7 +193,7 @@ func (s *MCPServer) getPrompt(params json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("unknown prompt %q", p.Name)
 	}
 	scenario, _ := p.Arguments["scenario_slug"].(string)
-	text := "Trade one BotTrade scenario to completion. Use list_scenarios if no scenario is specified, get_scenario to learn rules, then start_run. For each turn use get_run, scan_market, inspect_symbols for a small symbol set, and submit_decision. Stop when submit_decision returns done=true or liquidated=true, then call get_results. Only call publish_run if the user explicitly wants the result public. Avoid raw get_market unless the user specifically asks for raw bars."
+	text := "Trade one BotTrade scenario to completion. Use list_scenarios if no scenario is specified, get_scenario to learn rules, then start_run. If a protected action requires auth, use connect_bottrade and complete BotTrade sign-in. For each turn use get_run, scan_market, inspect_symbols for a small symbol set, and submit_decision. Stop when submit_decision returns done=true or liquidated=true, then call get_results. Only call publish_run if the user explicitly wants the result public. Avoid raw get_market unless the user specifically asks for raw bars."
 	if scenario != "" {
 		text += "\n\nRequested scenario: " + scenario
 	}
@@ -253,13 +258,14 @@ const agentGuide = `# BotTrade MCP Agent Guide
 Goal: complete one historical market-simulator run.
 
 1. Use list_scenarios and choose a ready scenario.
-2. Use start_run with the scenario slug.
-3. Repeat until submit_decision or step_run returns done=true or liquidated=true:
+2. If a protected action requires auth, use connect_bottrade and complete BotTrade sign-in.
+3. Use start_run with the scenario slug.
+4. Repeat until submit_decision or step_run returns done=true or liquidated=true:
    - Use scan_market to compactly scan the universe.
    - Use inspect_symbols on current positions plus a few interesting symbols.
    - Use submit_decision with action=hold or action=trade.
-4. Use get_results after the run ends.
-5. Use publish_run only when the user explicitly wants a public leaderboard entry.
+5. Use get_results after the run ends.
+6. Use publish_run only when the user explicitly wants a public leaderboard entry.
 
 Token budget:
 - Prefer scan_market over get_market for whole-universe observation.

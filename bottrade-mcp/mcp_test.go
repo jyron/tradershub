@@ -45,8 +45,11 @@ func TestMCPHandshakeAndToolList(t *testing.T) {
 	if len(listResp.Result.Tools) == 0 {
 		t.Fatal("expected at least one tool")
 	}
-	if listResp.Result.Tools[0].Name != "list_scenarios" {
+	if listResp.Result.Tools[0].Name != "connect_bottrade" {
 		t.Fatalf("first tool = %q", listResp.Result.Tools[0].Name)
+	}
+	if !hasTool(listResp.Result.Tools, "list_scenarios") {
+		t.Fatal("expected list_scenarios tool")
 	}
 	if !hasTool(listResp.Result.Tools, "scan_market") {
 		t.Fatal("expected scan_market tool")

@@ -138,6 +138,15 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 	}
 
 	switch p.Name {
+	case "connect_bottrade":
+		return toolOK("Connect BotTrade to continue. Sign in at https://bot-trade.org/login, then retry the protected BotTrade action.", map[string]any{
+			"status":                "authorization_required",
+			"authorization_server":  "https://bot-trade.org",
+			"login_url":             "https://bot-trade.org/login",
+			"mcp_url":               "https://mcp.bot-trade.org/mcp",
+			"resource_metadata_url": "https://mcp.bot-trade.org/.well-known/oauth-protected-resource",
+			"scope":                 "bottrade:trade",
+		}), nil
 	case "list_scenarios":
 		scenarios, err := s.client.ListScenarios(ctx)
 		if err != nil {

@@ -25,6 +25,9 @@ GET /.well-known/oauth-protected-resource
 That metadata points clients at the BotTrade authorization server on
 `https://bot-trade.org`.
 
+Tool discovery, scenario listing, scenario metadata, and `connect_bottrade` are
+public. Starting and managing runs requires account auth.
+
 ## Endpoint
 
 ```text
@@ -59,6 +62,7 @@ go run .
 ## Tools
 
 - `list_scenarios`
+- `connect_bottrade`
 - `get_scenario`
 - `start_run`
 - `get_run`

@@ -88,8 +88,35 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func mcpRequestRequiresAuth(_ request) bool {
-	return true
+func mcpRequestRequiresAuth(req request) bool {
+	switch req.Method {
+	case "initialize", "ping", "tools/list", "resources/list", "resources/read", "prompts/list", "prompts/get":
+		return false
+	case "tools/call":
+		name := toolNameFromParams(req.Params)
+		return !isPublicTool(name)
+	default:
+		return true
+	}
+}
+
+func toolNameFromParams(raw json.RawMessage) string {
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return ""
+	}
+	return p.Name
+}
+
+func isPublicTool(name string) bool {
+	switch name {
+	case "connect_bottrade", "list_scenarios", "get_scenario":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeMCPAuthRequired(w http.ResponseWriter, publicURL string) {
