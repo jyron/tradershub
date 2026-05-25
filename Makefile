@@ -8,7 +8,7 @@ BINARY        := bottrade
 DEV_DB        := ./bottrade.db
 DEV_PORT      ?= 3000
 
-.PHONY: help dev run build prod-bin reset test fmt vet tidy clean stop logs
+.PHONY: help dev run build prod-bin reset test test-stripe-live fmt vet tidy clean stop logs
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  prod-bin        compile a stripped/optimized linux/amd64 binary"
 	@echo "  reset           wipe local SQLite DB"
 	@echo "  test            go test ./..."
+	@echo "  test-stripe-live run live Stripe sandbox E2E tests"
 	@echo "  fmt             gofmt -w ."
 	@echo "  vet             go vet ./..."
 	@echo "  tidy            go mod tidy"
@@ -45,6 +46,9 @@ reset: stop
 
 test:
 	go test ./...
+
+test-stripe-live:
+	go test -tags=stripe_live ./stripee2e -count=1
 
 fmt:
 	gofmt -w .

@@ -16,7 +16,6 @@ import (
 	stripe "github.com/stripe/stripe-go/v82"
 	stripebillingportalsession "github.com/stripe/stripe-go/v82/billingportal/session"
 	"github.com/stripe/stripe-go/v82/checkout/session"
-	"github.com/stripe/stripe-go/v82/customer"
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
@@ -136,7 +135,7 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 		return nil, err
 	}
 
-	if key.StripeCustomerID != "" && key.Plan == "pro" {
+	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && key.Plan == "pro" {
 		ps, err := h.createPortalSession(key.StripeCustomerID)
 		if err != nil {
 			return nil, err
@@ -144,21 +143,11 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 		return nil, huma.Error409Conflict("already subscribed — manage here: " + ps)
 	}
 
-	custParams := &stripe.CustomerParams{}
-	if key.CreatorEmail != "" {
-		custParams.Email = stripe.String(key.CreatorEmail)
-	}
-	cust, err := customer.New(custParams)
-	if err != nil {
-		return nil, huma.NewError(http.StatusInternalServerError, "stripe customer create failed: "+err.Error())
-	}
-
 	metadata := map[string]string{
 		"api_key_id": key.ID.String(),
 	}
 	csParams := &stripe.CheckoutSessionParams{
-		Customer: stripe.String(cust.ID),
-		Mode:     stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(h.StripeProPriceID),
@@ -171,6 +160,11 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
 			Metadata: metadata,
 		},
+	}
+	if key.StripeCustomerID != "" {
+		csParams.Customer = stripe.String(key.StripeCustomerID)
+	} else if key.CreatorEmail != "" {
+		csParams.CustomerEmail = stripe.String(key.CreatorEmail)
 	}
 
 	cs, err := session.New(csParams)
@@ -207,7 +201,7 @@ func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutpu
 	key := apiKeyFrom(ctx)
 	stripe.Key = h.StripeSecretKey
 
-	if key.StripeCustomerID == "" {
+	if key.StripeCustomerID == "" || key.StripeSubscriptionID == "" {
 		return nil, huma.Error402PaymentRequired("this API key does not have a Stripe-managed subscription")
 	}
 
