@@ -13,7 +13,7 @@ go test -tags=stripe_live ./stripee2e -count=1
 
 The live checkout test:
 
-- creates a temporary local BotTrade API key through `POST /api/v1/keys`;
+- creates a temporary local BotTrade account and API key in the test database;
 - calls the real `POST /api/v1/billing/checkout` handler;
 - creates a real Stripe Checkout Session in test mode;
 - verifies the session is subscription-mode, uses `STRIPE_PRO_PRICE_ID`, and

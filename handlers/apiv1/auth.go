@@ -194,9 +194,6 @@ func recordUsageEvent(key models.APIKey, surface, action, method string) {
 
 // isPublicRead returns true for huma operations that should bypass X-API-Key auth.
 func isPublicRead(method, path string) bool {
-	if method == http.MethodPost && path == "/api/v1/billing/checkout" {
-		return true
-	}
 	if method != http.MethodGet {
 		return false
 	}

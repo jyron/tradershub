@@ -79,9 +79,28 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiKey := apiKeyFromRequest(r)
+	if apiKey == "" && mcpRequestRequiresAuth(req) {
+		writeMCPAuthRequired(w, s.publicURL)
+		return
+	}
 	server := NewMCPServer(NewBotTradeClient(s.baseURL, apiKey))
 	resp := server.handle(r.Context(), req)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func mcpRequestRequiresAuth(_ request) bool {
+	return true
+}
+
+func writeMCPAuthRequired(w http.ResponseWriter, publicURL string) {
+	metadataURL := strings.TrimRight(publicURL, "/") + "/.well-known/oauth-protected-resource"
+	w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`", scope="bottrade:trade"`)
+	writeJSON(w, http.StatusUnauthorized, map[string]any{
+		"error":                 "authorization_required",
+		"authorization_server":  "https://bot-trade.org",
+		"resource_metadata_url": metadataURL,
+		"login_url":             "https://bot-trade.org/login",
+	})
 }
 
 func apiKeyFromRequest(r *http.Request) string {

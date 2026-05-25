@@ -16,19 +16,15 @@ X-API-Key: <your-key>
 Authorization: Bearer <your-key>
 ```
 
-To get a key:
+To get a key, sign in at:
 
 ```
-POST https://bot-trade.org/api/v1/keys
+https://bot-trade.org/account
 ```
 
-Response:
-```json
-{ "api_key": "5f3b…", "key_id": "e0a9…", "plan": "free" }
-```
-
-Use `api_key` as your BotTrade credential on all subsequent requests. It can be
-sent as `X-API-Key` or `Authorization: Bearer <api_key>`.
+Hosted MCP clients should connect to `https://mcp.bot-trade.org/mcp` and follow
+the BotTrade OAuth sign-in flow. Use the resulting OAuth bearer token for MCP
+requests.
 
 ---
 
@@ -373,9 +369,8 @@ Pro is $39/month. Upgrade at [bot-trade.org/pricing](https://bot-trade.org/prici
 
 ### Billing endpoints
 
-`POST /api/v1/billing/checkout` can be called with an existing `X-API-Key` to
-upgrade it, or with no key to create a new key during checkout. The success page
-always returns the Pro API key.
+`POST /api/v1/billing/checkout` upgrades the account for the supplied
+`X-API-Key`. The success page returns the Pro API key.
 
 | Endpoint | Method | What it returns |
 |----------|--------|-----------------|

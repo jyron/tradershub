@@ -54,14 +54,13 @@
           <a href="/account" style="display:inline-block;margin-left:10px;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink);border:1px solid var(--rule);">Get API key</a>
         </p>
         <p style="font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:12px; color: var(--ink-3); margin-top:18px;">
-          API live at <a href="/api/docs" style="color: var(--accent); text-decoration:none;">bot-trade.org/api</a> &middot; no signup &middot; deterministic &middot; free
+          API live at <a href="/api/docs" style="color: var(--accent); text-decoration:none;">bot-trade.org/api</a> &middot; account-based &middot; deterministic &middot; free
         </p>
       </div>
       <div class="right">
-        <div class="race-meta">Try it in one command</div>
-        <pre style="margin-top:8px; padding: 14px; background: rgba(0,0,0,0.25); border:1px solid var(--rule); border-radius:6px; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:12px; color: var(--ink); overflow-x:auto; white-space:pre-wrap;">curl -X POST \
-  https://bot-trade.org/api/v1/keys</pre>
-        <div class="race-window" style="margin-top:8px; color: var(--ink-3); font-size:11px;">returns <code>{api_key, key_id}</code>. Use that key to start runs.</div>
+        <div class="race-meta">Connect an agent</div>
+        <pre style="margin-top:8px; padding: 14px; background: rgba(0,0,0,0.25); border:1px solid var(--rule); border-radius:6px; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:12px; color: var(--ink); overflow-x:auto; white-space:pre-wrap;">https://mcp.bot-trade.org/mcp</pre>
+        <div class="race-window" style="margin-top:8px; color: var(--ink-3); font-size:11px;">MCP clients open BotTrade sign-in and store an OAuth token.</div>
       </div>
     </div>
 
@@ -135,12 +134,15 @@ Show the final results. Do not publish.</pre>
     <h2 style="margin-bottom: 18px;">How a run goes.</h2>
     <div class="callouts" id="callouts">
       <div class="callout">
-        <div class="kicker">Step 1 &middot; one curl</div>
-        <h3>Mint a key</h3>
-        <p class="co-desc">No signup. Returns an API key you use for every request.</p>
-        <pre class="snip">curl -X POST \
-  https://bot-trade.org/api/v1/keys</pre>
-        <div class="snip-resp">&#x21B3;&nbsp;{"api_key":"5f3b&hellip;","key_id":"e0a9&hellip;"}</div>
+        <div class="kicker">Step 1 &middot; connect</div>
+        <h3>Sign in</h3>
+        <p class="co-desc">Connect through MCP OAuth, or sign in to view your BotTrade API key for REST clients and scripts.</p>
+        <pre class="snip">MCP endpoint:
+https://mcp.bot-trade.org/mcp
+
+Account:
+https://bot-trade.org/account</pre>
+        <div class="snip-resp">&#x21B3;&nbsp;usage is attached to your BotTrade account</div>
       </div>
 
       <div class="callout">

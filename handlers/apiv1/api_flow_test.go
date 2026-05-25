@@ -46,12 +46,13 @@ func TestAPIUserRunLifecycle(t *testing.T) {
 	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 3.0, true)
 
 	status, body := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
-		"name":  " api flow test ",
-		"email": "api-flow@example.test",
+		"name": "anonymous agent",
 	})
-	requireStatus(t, status, http.StatusCreated, body)
-	key := requireString(t, body, "api_key")
-	if got := requireString(t, body, "plan"); got != "free" {
+	requireStatus(t, status, http.StatusUnauthorized, body)
+
+	keyResp := env.issueTestKey(" api flow test ", "api-flow@example.test")
+	key := keyResp.APIKey
+	if got := keyResp.Plan; got != "free" {
 		t.Fatalf("new key plan = %q, want free", got)
 	}
 
@@ -80,9 +81,7 @@ func TestAPIUserRunLifecycle(t *testing.T) {
 		t.Fatalf("run status = %q, want active", got)
 	}
 
-	status, secondKeyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{"name": "other user"})
-	requireStatus(t, status, http.StatusCreated, secondKeyBody)
-	secondKey := requireString(t, secondKeyBody, "api_key")
+	secondKey := env.issueTestKey("other user", "").APIKey
 	status, forbidden := env.request(http.MethodGet, "/api/v1/runs/"+runID, secondKey, nil)
 	requireStatus(t, status, http.StatusForbidden, forbidden)
 
@@ -182,9 +181,7 @@ func TestAPIRunLoopLiquidation(t *testing.T) {
 	}
 	env := newAPITestEnv(t, bars, 1000, 4.0, false)
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{"name": "liquidation"})
-	requireStatus(t, status, http.StatusCreated, keyBody)
-	key := requireString(t, keyBody, "api_key")
+	key := env.issueTestKey("liquidation", "").APIKey
 
 	status, runBody := env.request(http.MethodPost, "/api/v1/runs", key, map[string]any{"scenario_slug": env.scenarioSlug})
 	requireStatus(t, status, http.StatusCreated, runBody)
@@ -225,12 +222,9 @@ func TestAPIRunLoopLiquidation(t *testing.T) {
 func TestAPIProUpgradeUnlocksFreeQuota(t *testing.T) {
 	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 2.0, true)
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
-		"name": "quota upgrade",
-	})
-	requireStatus(t, status, http.StatusCreated, keyBody)
-	key := requireString(t, keyBody, "api_key")
-	keyID := requireString(t, keyBody, "key_id")
+	keyResp := env.issueTestKey("quota upgrade", "")
+	key := keyResp.APIKey
+	keyID := keyResp.KeyID
 
 	seedMonthlyRuns(t, env.appDB, keyID, env.scenarioID, env.startTime, 25)
 
@@ -270,11 +264,7 @@ func TestAPIProUpgradeUnlocksFreeQuota(t *testing.T) {
 func TestAPIAcceptsBearerAPIKey(t *testing.T) {
 	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 2.0, true)
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
-		"name": "bearer auth",
-	})
-	requireStatus(t, status, http.StatusCreated, keyBody)
-	key := requireString(t, keyBody, "api_key")
+	key := env.issueTestKey("bearer auth", "").APIKey
 
 	status, scenarios := env.requestWithBearer(http.MethodGet, "/api/v1/billing/account", key, nil)
 	requireStatus(t, status, http.StatusOK, scenarios)
@@ -286,11 +276,8 @@ func TestAPIAcceptsBearerAPIKey(t *testing.T) {
 func TestAPIAcceptsOAuthBearerToken(t *testing.T) {
 	env := newAPITestEnv(t, defaultAPITestBars(), 100000, 2.0, true)
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
-		"name": "oauth bearer",
-	})
-	requireStatus(t, status, http.StatusCreated, keyBody)
-	accountID := requireString(t, keyBody, "account_id")
+	keyResp := env.issueTestKey("oauth bearer", "")
+	accountID := keyResp.AccountID
 	token := "bt_oat_test"
 	_, err := env.appDB.Exec(
 		`INSERT INTO oauth_clients (id, name, redirect_uris)
@@ -469,6 +456,15 @@ func (env *apiTestEnv) request(method, path, key string, payload any) (int, map[
 func (env *apiTestEnv) requestWithBearer(method, path, key string, payload any) (int, map[string]any) {
 	env.t.Helper()
 	return env.requestWithHeaders(method, path, map[string]string{"Authorization": "Bearer " + key}, payload)
+}
+
+func (env *apiTestEnv) issueTestKey(name, email string) issueKeyResponse {
+	env.t.Helper()
+	resp, err := createAPIKey(name, email, "free")
+	if err != nil {
+		env.t.Fatalf("create test API key: %v", err)
+	}
+	return resp
 }
 
 func (env *apiTestEnv) requestWithHeaders(method, path string, headers map[string]string, payload any) (int, map[string]any) {

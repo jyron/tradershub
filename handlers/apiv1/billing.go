@@ -35,7 +35,7 @@ func (h *handlers) registerBilling(api huma.API) {
 		Path:        "/api/v1/billing/checkout",
 		Summary:     "Create a Stripe Checkout session for Pro subscription",
 		Tags:        []string{"Billing"},
-		Security:    []map[string][]string{},
+		Security:    []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.billingCheckout)
 
 	huma.Register(api, huma.Operation{
@@ -74,9 +74,7 @@ func (h *handlers) registerBilling(api huma.API) {
 	}, h.getBillingSession)
 }
 
-type CheckoutInput struct {
-	XAPIKey string `header:"X-API-Key"`
-}
+type CheckoutInput struct{}
 
 type CheckoutOutput struct {
 	Body struct {
@@ -128,13 +126,10 @@ type SessionOutput struct {
 	}
 }
 
-func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*CheckoutOutput, error) {
+func (h *handlers) billingCheckout(ctx context.Context, _ *CheckoutInput) (*CheckoutOutput, error) {
 	stripe.Key = h.StripeSecretKey
 
-	key, err := h.checkoutKey(in.XAPIKey)
-	if err != nil {
-		return nil, err
-	}
+	key := apiKeyFrom(ctx)
 
 	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && key.Plan == "pro" {
 		ps, err := h.createPortalSession(key.StripeCustomerID)
@@ -177,26 +172,6 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 	out := &CheckoutOutput{}
 	out.Body.URL = cs.URL
 	return out, nil
-}
-
-func (h *handlers) checkoutKey(secret string) (models.APIKey, error) {
-	secret = strings.TrimSpace(secret)
-	if secret != "" {
-		key, err := loadAPIKeyBySecret(secret)
-		if err != nil {
-			return models.APIKey{}, huma.Error401Unauthorized("Invalid API key")
-		}
-		if !key.IsActive {
-			return models.APIKey{}, huma.Error403Forbidden("API key is inactive")
-		}
-		return key, nil
-	}
-
-	resp, err := createAPIKey("", "", "free")
-	if err != nil {
-		return models.APIKey{}, huma.NewError(http.StatusInternalServerError, "failed to create API key: "+err.Error())
-	}
-	return loadAPIKeyBySecret(resp.APIKey)
 }
 
 func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutput, error) {

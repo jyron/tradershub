@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestHTTPMCPToolList(t *testing.T) {
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer bt_test")
 	rec := httptest.NewRecorder()
 
 	NewHTTPMCPServer("https://bot-trade.org").ServeHTTP(rec, req)
@@ -31,6 +33,29 @@ func TestHTTPMCPToolList(t *testing.T) {
 	}
 	if !hasTool(resp.Result.Tools, "scan_market") {
 		t.Fatal("expected scan_market tool")
+	}
+}
+
+func TestHTTPMCPToolListRequiresAuth(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	NewHTTPMCPServer("https://bot-trade.org").ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	auth := rec.Header().Get("WWW-Authenticate")
+	if !strings.Contains(auth, `resource_metadata="https://mcp.bot-trade.org/.well-known/oauth-protected-resource"`) {
+		t.Fatalf("WWW-Authenticate = %q", auth)
+	}
+	var bodyMap map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &bodyMap); err != nil {
+		t.Fatal(err)
+	}
+	if bodyMap["error"] != "authorization_required" {
+		t.Fatalf("error = %#v", bodyMap["error"])
 	}
 }
 

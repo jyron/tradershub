@@ -12,8 +12,8 @@ Requirements:
     pip install requests anthropic
 
 Usage:
-    # 1. Get a BotTrade API key (no signup):
-    #      curl -X POST https://bot-trade.org/api/v1/keys
+    # 1. Get a BotTrade API key:
+    #      https://bot-trade.org/account
     export BOT_API_KEY=<the api_key from above>
 
     # 2. Get an Anthropic key from https://console.anthropic.com
@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.bot_api_key:
         p.error("--bot-api-key or BOT_API_KEY env var required. "
-                "Get one: curl -X POST https://bot-trade.org/api/v1/keys")
+                "Get one at https://bot-trade.org/account")
     if not args.anthropic_api_key:
         p.error("--anthropic-api-key or ANTHROPIC_API_KEY env var required. "
                 "Get one at https://console.anthropic.com")

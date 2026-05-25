@@ -19,6 +19,7 @@ import (
 	"bottrade/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	stripe "github.com/stripe/stripe-go/v82"
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	_ "modernc.org/sqlite"
@@ -28,13 +29,7 @@ func TestStripeWebhookUpdatesAPIKeyAccountState(t *testing.T) {
 	const webhookSecret = "whsec_test_secret"
 	env := newWebhookTestEnv(t, webhookSecret)
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", nil, map[string]any{
-		"name":  "webhook e2e",
-		"email": "webhook-e2e@example.test",
-	})
-	requireWebhookStatus(t, status, http.StatusCreated, keyBody)
-	apiKey := requireWebhookString(t, keyBody, "api_key")
-	keyID := requireWebhookString(t, keyBody, "key_id")
+	apiKey, keyID := env.issueTestKey("webhook e2e", "webhook-e2e@example.test")
 
 	activePayload := map[string]any{
 		"id":          "evt_test_subscription_updated",
@@ -91,8 +86,9 @@ func TestStripeWebhookUpdatesAPIKeyAccountState(t *testing.T) {
 }
 
 type webhookTestEnv struct {
-	t   *testing.T
-	app *fiber.App
+	t     *testing.T
+	app   *fiber.App
+	appDB *sql.DB
 }
 
 func newWebhookTestEnv(t *testing.T, webhookSecret string) *webhookTestEnv {
@@ -133,7 +129,29 @@ func newWebhookTestEnv(t *testing.T, webhookSecret string) *webhookTestEnv {
 		StripeWebhookSecret: webhookSecret,
 		StripeProPriceID:    "price_test",
 	})
-	return &webhookTestEnv{t: t, app: app}
+	return &webhookTestEnv{t: t, app: app, appDB: appDB}
+}
+
+func (env *webhookTestEnv) issueTestKey(name, email string) (string, string) {
+	env.t.Helper()
+	accountID := uuid.NewString()
+	keyID := uuid.NewString()
+	apiKey := "bt_test_" + uuid.NewString()
+	if _, err := env.appDB.Exec(
+		`INSERT INTO accounts (id, name, email, billing_email, plan)
+		 VALUES (?1, ?2, ?3, ?3, 'free')`,
+		accountID, name, email,
+	); err != nil {
+		env.t.Fatalf("insert account: %v", err)
+	}
+	if _, err := env.appDB.Exec(
+		`INSERT INTO api_keys (id, account_id, name, api_key, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, ?5, 'free')`,
+		keyID, accountID, name, apiKey, email,
+	); err != nil {
+		env.t.Fatalf("insert api key: %v", err)
+	}
+	return apiKey, keyID
 }
 
 func openWebhookTestDB(t *testing.T, path string) *sql.DB {

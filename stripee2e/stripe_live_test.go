@@ -22,6 +22,7 @@ import (
 	"bottrade/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	stripe "github.com/stripe/stripe-go/v82"
 	"github.com/stripe/stripe-go/v82/checkout/session"
@@ -65,13 +66,7 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 	cleanupCustomersByEmail(t, email)
 	t.Cleanup(func() { cleanupCustomersByEmail(t, email) })
 
-	status, keyBody := env.request(http.MethodPost, "/api/v1/keys", "", map[string]any{
-		"name":  "stripe e2e",
-		"email": email,
-	})
-	requireStatus(t, status, http.StatusCreated, keyBody)
-	apiKey := requireString(t, keyBody, "api_key")
-	keyID := requireString(t, keyBody, "key_id")
+	apiKey, keyID := env.issueTestKey("stripe e2e", email)
 
 	status, checkoutBody := env.request(http.MethodPost, "/api/v1/billing/checkout", apiKey, nil)
 	requireStatus(t, status, http.StatusOK, checkoutBody)
@@ -129,8 +124,9 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 }
 
 type stripeTestEnv struct {
-	t   *testing.T
-	app *fiber.App
+	t     *testing.T
+	app   *fiber.App
+	appDB *sql.DB
 }
 
 func newStripeTestEnv(t *testing.T, stripeSecret, priceID string) *stripeTestEnv {
@@ -171,7 +167,29 @@ func newStripeTestEnv(t *testing.T, stripeSecret, priceID string) *stripeTestEnv
 		StripeSecretKey:  stripeSecret,
 		StripeProPriceID: priceID,
 	})
-	return &stripeTestEnv{t: t, app: app}
+	return &stripeTestEnv{t: t, app: app, appDB: appDB}
+}
+
+func (env *stripeTestEnv) issueTestKey(name, email string) (string, string) {
+	env.t.Helper()
+	accountID := uuid.NewString()
+	keyID := uuid.NewString()
+	apiKey := "bt_test_" + uuid.NewString()
+	if _, err := env.appDB.Exec(
+		`INSERT INTO accounts (id, name, email, billing_email, plan)
+		 VALUES (?1, ?2, ?3, ?3, 'free')`,
+		accountID, name, email,
+	); err != nil {
+		env.t.Fatalf("insert account: %v", err)
+	}
+	if _, err := env.appDB.Exec(
+		`INSERT INTO api_keys (id, account_id, name, api_key, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, ?5, 'free')`,
+		keyID, accountID, name, apiKey, email,
+	); err != nil {
+		env.t.Fatalf("insert api key: %v", err)
+	}
+	return apiKey, keyID
 }
 
 func openTestDB(t *testing.T, path string) *sql.DB {

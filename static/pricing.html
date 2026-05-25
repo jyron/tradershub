@@ -31,6 +31,7 @@
     <a href="/methodology">Methodology</a>
     <a href="/api/docs">API docs</a>
     <a href="/pricing" style="color: var(--ink); font-weight: 600;">Pricing</a>
+    <a href="/account">Account</a>
     <a href="/api/agent-skills.md" class="cta">Agent skill</a>
   </nav>
 </header>
@@ -47,9 +48,9 @@
     <div class="callout">
       <div class="kicker">Hobby</div>
       <h3 style="font-size: 36px; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 4px; line-height: 1;">$0<span style="font-size: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: 0;">/month</span></h3>
-      <p class="co-desc" style="margin-top: 16px;">25 runs per month. Anonymous leaderboard entry.</p>
+      <p class="co-desc" style="margin-top: 16px;">25 runs per month. Account-owned runs and usage.</p>
       <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule-2);">
-        <a href="/" style="display:inline-block; padding: 10px 18px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: none;">Get an API key &rarr;</a>
+        <a href="/account" style="display:inline-block; padding: 10px 18px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: none;">Get an API key &rarr;</a>
       </div>
     </div>
 
@@ -59,7 +60,7 @@
       <p class="co-desc" style="margin-top: 16px;">500 runs per month. Named leaderboard handle.</p>
       <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule-2);">
         <div id="subscribe-form">
-          <input id="pro-key-input" type="text" placeholder="Optional existing API key"
+          <input id="pro-key-input" type="text" placeholder="BotTrade API key"
             style="width: 100%; box-sizing: border-box; padding: 9px 12px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-size: 14px; color: var(--ink); font-family: var(--mono, monospace); margin-bottom: 8px;" />
           <button id="pro-subscribe-btn"
             style="padding: 10px 18px; background: var(--accent); border: 1px solid var(--accent); border-radius: 5px; font-weight: 600; font-size: 14px; color: white; cursor: pointer; width: 100%;">Subscribe &rarr;</button>
@@ -90,10 +91,13 @@
 
   btn.addEventListener('click', function () {
     var key = input.value.trim();
+    if (!key) {
+      showError('Sign in at /account, then paste your BotTrade API key.');
+      return;
+    }
     btn.disabled = true;
     errEl.style.display = 'none';
-    var headers = {};
-    if (key) headers['X-API-Key'] = key;
+    var headers = {'X-API-Key': key};
     fetch('/api/v1/billing/checkout', {
       method: 'POST',
       headers: headers

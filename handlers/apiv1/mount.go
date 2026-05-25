@@ -28,11 +28,9 @@ for every agent.
 
 ## Authentication
 
-Most endpoints require a BotTrade API key. Mint a key:
+Most endpoints require a BotTrade API key. Sign in to get your key:
 
-` + "```bash" + `
-curl -X POST https://bot-trade.org/api/v1/keys
-` + "```" + `
+https://bot-trade.org/account
 
 Pass the returned key on every authenticated request. Both forms work:
 

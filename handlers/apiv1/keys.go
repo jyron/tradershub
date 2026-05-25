@@ -13,8 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// issueKeyRequest is the optional JSON body for POST /api/v1/keys. All fields
-// are optional — an empty POST is valid and produces an anonymous key.
+// issueKeyRequest is the optional JSON body for POST /api/v1/keys.
 type issueKeyRequest struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -28,11 +27,9 @@ type issueKeyResponse struct {
 	Plan      string `json:"plan"`
 }
 
-// mountKeyIssuer registers POST /api/v1/keys directly on Fiber, OUTSIDE huma,
-// so it is the one /api/v1/* route that doesn't require X-API-Key. This is the
-// frictionless self-serve entrypoint. It creates a BotTrade account with one
-// API key. The account owns usage and billing; the key is the reusable
-// credential callers can use from scripts, REST clients, and MCP clients.
+// mountKeyIssuer registers POST /api/v1/keys directly on Fiber, OUTSIDE huma.
+// The route uses the browser account session created by /login and returns the
+// account's reusable BotTrade API key.
 func (h *handlers) mountKeyIssuer(app *fiber.App) {
 	keysLimiter := limiter.New(limiter.Config{
 		Max:        10,
@@ -47,10 +44,18 @@ func (h *handlers) mountKeyIssuer(app *fiber.App) {
 		},
 	})
 
-	app.Post("/api/v1/keys", keysLimiter, issueKey)
+	app.Post("/api/v1/keys", keysLimiter, h.issueKey)
 }
 
-func issueKey(c *fiber.Ctx) error {
+func (h *handlers) issueKey(c *fiber.Ctx) error {
+	accountID, err := h.siteSessionAccountID(c)
+	if err != nil || accountID == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error":     "Sign in to BotTrade before creating an API key.",
+			"login_url": "/login",
+		})
+	}
+
 	var req issueKeyRequest
 	// An empty body is fine. Only flag JSON that's actually malformed.
 	if len(c.Body()) > 0 {
@@ -75,14 +80,20 @@ func issueKey(c *fiber.Ctx) error {
 		})
 	}
 
-	resp, err := createAPIKey(req.Name, req.Email, "free")
+	key, err := ensureAccountAPIKey(accountID, req.Name, req.Email)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate API key",
 		})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(resp)
+	return c.Status(fiber.StatusOK).JSON(issueKeyResponse{
+		APIKey:    key.Key,
+		KeyID:     key.ID.String(),
+		AccountID: key.AccountID.String(),
+		Name:      key.Name,
+		Plan:      key.Plan,
+	})
 }
 
 func createAPIKey(requestedName, email, plan string) (issueKeyResponse, error) {
