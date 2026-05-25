@@ -2,20 +2,22 @@ package models
 
 import "time"
 
-// Run is one bot traversing one (scenario, scenario_version).
+// Run is one traversal of one (scenario, scenario_version), billed and quotaed
+// against the API key that created it.
 type Run struct {
-	ID              string    `json:"id"`
-	BotID           string    `json:"bot_id"`
-	ScenarioID      string    `json:"scenario_id"`
-	ScenarioVersion int       `json:"scenario_version"`
-	Status          string    `json:"status"`           // active|completed|liquidated|abandoned
-	SimTime         time.Time `json:"sim_time"`
-	Cash            float64   `json:"cash"`
-	StartingCash    float64   `json:"starting_cash"`
-	LastActivityAt  time.Time `json:"last_activity_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              string     `json:"id"`
+	APIKeyID        string     `json:"api_key_id"`
+	BotName         string     `json:"bot_name,omitempty"`
+	ScenarioID      string     `json:"scenario_id"`
+	ScenarioVersion int        `json:"scenario_version"`
+	Status          string     `json:"status"` // active|completed|liquidated|abandoned
+	SimTime         time.Time  `json:"sim_time"`
+	Cash            float64    `json:"cash"`
+	StartingCash    float64    `json:"starting_cash"`
+	LastActivityAt  time.Time  `json:"last_activity_at"`
+	CreatedAt       time.Time  `json:"created_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	Published       bool      `json:"published"`
+	Published       bool       `json:"published"`
 }
 
 // RunPosition is a single symbol holding within a run. quantity is signed:
@@ -33,7 +35,7 @@ type RunOrder struct {
 	ID              string    `json:"id"`
 	RunID           string    `json:"run_id"`
 	Symbol          string    `json:"symbol"`
-	Side            string    `json:"side"`         // buy|sell|short|cover
+	Side            string    `json:"side"` // buy|sell|short|cover
 	Quantity        int       `json:"quantity"`
 	Reasoning       string    `json:"reasoning,omitempty"`
 	QueuedAt        time.Time `json:"queued_at"`
@@ -80,8 +82,8 @@ type RunResults struct {
 
 // RunSnapshot is the GET /v1/runs/:id response payload.
 type RunSnapshot struct {
-	Run           Run            `json:"run"`
-	Positions     []RunPosition  `json:"positions"`
-	QueuedOrders  []RunOrder     `json:"queued_orders"`
-	LastEquity    *RunEquity     `json:"last_equity,omitempty"`
+	Run          Run           `json:"run"`
+	Positions    []RunPosition `json:"positions"`
+	QueuedOrders []RunOrder    `json:"queued_orders"`
+	LastEquity   *RunEquity    `json:"last_equity,omitempty"`
 }

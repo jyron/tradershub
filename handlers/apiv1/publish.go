@@ -17,8 +17,8 @@ type PublishInput struct {
 // pushed onto the leaderboard.
 type PublishOutput struct {
 	Body struct {
-		Published bool                `json:"published"`
-		Results   *models.RunResults  `json:"results"`
+		Published bool               `json:"published"`
+		Results   *models.RunResults `json:"results"`
 	}
 }
 
@@ -45,10 +45,10 @@ func (h *handlers) publish(ctx context.Context, in *PublishInput) (*PublishOutpu
 		return nil, huma.Error400BadRequest(err.Error())
 	}
 
-	var scenarioID, botID string
+	var scenarioID, apiKeyID, botName string
 	if err := h.Engine.AppDB().QueryRow(
-		`SELECT scenario_id, bot_id FROM runs WHERE id = ?1`, in.ID,
-	).Scan(&scenarioID, &botID); err != nil {
+		`SELECT scenario_id, api_key_id, COALESCE(bot_name,'') FROM runs WHERE id = ?1`, in.ID,
+	).Scan(&scenarioID, &apiKeyID, &botName); err != nil {
 		return nil, huma.Error500InternalServerError("db error: " + err.Error())
 	}
 
@@ -57,13 +57,15 @@ func (h *handlers) publish(ctx context.Context, in *PublishInput) (*PublishOutpu
 		sharpe = *results.Sharpe
 	}
 	if _, err := h.Engine.AppDB().Exec(`
-		INSERT INTO run_leaderboard (scenario_id, run_id, bot_id, return_pct, sharpe)
-		VALUES (?1, ?2, ?3, ?4, ?5)
+		INSERT INTO run_leaderboard (scenario_id, run_id, api_key_id, bot_name, return_pct, sharpe)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 		ON CONFLICT (scenario_id, run_id) DO UPDATE SET
+			api_key_id = excluded.api_key_id,
+			bot_name = excluded.bot_name,
 			return_pct = excluded.return_pct,
 			sharpe = excluded.sharpe,
 			published_at = CURRENT_TIMESTAMP
-	`, scenarioID, in.ID, botID, results.ReturnPct, sharpe); err != nil {
+	`, scenarioID, in.ID, apiKeyID, botName, results.ReturnPct, sharpe); err != nil {
 		return nil, huma.Error500InternalServerError("leaderboard insert failed: " + err.Error())
 	}
 	if _, err := h.Engine.AppDB().Exec(

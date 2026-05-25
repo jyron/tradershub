@@ -7,7 +7,7 @@ import (
 )
 
 type Config struct {
-	// App DB — bots, scenarios catalog, runs, results, leaderboard.
+	// App DB — API keys, scenarios catalog, runs, results, leaderboard.
 	TursoDatabaseURL string
 	TursoAuthToken   string
 

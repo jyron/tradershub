@@ -13,13 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// botContextKey is the unique key under which the authenticated bot is
+// apiKeyContextKey is the unique key under which the authenticated key is
 // stashed on the huma operation context. Defined as an unexported type so
 // nothing outside this package can collide.
-type botContextKey struct{}
+type apiKeyContextKey struct{}
 
-// authMiddleware validates X-API-Key against the `bots` table and stashes
-// the bot row on the context. Returns 403 if the row has a non-empty
+// authMiddleware validates X-API-Key against the `api_keys` table and stashes
+// the key row on the context. Returns 403 if the row has a non-empty
 // disabled_reason (abuse short-circuit).
 //
 // GET /v1/scenarios and GET /v1/scenarios/:id are exempt — the scenario
@@ -38,52 +38,83 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 			return
 		}
 
-		var bot models.Bot
-		var botIDStr, createdAt string
-		var isActive int
-		var description, creatorEmail, tier, disabledReason, accountID sql.NullString
-		err := database.DB.QueryRow(
-			`SELECT id, name, api_key, description, creator_email,
-			        created_at, is_active, COALESCE(tier,''), disabled_reason, account_id
-			   FROM bots
-			  WHERE api_key = ?1 AND is_active = 1`,
-			apiKey,
-		).Scan(
-			&botIDStr, &bot.Name, &bot.APIKey, &description,
-			&creatorEmail, &createdAt, &isActive, &tier, &disabledReason, &accountID,
-		)
+		key, err := loadAPIKeyBySecret(apiKey)
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Invalid API key")
 			return
 		}
-		bot.Description = description.String
-		bot.CreatorEmail = creatorEmail.String
-		bot.AccountID = accountID.String
-
-		bot.ID, err = uuid.Parse(botIDStr)
-		if err != nil {
-			_ = huma.WriteErr(api, ctx, http.StatusInternalServerError,
-				"invalid bot ID format")
+		if !key.IsActive {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "API key is inactive")
 			return
 		}
-		bot.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-		bot.IsActive = isActive != 0
-		bot.Tier = tier.String
-
-		if disabledReason.Valid && disabledReason.String != "" {
+		if key.DisabledReason != "" {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
-				"Bot is disabled: "+disabledReason.String)
+				"API key is disabled: "+key.DisabledReason)
 			return
 		}
 
-		ctx = huma.WithValue(ctx, botContextKey{}, bot)
+		ctx = huma.WithValue(ctx, apiKeyContextKey{}, key)
 		next(ctx)
 	}
+}
+
+func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
+	var key models.APIKey
+	var keyIDStr, createdAt string
+	var isActive int
+	var description, creatorEmail, disabledReason sql.NullString
+	var stripeCustomerID, stripeSubscriptionID, subStatus sql.NullString
+	var currentPeriodEnd, billingEmail, handle sql.NullString
+	err := database.DB.QueryRow(
+		`SELECT id, name, api_key, description, creator_email,
+		        created_at, is_active, disabled_reason, plan,
+		        stripe_customer_id, stripe_subscription_id,
+		        subscription_status, current_period_end, billing_email, handle
+		   FROM api_keys
+		  WHERE api_key = ?1`,
+		secret,
+	).Scan(
+		&keyIDStr, &key.Name, &key.Key, &description,
+		&creatorEmail, &createdAt, &isActive, &disabledReason, &key.Plan,
+		&stripeCustomerID, &stripeSubscriptionID, &subStatus,
+		&currentPeriodEnd, &billingEmail, &handle,
+	)
+	if err != nil {
+		return key, err
+	}
+	key.Description = description.String
+	key.CreatorEmail = creatorEmail.String
+	key.DisabledReason = disabledReason.String
+	key.StripeCustomerID = stripeCustomerID.String
+	key.StripeSubscriptionID = stripeSubscriptionID.String
+	key.SubscriptionStatus = subStatus.String
+	key.CurrentPeriodEnd = currentPeriodEnd.String
+	key.BillingEmail = billingEmail.String
+	key.Handle = handle.String
+
+	key.ID, err = uuid.Parse(keyIDStr)
+	if err != nil {
+		return key, err
+	}
+	key.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	key.IsActive = isActive != 0
+	return key, nil
+}
+
+func loadAPIKeyByID(id string) (models.APIKey, error) {
+	var secret string
+	if err := database.DB.QueryRow(`SELECT api_key FROM api_keys WHERE id = ?1`, id).Scan(&secret); err != nil {
+		return models.APIKey{}, err
+	}
+	return loadAPIKeyBySecret(secret)
 }
 
 // isPublicRead returns true for huma operations that should bypass the
 // X-API-Key check. Today: GET /v1/scenarios and GET /v1/scenarios/:id.
 func isPublicRead(method, path string) bool {
+	if method == http.MethodPost && path == "/api/v1/billing/checkout" {
+		return true
+	}
 	if method != http.MethodGet {
 		return false
 	}
@@ -102,13 +133,13 @@ func isPublicRead(method, path string) bool {
 	return false
 }
 
-// botFrom extracts the authenticated bot from the operation context.
+// apiKeyFrom extracts the authenticated API key from the operation context.
 // Returns the zero bot if the middleware didn't run (which would be a
 // programming error — every operation should be behind authMiddleware).
-func botFrom(ctx context.Context) models.Bot {
-	v := ctx.Value(botContextKey{})
+func apiKeyFrom(ctx context.Context) models.APIKey {
+	v := ctx.Value(apiKeyContextKey{})
 	if v == nil {
-		return models.Bot{}
+		return models.APIKey{}
 	}
-	return v.(models.Bot)
+	return v.(models.APIKey)
 }

@@ -28,6 +28,9 @@ func RunMigrationsOn(db *sql.DB, dir string) error {
 	if db == nil {
 		return fmt.Errorf("RunMigrationsOn: nil db")
 	}
+	if err := ensureSchemaMigrations(db); err != nil {
+		return err
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -44,13 +47,34 @@ func RunMigrationsOn(db *sql.DB, dir string) error {
 	sort.Strings(files)
 
 	for _, file := range files {
+		name := filepath.Base(file)
+		applied, err := migrationApplied(db, dir, name)
+		if err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+
 		sqlBytes, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", file, err)
 		}
 
-		if err := execStatements(db, string(sqlBytes)); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", file, err)
+		}
+		if err := execStatements(tx, string(sqlBytes)); err != nil {
+			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", file, err)
+		}
+		if err := recordMigration(tx, dir, name); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %s: %w", file, err)
 		}
 
 		log.Printf("Executed migration: %s", file)
@@ -60,10 +84,52 @@ func RunMigrationsOn(db *sql.DB, dir string) error {
 	return nil
 }
 
+func ensureSchemaMigrations(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			dir        TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (dir, name)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	return nil
+}
+
+func migrationApplied(db *sql.DB, dir, name string) (bool, error) {
+	var n int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM schema_migrations WHERE dir = ?1 AND name = ?2`,
+		dir, name,
+	).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("check schema migration %s/%s: %w", dir, name, err)
+	}
+	return n > 0, nil
+}
+
+type sqlExecer interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
+func recordMigration(db sqlExecer, dir, name string) error {
+	_, err := db.Exec(
+		`INSERT OR IGNORE INTO schema_migrations (dir, name) VALUES (?1, ?2)`,
+		dir, name,
+	)
+	if err != nil {
+		return fmt.Errorf("record schema migration %s/%s: %w", dir, name, err)
+	}
+	return nil
+}
+
 // execStatements runs each ;-separated statement individually so a single
 // "duplicate column" error (SQLite has no ADD COLUMN IF NOT EXISTS) doesn't
 // abort the whole migration. All other errors propagate.
-func execStatements(db *sql.DB, sql string) error {
+func execStatements(db sqlExecer, sql string) error {
 	for _, stmt := range splitStatements(sql) {
 		if stmt == "" {
 			continue

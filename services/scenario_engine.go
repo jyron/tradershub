@@ -90,7 +90,7 @@ func isTransientDBErr(err error) bool {
 // sim_time is set to the FIRST timeline timestamp — the agent sees that
 // initial bar's data on its first /market call and may immediately queue
 // orders that fill on the second bar.
-func (e *ScenarioEngine) StartRun(botID, scenarioID string) (*models.Run, error) {
+func (e *ScenarioEngine) StartRun(apiKeyID, scenarioID, botName string) (*models.Run, error) {
 	// Load scenario
 	scen, err := e.loadScenario(scenarioID)
 	if err != nil {
@@ -119,10 +119,10 @@ func (e *ScenarioEngine) StartRun(botID, scenarioID string) (*models.Run, error)
 		defer tx.Rollback()
 		if _, err := tx.Exec(`
 			INSERT INTO runs (
-				id, bot_id, scenario_id, scenario_version, status,
+				id, api_key_id, bot_name, scenario_id, scenario_version, status,
 				sim_time, cash, starting_cash, last_activity_at, created_at
-			) VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9)`,
-			runID, botID, scen.ID, scen.CurrentVersion,
+			) VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8, ?9, ?10)`,
+			runID, apiKeyID, botName, scen.ID, scen.CurrentVersion,
 			startTime.UTC().Format(time.RFC3339),
 			scen.StartingCash, scen.StartingCash, now, now,
 		); err != nil {
@@ -321,23 +321,23 @@ func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, 
 
 // StepResult is what /step returns to the caller.
 type StepResult struct {
-	BarsAdvanced     int             `json:"bars_advanced"`
-	NewSimTime       time.Time       `json:"new_sim_time"`
-	Fills            []models.RunTrade `json:"fills"`
-	Liquidated       bool            `json:"liquidated"`
-	LiquidationAtTs  *time.Time      `json:"liquidation_at_ts,omitempty"`
-	NewEquity        float64         `json:"equity"`
-	NewCash          float64         `json:"cash"`
-	PositionsValue   float64         `json:"positions_value"`
-	Done             bool            `json:"done"` // scenario reached end
+	BarsAdvanced    int               `json:"bars_advanced"`
+	NewSimTime      time.Time         `json:"new_sim_time"`
+	Fills           []models.RunTrade `json:"fills"`
+	Liquidated      bool              `json:"liquidated"`
+	LiquidationAtTs *time.Time        `json:"liquidation_at_ts,omitempty"`
+	NewEquity       float64           `json:"equity"`
+	NewCash         float64           `json:"cash"`
+	PositionsValue  float64           `json:"positions_value"`
+	Done            bool              `json:"done"` // scenario reached end
 }
 
 // AdvanceStep advances the run by `count` bars. For each bar:
-//   1. Fill queued orders at the bar's open ± slippage
-//   2. Upsert positions (signed quantity; FIFO on reduce)
-//   3. Mark-to-market at the bar's close → compute equity
-//   4. If equity < maintenance: queue close-all orders, set status=liquidated, stop
-//   5. After all advancing, write ONE run_equity sample, advance sim_time
+//  1. Fill queued orders at the bar's open ± slippage
+//  2. Upsert positions (signed quantity; FIFO on reduce)
+//  3. Mark-to-market at the bar's close → compute equity
+//  4. If equity < maintenance: queue close-all orders, set status=liquidated, stop
+//  5. After all advancing, write ONE run_equity sample, advance sim_time
 //
 // Per-bar behavior is wrapped in a single DB transaction PER BAR. If the
 // fill or position upsert fails midway the bar is rolled back; sim_time
@@ -914,7 +914,7 @@ func nullableFloat(p *float64) interface{} {
 // LoadRun reads a run row.
 func (e *ScenarioEngine) LoadRun(runID string) (*models.Run, error) {
 	row := e.appDB.QueryRow(`
-		SELECT id, bot_id, scenario_id, scenario_version, status,
+		SELECT id, api_key_id, COALESCE(bot_name,''), scenario_id, scenario_version, status,
 		       sim_time, cash, starting_cash, last_activity_at, created_at,
 		       completed_at, published
 		  FROM runs WHERE id = ?1
@@ -924,7 +924,7 @@ func (e *ScenarioEngine) LoadRun(runID string) (*models.Run, error) {
 	var completedStr sql.NullString
 	var published int
 	if err := row.Scan(
-		&r.ID, &r.BotID, &r.ScenarioID, &r.ScenarioVersion, &r.Status,
+		&r.ID, &r.APIKeyID, &r.BotName, &r.ScenarioID, &r.ScenarioVersion, &r.Status,
 		&simStr, &r.Cash, &r.StartingCash, &lastStr, &createdStr,
 		&completedStr, &published,
 	); err != nil {

@@ -3,7 +3,6 @@ package apiv1
 import (
 	"bottrade/database"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"strings"
 	"time"
@@ -15,17 +14,16 @@ import (
 
 // issueKeyRequest is the optional JSON body for POST /v1/keys. All fields
 // are optional — an empty POST is valid and produces an anonymous key.
-// Provide account_token to link the new bot to an existing Pro account.
 type issueKeyRequest struct {
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	AccountToken string `json:"account_token"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type issueKeyResponse struct {
 	APIKey string `json:"api_key"`
-	BotID  string `json:"bot_id"`
+	KeyID  string `json:"key_id"`
 	Name   string `json:"name"`
+	Plan   string `json:"plan"`
 }
 
 // mountKeyIssuer registers POST /v1/keys directly on Fiber, OUTSIDE huma, so
@@ -33,10 +31,8 @@ type issueKeyResponse struct {
 // frictionless self-serve entrypoint — a user can
 // curl this and immediately start hitting the rest of /v1/*.
 //
-// The endpoint creates a bots row tagged tier='challenger' with no LLM
-// credentials and no backfill job, so it never enters the hosted-bot
-// runner queue or the official leaderboard. It exists solely to authorise
-// the Benchmark API for the caller's own self-hosted agent.
+// The endpoint creates a free API key. The key is the usage and billing
+// principal; callers can use it with any number of bots or scripts.
 func (h *handlers) mountKeyIssuer(app *fiber.App) {
 	keysLimiter := limiter.New(limiter.Config{
 		Max:        10,
@@ -67,7 +63,6 @@ func issueKey(c *fiber.Ctx) error {
 
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.TrimSpace(req.Email)
-	req.AccountToken = strings.TrimSpace(req.AccountToken)
 
 	if len(req.Name) > 60 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -80,63 +75,51 @@ func issueKey(c *fiber.Ctx) error {
 		})
 	}
 
-	// Resolve account_token → account_id if provided.
-	var accountID sql.NullString
-	if req.AccountToken != "" {
-		var accID, subStatus string
-		err := database.DB.QueryRow(
-			`SELECT id, COALESCE(subscription_status,'') FROM accounts WHERE account_token = ?1`,
-			req.AccountToken,
-		).Scan(&accID, &subStatus)
-		if err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "account_token not found",
-			})
-		}
-		if subStatus != "active" && subStatus != "past_due" {
-			return c.Status(fiber.StatusPaymentRequired).JSON(fiber.Map{
-				"error": "account subscription is not active",
-			})
-		}
-		accountID = sql.NullString{String: accID, Valid: true}
-	}
-
-	apiKey, err := generateAPIKey()
+	resp, err := createAPIKey(req.Name, req.Email, "free")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate API key",
 		})
 	}
 
-	botID := uuid.New()
-	name := req.Name
+	return c.Status(fiber.StatusCreated).JSON(resp)
+}
+
+func createAPIKey(requestedName, email, plan string) (issueKeyResponse, error) {
+	apiKey, err := generateAPIKey()
+	if err != nil {
+		return issueKeyResponse{}, err
+	}
+
+	keyID := uuid.New()
+	name := strings.TrimSpace(requestedName)
 	if name == "" {
-		name = "agent-" + botID.String()[:8]
+		name = "key-" + keyID.String()[:8]
+	}
+	email = strings.TrimSpace(email)
+	plan = strings.TrimSpace(plan)
+	if plan == "" {
+		plan = "free"
 	}
 
 	_, err = database.DB.Exec(
-		`INSERT INTO bots
-		   (id, name, api_key, description, creator_email, tier, account_id)
-		 VALUES (?1, ?2, ?3, '', ?4, 'challenger', ?5)`,
-		botID.String(), name, apiKey, req.Email, accountID,
+		`INSERT INTO api_keys
+		   (id, name, api_key, description, creator_email, plan)
+		 VALUES (?1, ?2, ?3, '', ?4, ?5)`,
+		keyID.String(), name, apiKey, email, plan,
 	)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to register bot",
-		})
+		return issueKeyResponse{}, err
 	}
-
-	return c.Status(fiber.StatusCreated).JSON(issueKeyResponse{
+	return issueKeyResponse{
 		APIKey: apiKey,
-		BotID:  botID.String(),
+		KeyID:  keyID.String(),
 		Name:   name,
-	})
+		Plan:   plan,
+	}, nil
 }
 
-// generateAPIKey returns 64 hex chars of CSPRNG output. Local to this
-// package to avoid coupling to handlers/bots.go — the implementation is
-// three lines and copy-on-purpose so the v1 surface has no reverse
-// dependency on the legacy fiber handlers.
+// generateAPIKey returns 64 hex chars of CSPRNG output.
 func generateAPIKey() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

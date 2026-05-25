@@ -21,7 +21,7 @@ var DB *sql.DB
 // scenario_bars for the Benchmark API. Kept physically separate from the
 // app DB so app-side schema changes can't accidentally touch market data,
 // and so re-pulling bars from Alpaca isn't a recovery dependency for
-// bots/runs.
+// API keys, runs, results, and leaderboard rows.
 var MarketDB *sql.DB
 
 // Connect opens the SQLite/Turso database. Two URL forms are supported:

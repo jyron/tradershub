@@ -2,9 +2,9 @@ package apiv1
 
 import (
 	"bottrade/database"
+	"bottrade/models"
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"log"
@@ -15,7 +15,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	stripe "github.com/stripe/stripe-go/v82"
 	stripebillingportalsession "github.com/stripe/stripe-go/v82/billingportal/session"
 	"github.com/stripe/stripe-go/v82/checkout/session"
@@ -25,16 +24,12 @@ import (
 
 var handleRe = regexp.MustCompile(`^[A-Za-z0-9_-]{3,24}$`)
 
-// ── Fiber-mounted routes (no huma, no auth middleware) ────────────────────────
-
 // mountBillingWebhook registers the Stripe webhook receiver as a plain Fiber
-// route so the auth middleware never touches it and we can read the raw request
-// bytes that Stripe signature verification requires.
+// route so auth middleware never touches it and Stripe signatures can be
+// verified against the raw request body.
 func (h *handlers) mountBillingWebhook(app *fiber.App) {
 	app.Post("/api/v1/billing/webhook", h.stripeWebhook)
 }
-
-// ── huma-registered billing endpoints ────────────────────────────────────────
 
 func (h *handlers) registerBilling(api huma.API) {
 	huma.Register(api, huma.Operation{
@@ -43,7 +38,7 @@ func (h *handlers) registerBilling(api huma.API) {
 		Path:        "/api/v1/billing/checkout",
 		Summary:     "Create a Stripe Checkout session for Pro subscription",
 		Tags:        []string{"Billing"},
-		Security:    []map[string][]string{{"ApiKeyAuth": {}}},
+		Security:    []map[string][]string{},
 	}, h.billingCheckout)
 
 	huma.Register(api, huma.Operation{
@@ -59,7 +54,7 @@ func (h *handlers) registerBilling(api huma.API) {
 		OperationID: "getBillingAccount",
 		Method:      http.MethodGet,
 		Path:        "/api/v1/billing/account",
-		Summary:     "Get account info and account_token",
+		Summary:     "Get API key billing info",
 		Tags:        []string{"Billing"},
 		Security:    []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.getBillingAccount)
@@ -77,12 +72,14 @@ func (h *handlers) registerBilling(api huma.API) {
 		OperationID: "getBillingSession",
 		Method:      http.MethodGet,
 		Path:        "/api/v1/billing/session/{session_id}",
-		Summary:     "Retrieve account_token after a completed checkout",
+		Summary:     "Retrieve API key after a completed checkout",
 		Tags:        []string{"Billing"},
 	}, h.getBillingSession)
 }
 
-// ── Request / Response types ─────────────────────────────────────────────────
+type CheckoutInput struct {
+	XAPIKey string `header:"X-API-Key"`
+}
 
 type CheckoutOutput struct {
 	Body struct {
@@ -98,9 +95,11 @@ type PortalOutput struct {
 
 type AccountOutput struct {
 	Body struct {
-		Email              string `json:"email"`
-		AccountToken       string `json:"account_token"`
-		SubscriptionStatus string `json:"subscription_status"`
+		KeyID              string `json:"key_id"`
+		Name               string `json:"name"`
+		Plan               string `json:"plan"`
+		BillingEmail       string `json:"billing_email,omitempty"`
+		SubscriptionStatus string `json:"subscription_status,omitempty"`
 		CurrentPeriodEnd   string `json:"current_period_end,omitempty"`
 		Handle             string `json:"handle,omitempty"`
 	}
@@ -124,49 +123,42 @@ type SessionInput struct {
 
 type SessionOutput struct {
 	Body struct {
-		AccountToken string `json:"account_token"`
+		APIKey             string `json:"api_key"`
+		KeyID              string `json:"key_id"`
+		Plan               string `json:"plan"`
+		SubscriptionStatus string `json:"subscription_status,omitempty"`
 	}
 }
 
-// ── Handlers ─────────────────────────────────────────────────────────────────
-
-func (h *handlers) billingCheckout(ctx context.Context, _ *struct{}) (*CheckoutOutput, error) {
-	bot := botFrom(ctx)
+func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*CheckoutOutput, error) {
 	stripe.Key = h.StripeSecretKey
 
-	// If this bot is already on an active account, return the portal URL instead.
-	if bot.AccountID != "" {
-		var stripeCustomerID, subStatus string
-		_ = database.DB.QueryRow(
-			`SELECT stripe_customer_id, COALESCE(subscription_status,'') FROM accounts WHERE id = ?1`,
-			bot.AccountID,
-		).Scan(&stripeCustomerID, &subStatus)
-
-		if subStatus == "active" || subStatus == "past_due" {
-			params := &stripe.BillingPortalSessionParams{
-				Customer:  stripe.String(stripeCustomerID),
-				ReturnURL: stripe.String(h.AppBaseURL + "/pricing"),
-			}
-			ps, err := stripebillingportalsession.New(params)
-			if err != nil {
-				return nil, huma.NewError(http.StatusInternalServerError, "failed to create portal session: "+err.Error())
-			}
-			return nil, huma.Error409Conflict("already subscribed — manage here: " + ps.URL)
-		}
+	key, err := h.checkoutKey(in.XAPIKey)
+	if err != nil {
+		return nil, err
 	}
 
-	// Create a Stripe Customer. If the bot has a creator_email, pre-fill it.
+	if key.StripeCustomerID != "" && key.Plan == "pro" {
+		ps, err := h.createPortalSession(key.StripeCustomerID)
+		if err != nil {
+			return nil, err
+		}
+		return nil, huma.Error409Conflict("already subscribed — manage here: " + ps)
+	}
+
 	custParams := &stripe.CustomerParams{}
-	if bot.CreatorEmail != "" {
-		custParams.Email = stripe.String(bot.CreatorEmail)
+	if key.CreatorEmail != "" {
+		custParams.Email = stripe.String(key.CreatorEmail)
 	}
 	cust, err := customer.New(custParams)
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, "stripe customer create failed: "+err.Error())
 	}
 
-	// Build Checkout Session. customer and customer_email are mutually exclusive
-	// in the Stripe API, so we only set customer (already created above).
+	metadata := map[string]string{
+		"api_key_id":   key.ID.String(),
+		"api_key_hash": billingHashKey(key.Key),
+	}
 	csParams := &stripe.CheckoutSessionParams{
 		Customer: stripe.String(cust.ID),
 		Mode:     stripe.String(string(stripe.CheckoutSessionModeSubscription)),
@@ -178,9 +170,9 @@ func (h *handlers) billingCheckout(ctx context.Context, _ *struct{}) (*CheckoutO
 		},
 		SuccessURL: stripe.String(h.AppBaseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}"),
 		CancelURL:  stripe.String(h.AppBaseURL + "/pricing"),
-		Metadata: map[string]string{
-			"bot_id":      bot.ID.String(),
-			"api_key_hash": billingHashKey(bot.APIKey),
+		Metadata:   metadata,
+		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
+			Metadata: metadata,
 		},
 	}
 
@@ -194,93 +186,82 @@ func (h *handlers) billingCheckout(ctx context.Context, _ *struct{}) (*CheckoutO
 	return out, nil
 }
 
+func (h *handlers) checkoutKey(secret string) (models.APIKey, error) {
+	secret = strings.TrimSpace(secret)
+	if secret != "" {
+		key, err := loadAPIKeyBySecret(secret)
+		if err != nil {
+			return models.APIKey{}, huma.Error401Unauthorized("Invalid API key")
+		}
+		if !key.IsActive {
+			return models.APIKey{}, huma.Error403Forbidden("API key is inactive")
+		}
+		return key, nil
+	}
+
+	resp, err := createAPIKey("", "", "free")
+	if err != nil {
+		return models.APIKey{}, huma.NewError(http.StatusInternalServerError, "failed to create API key: "+err.Error())
+	}
+	return loadAPIKeyBySecret(resp.APIKey)
+}
+
 func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutput, error) {
-	bot := botFrom(ctx)
+	key := apiKeyFrom(ctx)
 	stripe.Key = h.StripeSecretKey
 
-	if bot.AccountID == "" {
-		return nil, huma.Error402PaymentRequired("no active subscription — POST /api/v1/billing/checkout to subscribe")
+	if key.StripeCustomerID == "" {
+		return nil, huma.Error402PaymentRequired("this API key does not have a Stripe-managed subscription")
 	}
 
-	var stripeCustomerID, subStatus string
-	if err := database.DB.QueryRow(
-		`SELECT stripe_customer_id, COALESCE(subscription_status,'') FROM accounts WHERE id = ?1`,
-		bot.AccountID,
-	).Scan(&stripeCustomerID, &subStatus); err != nil {
-		return nil, huma.Error404NotFound("account not found")
+	url, err := h.createPortalSession(key.StripeCustomerID)
+	if err != nil {
+		return nil, err
 	}
+	out := &PortalOutput{}
+	out.Body.URL = url
+	return out, nil
+}
 
-	if subStatus != "active" && subStatus != "past_due" {
-		return nil, huma.Error402PaymentRequired("subscription is not active")
-	}
-
+func (h *handlers) createPortalSession(stripeCustomerID string) (string, error) {
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(stripeCustomerID),
 		ReturnURL: stripe.String(h.AppBaseURL + "/pricing"),
 	}
 	ps, err := stripebillingportalsession.New(params)
 	if err != nil {
-		return nil, huma.NewError(http.StatusInternalServerError, "failed to create portal session: "+err.Error())
+		return "", huma.NewError(http.StatusInternalServerError, "failed to create portal session: "+err.Error())
 	}
-
-	out := &PortalOutput{}
-	out.Body.URL = ps.URL
-	return out, nil
+	return ps.URL, nil
 }
 
 func (h *handlers) getBillingAccount(ctx context.Context, _ *struct{}) (*AccountOutput, error) {
-	bot := botFrom(ctx)
-
-	if bot.AccountID == "" {
-		return nil, huma.Error404NotFound("bot is not linked to any account")
-	}
-
-	var email, accountToken, subStatus string
-	var handle, periodEnd sql.NullString
-	if err := database.DB.QueryRow(
-		`SELECT email, account_token, COALESCE(subscription_status,''), handle, current_period_end
-		   FROM accounts WHERE id = ?1`,
-		bot.AccountID,
-	).Scan(&email, &accountToken, &subStatus, &handle, &periodEnd); err != nil {
-		return nil, huma.Error404NotFound("account not found")
-	}
-
+	key := apiKeyFrom(ctx)
 	out := &AccountOutput{}
-	out.Body.Email = email
-	out.Body.AccountToken = accountToken
-	out.Body.SubscriptionStatus = subStatus
-	out.Body.Handle = handle.String
-	if periodEnd.Valid {
-		out.Body.CurrentPeriodEnd = periodEnd.String
-	}
+	out.Body.KeyID = key.ID.String()
+	out.Body.Name = key.Name
+	out.Body.Plan = key.Plan
+	out.Body.BillingEmail = key.BillingEmail
+	out.Body.SubscriptionStatus = key.SubscriptionStatus
+	out.Body.CurrentPeriodEnd = key.CurrentPeriodEnd
+	out.Body.Handle = key.Handle
 	return out, nil
 }
 
 func (h *handlers) patchBillingAccount(ctx context.Context, in *PatchAccountInput) (*PatchAccountOutput, error) {
-	bot := botFrom(ctx)
-
-	if bot.AccountID == "" {
-		return nil, huma.Error404NotFound("bot is not linked to any account")
+	key := apiKeyFrom(ctx)
+	if key.Plan != "pro" {
+		return nil, huma.Error402PaymentRequired("Pro plan required to set a handle")
 	}
 
-	var subStatus string
-	if err := database.DB.QueryRow(
-		`SELECT COALESCE(subscription_status,'') FROM accounts WHERE id = ?1`, bot.AccountID,
-	).Scan(&subStatus); err != nil {
-		return nil, huma.Error404NotFound("account not found")
-	}
-	if subStatus != "active" && subStatus != "past_due" {
-		return nil, huma.Error402PaymentRequired("active subscription required to set a handle")
-	}
-
-	handle := in.Body.Handle
+	handle := strings.TrimSpace(in.Body.Handle)
 	if !handleRe.MatchString(handle) {
 		return nil, huma.Error400BadRequest("handle must be 3-24 chars, alphanumeric/underscore/hyphen")
 	}
 
 	_, err := database.DB.Exec(
-		`UPDATE accounts SET handle = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2`,
-		handle, bot.AccountID,
+		`UPDATE api_keys SET handle = ?1 WHERE id = ?2`,
+		handle, key.ID.String(),
 	)
 	if err != nil {
 		if billingIsDuplicate(err) {
@@ -297,36 +278,45 @@ func (h *handlers) patchBillingAccount(ctx context.Context, in *PatchAccountInpu
 func (h *handlers) getBillingSession(ctx context.Context, in *SessionInput) (*SessionOutput, error) {
 	stripe.Key = h.StripeSecretKey
 
-	// Retrieve the session from Stripe. The session_id is unguessable
-	// (Stripe-issued), so verifying payment_status is sufficient protection
-	// against enumeration.
-	csParams := &stripe.CheckoutSessionParams{}
-	csParams.AddExpand("customer")
-	cs, err := session.Get(in.SessionID, csParams)
+	cs, err := h.retrieveCheckoutSession(in.SessionID)
 	if err != nil {
-		return nil, huma.Error404NotFound("session not found")
+		return nil, err
 	}
 	if cs.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
 		return nil, huma.Error404NotFound("session not paid")
 	}
-	if cs.Customer == nil {
-		return nil, huma.Error404NotFound("session has no customer")
+
+	keyID := cs.Metadata["api_key_id"]
+	if keyID == "" {
+		return nil, huma.Error404NotFound("session is missing API key metadata")
+	}
+	if err := h.applyCheckoutSession(cs); err != nil {
+		return nil, huma.NewError(http.StatusInternalServerError, "failed to activate API key: "+err.Error())
 	}
 
-	var accountToken string
-	if err := database.DB.QueryRow(
-		`SELECT account_token FROM accounts WHERE stripe_customer_id = ?1`,
-		cs.Customer.ID,
-	).Scan(&accountToken); err != nil {
-		return nil, huma.Error404NotFound("account not found — webhook may not have processed yet")
+	key, err := loadAPIKeyByID(keyID)
+	if err != nil {
+		return nil, huma.Error404NotFound("API key not found")
 	}
 
 	out := &SessionOutput{}
-	out.Body.AccountToken = accountToken
+	out.Body.APIKey = key.Key
+	out.Body.KeyID = key.ID.String()
+	out.Body.Plan = key.Plan
+	out.Body.SubscriptionStatus = key.SubscriptionStatus
 	return out, nil
 }
 
-// ── Webhook handler ───────────────────────────────────────────────────────────
+func (h *handlers) retrieveCheckoutSession(sessionID string) (*stripe.CheckoutSession, error) {
+	csParams := &stripe.CheckoutSessionParams{}
+	csParams.AddExpand("customer")
+	csParams.AddExpand("subscription")
+	cs, err := session.Get(sessionID, csParams)
+	if err != nil {
+		return nil, huma.Error404NotFound("session not found")
+	}
+	return cs, nil
+}
 
 func (h *handlers) stripeWebhook(c *fiber.Ctx) error {
 	payload := c.Body()
@@ -359,24 +349,39 @@ func (h *handlers) stripeWebhook(c *fiber.Ctx) error {
 func (h *handlers) handleCheckoutCompleted(event stripe.Event) {
 	stripe.Key = h.StripeSecretKey
 
-	// Re-fetch the session with customer expanded so we have the email.
 	sessionID := event.GetObjectValue("id")
 	if sessionID == "" {
 		log.Printf("stripe webhook checkout.session.completed: no session id in event")
 		return
 	}
-
-	csParams := &stripe.CheckoutSessionParams{}
-	csParams.AddExpand("customer")
-	cs, err := session.Get(sessionID, csParams)
+	cs, err := h.retrieveCheckoutSession(sessionID)
 	if err != nil {
 		log.Printf("stripe webhook checkout.session.completed: get session failed: %v", err)
 		return
+	}
+	if err := h.applyCheckoutSession(cs); err != nil {
+		log.Printf("stripe webhook checkout.session.completed: apply session failed: %v", err)
+	}
+}
+
+func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
+	keyID := cs.Metadata["api_key_id"]
+	if keyID == "" {
+		return nil
 	}
 
 	stripeCustomerID := ""
 	if cs.Customer != nil {
 		stripeCustomerID = cs.Customer.ID
+	}
+	stripeSubscriptionID := ""
+	subStatus := string(cs.Status)
+	var periodEnd string
+	if cs.Subscription != nil {
+		stripeSubscriptionID = cs.Subscription.ID
+		if cs.Subscription.Status != "" {
+			subStatus = string(cs.Subscription.Status)
+		}
 	}
 
 	email := ""
@@ -387,91 +392,67 @@ func (h *handlers) handleCheckoutCompleted(event stripe.Event) {
 		email = cs.Customer.Email
 	}
 
-	botID := cs.Metadata["bot_id"]
-
-	if stripeCustomerID == "" || email == "" {
-		log.Printf("stripe webhook checkout.session.completed: missing customer_id or email, skipping")
-		return
+	plan := planFromSubscriptionStatus(subStatus)
+	if plan == "free" && cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
+		plan = "pro"
 	}
 
-	// Upsert account (idempotent via ON CONFLICT on stripe_customer_id).
-	accountID := uuid.New().String()
-	accountToken := uuid.New().String()
-
-	_, err = database.DB.Exec(`
-		INSERT INTO accounts
-		  (id, email, account_token, stripe_customer_id, subscription_status, created_at, updated_at)
-		VALUES (?1, ?2, ?3, ?4, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(stripe_customer_id) DO UPDATE SET
-		  email      = COALESCE(NULLIF(accounts.email, ''), excluded.email),
-		  updated_at = CURRENT_TIMESTAMP
-	`, accountID, email, accountToken, stripeCustomerID)
-	if err != nil {
-		log.Printf("stripe webhook checkout.session.completed: upsert account failed: %v", err)
-		return
-	}
-
-	// Reload the account id in case the row already existed.
-	var actualAccountID string
-	if err := database.DB.QueryRow(
-		`SELECT id FROM accounts WHERE stripe_customer_id = ?1`, stripeCustomerID,
-	).Scan(&actualAccountID); err != nil {
-		log.Printf("stripe webhook: reload account id failed: %v", err)
-		return
-	}
-
-	// Link the bot to the account. We update unconditionally so that a bot
-	// whose previous subscription was canceled and who re-subscribes gets
-	// promoted again rather than staying stuck on the old canceled account.
-	if botID != "" {
-		if _, err := database.DB.Exec(
-			`UPDATE bots SET account_id = ?1 WHERE id = ?2`,
-			actualAccountID, botID,
-		); err != nil {
-			log.Printf("stripe webhook: link bot failed: %v", err)
-		}
-	}
-
-	log.Printf("stripe webhook checkout.session.completed: account=%s bot=%s", actualAccountID, botID)
+	_, err := database.DB.Exec(`
+		UPDATE api_keys
+		   SET plan = ?1,
+		       stripe_customer_id = COALESCE(NULLIF(?2, ''), stripe_customer_id),
+		       stripe_subscription_id = COALESCE(NULLIF(?3, ''), stripe_subscription_id),
+		       subscription_status = COALESCE(NULLIF(?4, ''), subscription_status),
+		       current_period_end = COALESCE(NULLIF(?5, ''), current_period_end),
+		       billing_email = COALESCE(NULLIF(?6, ''), billing_email)
+		 WHERE id = ?7
+	`, plan, stripeCustomerID, stripeSubscriptionID, subStatus, periodEnd, email, keyID)
+	return err
 }
 
 func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
-	// Parse the subscription object from the raw event data.
 	var sub struct {
-		ID                string  `json:"id"`
-		Status            string  `json:"status"`
-		Customer          string  `json:"customer"`
-		CurrentPeriodEnd  float64 `json:"current_period_end"`
+		ID               string            `json:"id"`
+		Status           string            `json:"status"`
+		Customer         string            `json:"customer"`
+		CurrentPeriodEnd float64           `json:"current_period_end"`
+		Metadata         map[string]string `json:"metadata"`
 	}
 	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
 		log.Printf("stripe webhook subscription upsert: unmarshal failed: %v", err)
 		return
 	}
-
 	if sub.Customer == "" {
 		log.Printf("stripe webhook subscription upsert: no customer_id")
 		return
 	}
 
-	var periodEnd sql.NullString
-	if sub.CurrentPeriodEnd > 0 {
-		t := time.Unix(int64(sub.CurrentPeriodEnd), 0).UTC()
-		periodEnd = sql.NullString{String: t.Format(time.RFC3339), Valid: true}
+	keyID := sub.Metadata["api_key_id"]
+	if keyID == "" {
+		_ = database.DB.QueryRow(
+			`SELECT id FROM api_keys WHERE stripe_customer_id = ?1`,
+			sub.Customer,
+		).Scan(&keyID)
+	}
+	if keyID == "" {
+		log.Printf("stripe webhook subscription upsert: no api_key_id for customer=%s", sub.Customer)
+		return
 	}
 
-	// Upsert the account — subscription events may arrive before checkout.session.completed.
-	accountID := uuid.New().String()
-	accountToken := uuid.New().String()
+	periodEnd := ""
+	if sub.CurrentPeriodEnd > 0 {
+		periodEnd = time.Unix(int64(sub.CurrentPeriodEnd), 0).UTC().Format(time.RFC3339)
+	}
+
 	_, err := database.DB.Exec(`
-		INSERT INTO accounts
-		  (id, email, account_token, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, created_at, updated_at)
-		VALUES (?1, '', ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(stripe_customer_id) DO UPDATE SET
-		  stripe_subscription_id = excluded.stripe_subscription_id,
-		  subscription_status    = excluded.subscription_status,
-		  current_period_end     = excluded.current_period_end,
-		  updated_at             = CURRENT_TIMESTAMP
-	`, accountID, accountToken, sub.Customer, sub.ID, sub.Status, periodEnd)
+		UPDATE api_keys
+		   SET plan = ?1,
+		       stripe_customer_id = ?2,
+		       stripe_subscription_id = ?3,
+		       subscription_status = ?4,
+		       current_period_end = COALESCE(NULLIF(?5, ''), current_period_end)
+		 WHERE id = ?6
+	`, planFromSubscriptionStatus(sub.Status), sub.Customer, sub.ID, sub.Status, periodEnd, keyID)
 	if err != nil {
 		log.Printf("stripe webhook subscription upsert: %v", err)
 	}
@@ -486,7 +467,8 @@ func (h *handlers) handleSubscriptionDeleted(event stripe.Event) {
 		return
 	}
 	if _, err := database.DB.Exec(
-		`UPDATE accounts SET subscription_status = 'canceled', updated_at = CURRENT_TIMESTAMP
+		`UPDATE api_keys
+		    SET plan = 'free', subscription_status = 'canceled'
 		  WHERE stripe_customer_id = ?1`,
 		sub.Customer,
 	); err != nil {
@@ -503,7 +485,8 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 		return
 	}
 	if _, err := database.DB.Exec(
-		`UPDATE accounts SET subscription_status = 'past_due', updated_at = CURRENT_TIMESTAMP
+		`UPDATE api_keys
+		    SET plan = 'pro', subscription_status = 'past_due'
 		  WHERE stripe_customer_id = ?1`,
 		inv.Customer,
 	); err != nil {
@@ -511,7 +494,14 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 	}
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+func planFromSubscriptionStatus(status string) string {
+	switch status {
+	case "active", "trialing", "past_due":
+		return "pro"
+	default:
+		return "free"
+	}
+}
 
 // billingHashKey returns a SHA-256 hex digest of an API key, used as a
 // non-reversible identifier in Stripe metadata.

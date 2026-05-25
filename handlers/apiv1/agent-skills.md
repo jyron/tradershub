@@ -22,7 +22,7 @@ POST https://bot-trade.org/api/v1/keys
 
 Response:
 ```json
-{ "api_key": "5f3b…", "bot_id": "e0a9…" }
+{ "api_key": "5f3b…", "key_id": "e0a9…", "plan": "free" }
 ```
 
 Use `api_key` as your `X-API-Key` value on all subsequent requests.
@@ -339,13 +339,15 @@ Posts your result to the public leaderboard for this scenario.
 
 ---
 
-## Quotas & accounts
+## Quotas & billing
 
 ### Run quotas
 
-`POST /api/v1/runs` enforces a per-bot monthly quota (UTC month boundaries).
+`POST /api/v1/runs` enforces a per-key monthly quota (UTC month boundaries).
+Use the same API key with any number of bots, strategies, scripts, or machines;
+all usage counts against that key.
 
-**Free bots — 25 runs/month.** At the limit, the endpoint returns 402:
+**Free keys — 25 runs/month.** At the limit, the endpoint returns 402:
 
 ```json
 {
@@ -355,7 +357,7 @@ Posts your result to the public leaderboard for this scenario.
 }
 ```
 
-**Pro bots — 500 runs/month.** At the limit, the endpoint returns 429:
+**Pro keys — 500 runs/month.** At the limit, the endpoint returns 429:
 
 ```json
 {
@@ -366,37 +368,22 @@ Posts your result to the public leaderboard for this scenario.
 
 Pro is $39/month. Upgrade at [bot-trade.org/pricing](https://bot-trade.org/pricing).
 
-### Accounts & multi-bot
-
-An account is created when a Stripe checkout completes. One account can own many bots; one Pro subscription covers every bot on the account.
-
-To attach a new bot to an existing account, pass your `account_token` when minting a key:
-
-```
-POST https://bot-trade.org/api/v1/keys
-Content-Type: application/json
-
-{ "account_token": "<your-token>" }
-```
-
-The new bot inherits Pro tier. Authentication for all API requests still uses `X-API-Key`.
-
 ### Billing endpoints
 
-All require `X-API-Key`.
+`POST /api/v1/billing/checkout` can be called with an existing `X-API-Key` to
+upgrade it, or with no key to create a new key during checkout. The success page
+always returns the Pro API key.
 
 | Endpoint | Method | What it returns |
 |----------|--------|-----------------|
 | `/api/v1/billing/checkout` | POST | Stripe Checkout URL to start a Pro subscription. |
 | `/api/v1/billing/portal` | POST | Stripe Customer Portal URL to manage or cancel. |
-| `/api/v1/billing/account` | GET | `email`, `account_token`, `subscription_status`, `current_period_end`, `handle`. |
+| `/api/v1/billing/account` | GET | `key_id`, `plan`, `billing_email`, `subscription_status`, `current_period_end`, `handle`. |
 | `/api/v1/billing/account` | PATCH | Sets the leaderboard handle (Pro only). 3–24 chars, alphanumeric plus `_` and `-`, unique. |
-
-The `account_token` is shown on `/billing/success` after first payment and is retrievable via `GET /api/v1/billing/account` using any bot key on the account.
 
 ### Leaderboard display
 
-Bots on an account with an active Pro subscription and a handle set display as `{handle} — {bot.name}`. All other bots display as `bot-<first-8-of-id>`.
+Runs can include an optional `bot_name` when created. Pro keys with a handle set display as `{handle} — {bot_name}`. Otherwise the leaderboard uses the run's `bot_name` or the key name.
 
 ---
 

@@ -11,7 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// quotaFreeLimitError is returned (as HTTP 402) when a free-tier bot has
+// quotaFreeLimitError is returned (as HTTP 402) when a free-tier API key has
 // exhausted its 25-run monthly allowance. Its JSON shape matches the spec:
 //
 //	{ "error": "...", "runs_used": N, "runs_limit": 25,
@@ -24,10 +24,10 @@ type quotaFreeLimitError struct {
 	UpgradeHint string `json:"upgrade_hint"`
 }
 
-func (e *quotaFreeLimitError) Error() string    { return e.Err }
-func (e *quotaFreeLimitError) GetStatus() int   { return http.StatusPaymentRequired }
+func (e *quotaFreeLimitError) Error() string  { return e.Err }
+func (e *quotaFreeLimitError) GetStatus() int { return http.StatusPaymentRequired }
 
-// quotaProLimitError is returned (as HTTP 429) when a pro-tier bot has
+// quotaProLimitError is returned (as HTTP 429) when a pro-tier API key has
 // exhausted its 500-run monthly allowance. Its JSON shape matches the spec:
 //
 //	{ "error": "...", "runs_used": N, "runs_limit": 500, "resets_at": "..." }
@@ -47,12 +47,13 @@ type RunCreateInput struct {
 	Body struct {
 		ScenarioID   string `json:"scenario_id,omitempty" doc:"Scenario UUID. Provide this OR scenario_slug."`
 		ScenarioSlug string `json:"scenario_slug,omitempty" doc:"Scenario slug. Used if scenario_id is omitted."`
+		BotName      string `json:"bot_name,omitempty" doc:"Optional display name for the bot, strategy, or experiment creating this run."`
 	}
 }
 
 // RunCreateOutput is returned on successful POST /v1/runs.
 type RunCreateOutput struct {
-	Status int        `header:"-"`
+	Status int `header:"-"`
 	Body   struct {
 		Run *models.Run `json:"run"`
 	}
@@ -96,10 +97,10 @@ func (h *handlers) registerRuns(api huma.API) {
 }
 
 func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreateOutput, error) {
-	bot := botFrom(ctx)
+	key := apiKeyFrom(ctx)
 
 	// Enforce monthly run quotas before creating the run.
-	if err := h.enforceRunQuota(bot); err != nil {
+	if err := h.enforceRunQuota(key); err != nil {
 		return nil, err
 	}
 
@@ -115,7 +116,7 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	if scenarioID == "" {
 		return nil, huma.Error400BadRequest("scenario_id or scenario_slug required")
 	}
-	run, err := h.Engine.StartRun(bot.ID.String(), scenarioID)
+	run, err := h.Engine.StartRun(key.ID.String(), scenarioID, in.Body.BotName)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
@@ -124,34 +125,23 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	return out, nil
 }
 
-// enforceRunQuota checks the bot's monthly run count against its tier limit.
+// enforceRunQuota checks the API key's monthly run count against its plan limit.
 // Returns a huma error if the quota is exceeded, nil otherwise.
-func (h *handlers) enforceRunQuota(bot models.Bot) error {
+func (h *handlers) enforceRunQuota(key models.APIKey) error {
 	// Count runs this UTC calendar month.
 	var runsUsed int
 	err := database.DB.QueryRow(
 		`SELECT COUNT(*) FROM runs
-		  WHERE bot_id = ?1
+		  WHERE api_key_id = ?1
 		    AND created_at >= datetime('now', 'start of month')`,
-		bot.ID.String(),
+		key.ID.String(),
 	).Scan(&runsUsed)
 	if err != nil && err != sql.ErrNoRows {
 		// Non-fatal: let the run proceed if we can't count.
 		return nil
 	}
 
-	// Determine effective tier.
-	isPro := false
-	if bot.AccountID != "" {
-		var subStatus string
-		_ = database.DB.QueryRow(
-			`SELECT COALESCE(subscription_status,'') FROM accounts WHERE id = ?1`,
-			bot.AccountID,
-		).Scan(&subStatus)
-		isPro = subStatus == "active" || subStatus == "past_due"
-	}
-
-	if isPro {
+	if key.Plan == "pro" {
 		const limit = 500
 		if runsUsed >= limit {
 			now := time.Now().UTC()
@@ -194,15 +184,15 @@ func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, 
 // Returned errors are already huma errors with the correct status — callers
 // should propagate as-is.
 func (h *handlers) assertRunOwner(ctx context.Context, runID string) error {
-	bot := botFrom(ctx)
+	key := apiKeyFrom(ctx)
 	var ownerID string
 	err := h.Engine.AppDB().QueryRow(
-		`SELECT bot_id FROM runs WHERE id = ?1`, runID,
+		`SELECT api_key_id FROM runs WHERE id = ?1`, runID,
 	).Scan(&ownerID)
 	if err != nil {
 		return huma.Error404NotFound("no such run")
 	}
-	if ownerID != bot.ID.String() {
+	if ownerID != key.ID.String() {
 		return huma.Error403Forbidden("you do not own this run")
 	}
 	return nil

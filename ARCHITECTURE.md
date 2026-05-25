@@ -41,9 +41,9 @@ The site shows:
 | `POST /api/v1/runs/:id/step`               | X-API-Key | Advance sim_time                            |
 | `GET /api/v1/runs/:id/results`             | X-API-Key | Computed metrics                            |
 | `POST /api/v1/runs/:id/publish`            | X-API-Key | Opt into public leaderboard                 |
-| `POST /api/v1/billing/checkout`            | X-API-Key | Returns Stripe Checkout URL                 |
+| `POST /api/v1/billing/checkout`            | optional X-API-Key | Returns Stripe Checkout URL        |
 | `POST /api/v1/billing/portal`              | X-API-Key | Returns Stripe Customer Portal URL          |
-| `GET /api/v1/billing/account`              | X-API-Key | Account info (email, account_token, status) |
+| `GET /api/v1/billing/account`              | X-API-Key | API key billing info                        |
 | `PATCH /api/v1/billing/account`            | X-API-Key | Set leaderboard handle (Pro only)           |
 
 ## Code map
@@ -56,8 +56,9 @@ config/config.go                 — env loader
 database/
   db.go                          — DB (app) + MarketDB (bars) pools
   migrate.go                     — RunMigrations + RunMigrationsOn
-  migrations/001_initial.sql     — full app schema (bots, scenarios, runs,
-                                   run_*, run_results, run_leaderboard)
+  migrations/001_initial.sql     — legacy bootstrap schema
+  migrations/003_api_keys.sql    — current app schema shape (api_keys,
+                                   runs, run_*, run_results, leaderboard)
   migrations_market/             — market DB (bars, scenario_bars)
 handlers/apiv1/                  — /api/* surface, huma-typed where auth'd
   mount.go                       — wires huma + public fiber routes
@@ -80,7 +81,7 @@ services/
                                  — Alpaca SDK + GetHistoricalCandles
   metrics.go                     — Sharpe/Sortino/maxDD helpers
   scenario_engine_test.go        — unit tests for the engine
-models/bot.go run.go scenario.go — the three model types
+models/api_key.go run.go scenario.go — the three model types
 jobs/
   bar_ingest.go                  — hourly Alpaca → market.bars
   idempotency_sweep.go           — prune run_idempotency rows older than 24h
@@ -98,9 +99,9 @@ static/                          — site HTML/CSS (4 pages, no build step)
 
 ## Two databases (both Turso/libsql)
 
-- **`tradershub-v2`** (app DB) — bots, scenarios, runs, results, leaderboard.
-  `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`. Schema: a single
-  `database/migrations/001_initial.sql`.
+- **`tradershub-v2`** (app DB) — API keys, scenarios, runs, results, leaderboard.
+  `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`. App migrations end at
+  `database/migrations/003_api_keys.sql`.
 - **`tradershub-market`** (market DB) — `bars` (hourly OHLCV from Alpaca)
   and `scenario_bars` (immutable per-scenario-version frozen bars). 90k+
   bars covering 2024-01-02 → present. `TURSO_MARKET_DATABASE_URL` /
@@ -116,12 +117,12 @@ In local dev both default to `file:` SQLite paths when URLs aren't set.
   `database/migrate.go`. Never edit a migration after it has been applied
   to prod — add a new numbered file.
 - **Public vs authenticated routes.** Public, no-auth: every `/api/...`
-  doc route, `POST /api/v1/keys`, all `GET /api/v1/scenarios*` and
+  doc route, `POST /api/v1/keys`, `POST /api/v1/billing/checkout`, all `GET /api/v1/scenarios*` and
   `/api/v1/leaderboard*`, and `GET /api/v1/runs/:id/public`. Everything
   else under `/api/v1/runs/*` requires `X-API-Key`.
-- **Bot = API principal.** A row in the `bots` table maps to an
-  `X-API-Key`. Multiple bots can share one account (and one Pro
-  subscription). No hosted LLM credentials.
+- **API key = API principal.** A row in `api_keys` maps to an `X-API-Key`,
+  subscription state, and one monthly usage bucket. Any number of bots or
+  scripts can use the same key. No hosted LLM credentials.
 
 ## Adding a new scenario
 

@@ -30,16 +30,15 @@
 
   <section class="meth-hero" style="padding: 40px 0 32px; border-bottom: 1px solid var(--rule); margin-bottom: 36px;">
     <h1 style="font-size: 48px; font-weight: 800; letter-spacing: -2px; margin: 0 0 14px; line-height: 1;">Subscription active.</h1>
-    <p style="font-size: 17px; color: var(--ink-2); margin: 0; line-height: 1.5;" id="status-line">Loading your account token&hellip;</p>
+    <p style="font-size: 17px; color: var(--ink-2); margin: 0; line-height: 1.5;" id="status-line">Loading your API key&hellip;</p>
   </section>
 
   <div id="token-section" style="display:none; max-width: 600px;">
-    <p style="font-size: 15px; color: var(--ink-2); margin: 0 0 12px;">Your account token. Save it — you will need it to attach additional API keys to this subscription.</p>
+    <p style="font-size: 15px; color: var(--ink-2); margin: 0 0 12px;">Your Pro API key.</p>
     <div style="display: flex; gap: 8px; align-items: center;">
       <code id="token-display" style="font-family: var(--mono, monospace); font-size: 15px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; padding: 10px 14px; flex: 1; word-break: break-all;"></code>
       <button id="copy-btn" onclick="copyToken()" style="padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Copy</button>
     </div>
-    <p style="font-size: 13px; color: var(--ink-3); margin: 12px 0 0;">To add more bots: <code style="font-family: var(--mono, monospace);">POST /api/v1/keys</code> with <code style="font-family: var(--mono, monospace);">{"account_token": "&lt;your token&gt;"}</code></p>
   </div>
 
   <div id="error-section" style="display:none; max-width: 600px;">
@@ -71,17 +70,17 @@
   fetch('/api/v1/billing/session/' + encodeURIComponent(sessionID))
     .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
     .then(function (r) {
-      if (r.ok && r.data.account_token) {
+      if (r.ok && r.data.api_key) {
         document.getElementById('status-line').textContent = 'Subscription active.';
-        document.getElementById('token-display').textContent = r.data.account_token;
+        document.getElementById('token-display').textContent = r.data.api_key;
         document.getElementById('token-section').style.display = 'block';
       } else {
-        var msg = r.data.detail || r.data.error || 'Could not load account token. If you just subscribed, wait a moment and refresh.';
+        var msg = r.data.detail || r.data.error || 'Could not load API key. If you just subscribed, wait a moment and refresh.';
         showError(msg);
       }
     })
     .catch(function () {
-      showError('Network error loading account token.');
+      showError('Network error loading API key.');
     });
 }());
 

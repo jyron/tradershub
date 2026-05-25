@@ -407,4 +407,4 @@ The scenario should appear on the public `/scenarios` page as soon as it's provi
 - The `--api-base` flag overrides `BOTTRADE_API` if you set it explicitly.
 - AI bot cost is dominated by `--decide-every`. A scenario with ~500 hourly bars and `--decide-every 6` makes ~85 Claude calls. Halve that with `--decide-every 12` if cost is a concern.
 - The market DB has a coverage gap from 2025-01-01 through 2026-05-20 (bars resumed mid-May 2026). Run `backfill_bars` to fill it before creating any 2025 scenarios.
-- Free bots cap at 25 runs/month per bot. Pro bots cap at 500/month. If you hit the cap during seeding, create another key.
+- Free API keys cap at 25 runs/month per key. Pro API keys cap at 500/month.

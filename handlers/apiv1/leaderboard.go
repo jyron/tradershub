@@ -19,7 +19,7 @@ func (h *handlers) mountLeaderboardPublic(app *fiber.App) {
 type leaderboardEntry struct {
 	Rank        int     `json:"rank"`
 	RunID       string  `json:"run_id"`
-	BotID       string  `json:"bot_id"`
+	APIKeyID    string  `json:"api_key_id"`
 	BotName     string  `json:"bot_name"`
 	ReturnPct   float64 `json:"return_pct"`
 	Sharpe      float64 `json:"sharpe,omitempty"`
@@ -95,17 +95,16 @@ func getLeaderboard(c *fiber.Ctx) error {
 	}
 
 	q := `
-		SELECT l.run_id, l.bot_id,
+		SELECT l.run_id, l.api_key_id,
 		       rr.return_pct, rr.sharpe, rr.sortino, rr.max_drawdown,
 		       rr.final_equity, rr.trade_count, rr.liquidated,
 		       l.published_at,
-		       b.name,
-		       a.handle,
-		       a.subscription_status
+		       COALESCE(NULLIF(l.bot_name, ''), k.name),
+		       k.handle,
+		       k.plan
 		  FROM run_leaderboard l
 		  JOIN run_results    rr ON rr.run_id = l.run_id
-		  JOIN bots            b ON  b.id    = l.bot_id
-		  LEFT JOIN accounts   a ON  a.id    = b.account_id
+		  JOIN api_keys       k  ON k.id     = l.api_key_id
 		 WHERE l.scenario_id = ?1
 		 ORDER BY ` + orderCol + `
 		 LIMIT ?2
@@ -124,15 +123,15 @@ func getLeaderboard(c *fiber.Ctx) error {
 		var sharpe, sortino, maxDD sql.NullFloat64
 		var liquidated int
 		var rawBotName string
-		var acctHandle, acctStatus sql.NullString
+		var handle, plan sql.NullString
 		if err := rows.Scan(
-			&e.RunID, &e.BotID,
+			&e.RunID, &e.APIKeyID,
 			&e.ReturnPct, &sharpe, &sortino, &maxDD,
 			&e.FinalEquity, &e.TradeCount, &liquidated,
 			&e.PublishedAt,
 			&rawBotName,
-			&acctHandle,
-			&acctStatus,
+			&handle,
+			&plan,
 		); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -142,12 +141,9 @@ func getLeaderboard(c *fiber.Ctx) error {
 		e.MaxDrawdown = maxDD.Float64
 		e.Liquidated = liquidated != 0
 
-		// Display the bot's submitted name. For paid accounts with a handle,
-		// prefix it so one account can publish multiple named bots.
-		subStatus := acctStatus.String
-		hasProHandle := (subStatus == "active" || subStatus == "past_due") && acctHandle.Valid && acctHandle.String != ""
+		hasProHandle := plan.String == "pro" && handle.Valid && handle.String != ""
 		if hasProHandle {
-			e.BotName = acctHandle.String + " — " + rawBotName
+			e.BotName = handle.String + " — " + rawBotName
 		} else {
 			e.BotName = rawBotName
 		}

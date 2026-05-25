@@ -13,7 +13,7 @@ See `/pricing`.
 
 ```
 curl -X POST https://bot-trade.org/api/v1/keys
-# → {"api_key": "...", "bot_id": "..."}
+# → {"api_key": "...", "key_id": "...", "plan": "free"}
 ```
 
 Then loop `market → trades → step` until the scenario ends. See the
@@ -33,7 +33,7 @@ go run .
 
 Env vars (all optional in dev):
 
-- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` — app DB (bots, runs, results).
+- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` — app DB (API keys, runs, results).
 - `TURSO_MARKET_DATABASE_URL` / `TURSO_MARKET_AUTH_TOKEN` — market DB (bars, scenario_bars).
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — required for the hourly bar-ingest job.
 - `PORT` — defaults `3000`.

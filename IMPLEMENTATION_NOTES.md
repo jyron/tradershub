@@ -22,15 +22,15 @@ The CLI prints a `whsec_...` secret on startup — use that value as `STRIPE_WEB
 
 ## Decisions not fully specified
 
-- **Checkout session + pre-existing customer**: A new Stripe Customer is created on every checkout request where the bot is not already on an active account. If the user abandons checkout, they accumulate orphaned Customer objects in Stripe. This is standard practice; Stripe cleans up failed sessions.
+- **Checkout session + pre-existing customer**: A new Stripe Customer is created on every checkout request where the API key does not already have a Stripe-managed subscription. If the user abandons checkout, they accumulate orphaned Customer objects in Stripe. This is standard practice; Stripe cleans up failed sessions.
 
 - **`checkout.session.completed` re-fetch**: The webhook re-fetches the session from Stripe with `customer` expanded rather than parsing from the raw webhook body. This is the recommended approach because Stripe does not expand nested objects in webhook payloads by default.
 
-- **`customer.subscription.*` events before `checkout.session.completed`**: The subscription upsert handler will create a skeleton account row (empty email, fresh account_token) if no row exists yet. When `checkout.session.completed` arrives it fills in the email via `COALESCE(NULLIF(accounts.email, ''), excluded.email)`. The account_token on the skeleton row is what matters; the checkout handler does not overwrite it on conflict.
+- **`customer.subscription.*` events before `checkout.session.completed`**: Checkout writes `api_key_id` into both session metadata and subscription metadata. Subscription events update that `api_keys` row directly; if metadata is missing, the handler falls back to `stripe_customer_id`.
 
 - **Billing portal return URL**: Set to `/pricing`. Stripe requires a return URL; `/pricing` is the most logical destination.
 
-- **`getBillingSession` endpoint (success page)**: Verifies `payment_status == "paid"` on the Stripe session, then looks up the account by `stripe_customer_id`. No separate "known sessions" table — the Stripe session ID is unguessable and Stripe validates it server-side.
+- **`getBillingSession` endpoint (success page)**: Verifies `payment_status == "paid"` on the Stripe session, applies the same API-key upgrade as the webhook, then returns the Pro API key. No separate "known sessions" table — the Stripe session ID is unguessable and Stripe validates it server-side.
 
 - **Quota counting**: Counts all runs since `datetime('now', 'start of month')` in SQLite/libsql, which uses UTC. This matches the "UTC month boundaries" spec.
 

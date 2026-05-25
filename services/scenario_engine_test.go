@@ -17,28 +17,28 @@ import (
 )
 
 // testScenarioSetup builds two in-memory SQLite databases (app + market),
-// runs migrations, inserts a test bot + test scenario, and returns the
+// runs migrations, inserts a test API key + test scenario, and returns the
 // scenario_id and engine.
 //
 // The scenario timeline is generated synthetically — `bars` lists per-bar
 // (symbol, open, high, low, close) values starting at 2024-06-03T13:00Z
 // and advancing one hour per index.
 type testBar struct {
-	Symbol             string
+	Symbol                 string
 	Open, High, Low, Close float64
-	Volume             int64
+	Volume                 int64
 }
 
 type testSetup struct {
-	t          *testing.T
-	appDBPath  string
+	t            *testing.T
+	appDBPath    string
 	marketDBPath string
-	AppDB      *sql.DB
-	MarketDB   *sql.DB
-	BotID      string
-	ScenarioID string
-	Engine     *ScenarioEngine
-	Universe   []string
+	AppDB        *sql.DB
+	MarketDB     *sql.DB
+	APIKeyID     string
+	ScenarioID   string
+	Engine       *ScenarioEngine
+	Universe     []string
 }
 
 func newTestSetup(t *testing.T, universe []string, leverageCap float64, shortEnabled bool, slippage map[string]int, bars [][]testBar, startingCash float64) *testSetup {
@@ -71,13 +71,13 @@ func newTestSetup(t *testing.T, universe []string, leverageCap float64, shortEna
 		t.Fatalf("market migrations: %v", err)
 	}
 
-	// Insert a bot row directly (the auth layer is bypassed in engine tests).
-	botID := uuid.NewString()
+	// Insert an API key row directly (the auth layer is bypassed in engine tests).
+	apiKeyID := uuid.NewString()
 	if _, err := appDB.Exec(`
-		INSERT INTO bots (id, name, api_key, description, creator_email, is_active)
-		VALUES (?1, 'test-bot', ?2, '', '', 1)
-	`, botID, "test-key-"+botID); err != nil {
-		t.Fatalf("insert bot: %v", err)
+		INSERT INTO api_keys (id, name, api_key, description, creator_email, is_active, plan)
+		VALUES (?1, 'test-key', ?2, '', '', 1, 'pro')
+	`, apiKeyID, "test-key-"+apiKeyID); err != nil {
+		t.Fatalf("insert API key: %v", err)
 	}
 
 	// Insert scenario.
@@ -137,7 +137,7 @@ func newTestSetup(t *testing.T, universe []string, leverageCap float64, shortEna
 	return &testSetup{
 		t: t, appDBPath: appPath, marketDBPath: marketPath,
 		AppDB: appDB, MarketDB: marketDB,
-		BotID: botID, ScenarioID: scenarioID,
+		APIKeyID: apiKeyID, ScenarioID: scenarioID,
 		Engine: engine, Universe: universe,
 	}
 }
@@ -217,7 +217,7 @@ func TestEngine_HappyPath(t *testing.T) {
 	}
 	ts := newTestSetup(t, []string{"AAPL"}, 1.0, false, map[string]int{"AAPL": 0}, bars, 100000)
 
-	run, err := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, err := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestEngine_Short(t *testing.T) {
 		bars[i] = []testBar{{Symbol: "AAPL", Open: px, High: px + 1, Low: px - 1, Close: px, Volume: 1000}}
 	}
 	ts := newTestSetup(t, []string{"AAPL"}, 2.0, true, map[string]int{"AAPL": 0}, bars, 100000)
-	run, _ := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, _ := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 
 	// Short 5 AAPL: fills on bar 1 open = 102. Cash += 5*102 = 510. Position qty = -5.
 	if _, err := ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "AAPL", Side: "short", Quantity: 5}); err != nil {
@@ -287,7 +287,7 @@ func TestEngine_Slippage(t *testing.T) {
 		{{Symbol: "X", Open: 100, High: 100, Low: 100, Close: 100, Volume: 1000}},
 	}
 	ts := newTestSetup(t, []string{"X"}, 1.0, false, map[string]int{"X": 5}, bars, 100000)
-	run, _ := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, _ := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 	if _, err := ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "X", Side: "buy", Quantity: 1}); err != nil {
 		t.Fatalf("QueueTrade: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestEngine_LeverageLiquidation(t *testing.T) {
 		bars[i] = []testBar{{Symbol: "X", Open: px, High: px + 1, Low: px - 1, Close: px, Volume: 1000}}
 	}
 	ts := newTestSetup(t, []string{"X"}, 4.0, false, map[string]int{"X": 0}, bars, 10000)
-	run, _ := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, _ := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 
 	// Buy 400 shares @ ~$100 → notional = $40k. Required margin = 40000/4 = $10k. Cash = $10k. Just fits.
 	if _, err := ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "X", Side: "buy", Quantity: 400}); err != nil {
@@ -347,7 +347,7 @@ func TestEngine_PartialClose(t *testing.T) {
 		{{Symbol: "X", Open: 110, High: 110, Low: 110, Close: 110, Volume: 1000}},
 	}
 	ts := newTestSetup(t, []string{"X"}, 1.0, false, map[string]int{"X": 0}, bars, 100000)
-	run, _ := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, _ := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 
 	// Buy 10 → fills bar 1 @ 100.
 	ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "X", Side: "buy", Quantity: 10})
@@ -381,7 +381,7 @@ func TestEngine_ComputeResults(t *testing.T) {
 		{{Symbol: "X", Open: 105, High: 105, Low: 105, Close: 110, Volume: 1000}},
 	}
 	ts := newTestSetup(t, []string{"X"}, 1.0, false, map[string]int{"X": 0}, bars, 100000)
-	run, _ := ts.Engine.StartRun(ts.BotID, ts.ScenarioID)
+	run, _ := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
 	ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "X", Side: "buy", Quantity: 100})
 	if _, err := ts.Engine.AdvanceStep(run.ID, 5); err != nil {
 		t.Fatalf("AdvanceStep: %v", err)
