@@ -24,6 +24,7 @@ const (
 	oauthAccessTTL  = time.Hour
 	oauthRefreshTTL = 30 * 24 * time.Hour
 	oauthCodeTTL    = 10 * time.Minute
+	siteSessionTTL  = 30 * 24 * time.Hour
 )
 
 type oauthClientRegistration struct {
@@ -56,6 +57,12 @@ func (h *handlers) mountOAuth(app *fiber.App) {
 	app.Get("/oauth/login/:provider", h.oauthLogin)
 	app.Get("/oauth/callback/:provider", h.oauthCallback)
 	app.Post("/oauth/token", h.oauthToken)
+
+	app.Get("/login", h.siteLogin)
+	app.Get("/auth/login/:provider", h.siteProviderLogin)
+	app.Get("/auth/callback/:provider", h.siteProviderCallback)
+	app.Get("/account", h.siteAccount)
+	app.Post("/logout", h.siteLogout)
 }
 
 func (h *handlers) oauthMetadata(c *fiber.Ctx) error {
@@ -162,11 +169,140 @@ func (h *handlers) oauthLogin(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		MaxAge:   int((10 * time.Minute).Seconds()),
 	})
-	authURL, err := h.providerAuthURL(provider, state)
+	authURL, err := h.providerAuthURL(provider, state, "/oauth/callback/"+provider)
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
 	return c.Redirect(authURL, http.StatusFound)
+}
+
+func (h *handlers) siteLogin(c *fiber.Ctx) error {
+	if accountID, _ := h.siteSessionAccountID(c); accountID != "" {
+		return c.Redirect("/account", http.StatusFound)
+	}
+	return c.Type("html").SendString(h.renderSiteLogin())
+}
+
+func (h *handlers) siteProviderLogin(c *fiber.Ctx) error {
+	provider := c.Params("provider")
+	state, err := randomOAuthToken("bt_site_state_")
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).SendString("failed to create state")
+	}
+	c.Cookie(&fiber.Cookie{
+		Name:     "bt_site_state",
+		Value:    state,
+		Path:     "/",
+		HTTPOnly: true,
+		Secure:   strings.HasPrefix(h.AppBaseURL, "https://"),
+		SameSite: "Lax",
+		MaxAge:   int((10 * time.Minute).Seconds()),
+	})
+	authURL, err := h.providerAuthURL(provider, state, "/auth/callback/"+provider)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).SendString(err.Error())
+	}
+	return c.Redirect(authURL, http.StatusFound)
+}
+
+func (h *handlers) siteProviderCallback(c *fiber.Ctx) error {
+	provider := c.Params("provider")
+	state := c.Query("state")
+	if state == "" || state != c.Cookies("bt_site_state") {
+		return c.Status(http.StatusBadRequest).SendString("invalid login state")
+	}
+	profile, err := h.fetchOAuthProfile(provider, c.Query("code"), "/auth/callback/"+provider)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).SendString(err.Error())
+	}
+	accountID, err := upsertOAuthAccount(profile)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).SendString("failed to create account")
+	}
+	if _, err := ensureAccountAPIKey(accountID, profile.Name, profile.Email); err != nil {
+		return c.Status(http.StatusInternalServerError).SendString("failed to create account key")
+	}
+	sessionToken, err := h.createSiteSession(accountID)
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).SendString("failed to create session")
+	}
+	c.Cookie(&fiber.Cookie{
+		Name:     "bt_session",
+		Value:    sessionToken,
+		Path:     "/",
+		HTTPOnly: true,
+		Secure:   strings.HasPrefix(h.AppBaseURL, "https://"),
+		SameSite: "Lax",
+		MaxAge:   int(siteSessionTTL.Seconds()),
+	})
+	return c.Redirect("/account", http.StatusFound)
+}
+
+func (h *handlers) siteAccount(c *fiber.Ctx) error {
+	accountID, err := h.siteSessionAccountID(c)
+	if err != nil || accountID == "" {
+		return c.Redirect("/login", http.StatusFound)
+	}
+	key, err := ensureAccountAPIKey(accountID, "", "")
+	if err != nil {
+		return c.Status(http.StatusInternalServerError).SendString("failed to load API key")
+	}
+	var name, email, plan, handle string
+	_ = database.DB.QueryRow(
+		`SELECT name, COALESCE(email, ''), plan, COALESCE(handle, '') FROM accounts WHERE id = ?1`,
+		accountID,
+	).Scan(&name, &email, &plan, &handle)
+	return c.Type("html").SendString(renderAccountPage(accountID, name, email, plan, handle, key.Key))
+}
+
+func (h *handlers) siteLogout(c *fiber.Ctx) error {
+	token := c.Cookies("bt_session")
+	if token != "" {
+		_, _ = database.DB.Exec(
+			`UPDATE account_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ?1`,
+			hashToken(token),
+		)
+	}
+	c.Cookie(&fiber.Cookie{Name: "bt_session", Value: "", Path: "/", MaxAge: -1})
+	return c.Redirect("/", http.StatusFound)
+}
+
+func (h *handlers) createSiteSession(accountID string) (string, error) {
+	token, err := randomOAuthToken("bt_site_")
+	if err != nil {
+		return "", err
+	}
+	_, err = database.DB.Exec(
+		`INSERT INTO account_sessions (token_hash, account_id, expires_at)
+		 VALUES (?1, ?2, ?3)`,
+		hashToken(token), accountID, time.Now().UTC().Add(siteSessionTTL).Format(time.RFC3339),
+	)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (h *handlers) siteSessionAccountID(c *fiber.Ctx) (string, error) {
+	token := c.Cookies("bt_session")
+	if token == "" {
+		return "", sql.ErrNoRows
+	}
+	var accountID, expiresAt, revokedAt string
+	err := database.DB.QueryRow(
+		`SELECT account_id, expires_at, COALESCE(revoked_at, '')
+		   FROM account_sessions
+		  WHERE token_hash = ?1`,
+		hashToken(token),
+	).Scan(&accountID, &expiresAt, &revokedAt)
+	if err != nil {
+		return "", err
+	}
+	exp, _ := time.Parse(time.RFC3339, expiresAt)
+	if revokedAt != "" || time.Now().UTC().After(exp) {
+		return "", sql.ErrNoRows
+	}
+	return accountID, nil
 }
 
 func (h *handlers) oauthCallback(c *fiber.Ctx) error {
@@ -180,7 +316,7 @@ func (h *handlers) oauthCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString("authorization request expired")
 	}
-	profile, err := h.fetchOAuthProfile(provider, c.Query("code"))
+	profile, err := h.fetchOAuthProfile(provider, c.Query("code"), "/oauth/callback/"+provider)
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
@@ -313,8 +449,8 @@ func issueOAuthTokens(c *fiber.Ctx, accountID, clientID, scope, resource string)
 	})
 }
 
-func (h *handlers) providerAuthURL(provider, state string) (string, error) {
-	callback := strings.TrimRight(h.AppBaseURL, "/") + "/oauth/callback/" + provider
+func (h *handlers) providerAuthURL(provider, state, callbackPath string) (string, error) {
+	callback := strings.TrimRight(h.AppBaseURL, "/") + callbackPath
 	switch provider {
 	case "google":
 		if h.GoogleClientID == "" || h.GoogleClientSecret == "" {
@@ -342,27 +478,27 @@ func (h *handlers) providerAuthURL(provider, state string) (string, error) {
 	}
 }
 
-func (h *handlers) fetchOAuthProfile(provider, code string) (oauthProfile, error) {
+func (h *handlers) fetchOAuthProfile(provider, code, callbackPath string) (oauthProfile, error) {
 	if code == "" {
 		return oauthProfile{}, fmt.Errorf("missing provider code")
 	}
 	switch provider {
 	case "google":
-		return h.fetchGoogleProfile(code)
+		return h.fetchGoogleProfile(code, callbackPath)
 	case "github":
-		return h.fetchGitHubProfile(code)
+		return h.fetchGitHubProfile(code, callbackPath)
 	default:
 		return oauthProfile{}, fmt.Errorf("unknown provider")
 	}
 }
 
-func (h *handlers) fetchGoogleProfile(code string) (oauthProfile, error) {
+func (h *handlers) fetchGoogleProfile(code, callbackPath string) (oauthProfile, error) {
 	token, err := exchangeProviderCode("https://oauth2.googleapis.com/token", url.Values{
 		"client_id":     {h.GoogleClientID},
 		"client_secret": {h.GoogleClientSecret},
 		"code":          {code},
 		"grant_type":    {"authorization_code"},
-		"redirect_uri":  {strings.TrimRight(h.AppBaseURL, "/") + "/oauth/callback/google"},
+		"redirect_uri":  {strings.TrimRight(h.AppBaseURL, "/") + callbackPath},
 	})
 	if err != nil {
 		return oauthProfile{}, err
@@ -378,12 +514,12 @@ func (h *handlers) fetchGoogleProfile(code string) (oauthProfile, error) {
 	return oauthProfile{Provider: "google", ProviderUserID: profile.Sub, Email: profile.Email, Name: profile.Name}, nil
 }
 
-func (h *handlers) fetchGitHubProfile(code string) (oauthProfile, error) {
+func (h *handlers) fetchGitHubProfile(code, callbackPath string) (oauthProfile, error) {
 	token, err := exchangeProviderCode("https://github.com/login/oauth/access_token", url.Values{
 		"client_id":     {h.GitHubClientID},
 		"client_secret": {h.GitHubClientSecret},
 		"code":          {code},
-		"redirect_uri":  {strings.TrimRight(h.AppBaseURL, "/") + "/oauth/callback/github"},
+		"redirect_uri":  {strings.TrimRight(h.AppBaseURL, "/") + callbackPath},
 	})
 	if err != nil {
 		return oauthProfile{}, err
@@ -583,6 +719,57 @@ func (h *handlers) renderOAuthLogin(requestID string) string {
   </main>
 </body>
 </html>`
+}
+
+func (h *handlers) renderSiteLogin() string {
+	return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · BotTrade</title></head>
+<body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#fff;">
+  <main style="width:min(420px,calc(100% - 32px));border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:28px;background:#11151a;">
+    <h1 style="margin:0 0 10px;font-size:26px;">Sign in to BotTrade</h1>
+    <p style="line-height:1.5;color:rgba(255,255,255,.72);margin:0 0 20px;">Your account owns your API key, runs, quota, billing, and leaderboard identity.</p>
+    <a href="/auth/login/google" style="display:block;text-align:center;padding:12px 14px;margin-bottom:10px;background:#fff;color:#111;border-radius:6px;text-decoration:none;font-weight:700;">Continue with Google</a>
+    <a href="/auth/login/github" style="display:block;text-align:center;padding:12px 14px;background:#24292f;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">Continue with GitHub</a>
+  </main>
+</body>
+</html>`
+}
+
+func renderAccountPage(accountID, name, email, plan, handle, apiKey string) string {
+	return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Account · BotTrade</title></head>
+<body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;background:#f6f4ef;color:#151719;">
+  <main style="max-width:760px;margin:0 auto;padding:40px 20px;">
+    <a href="/" style="color:#246bfe;text-decoration:none;font-weight:700;">bot/trade</a>
+    <h1 style="font-size:34px;margin:18px 0 8px;">Account</h1>
+    <p style="color:#525866;line-height:1.5;margin:0 0 24px;">Use this API key from REST clients, scripts, agents, and MCP clients that accept bearer tokens.</p>
+    <section style="border:1px solid #d9d4c8;border-radius:8px;background:#fff;padding:22px;margin-bottom:18px;">
+      <div style="font-size:13px;color:#697180;margin-bottom:8px;">Signed in as</div>
+      <div style="font-weight:700;">` + html.EscapeString(displayAccountName(name, email)) + `</div>
+      <div style="font-size:13px;color:#697180;margin-top:4px;">Plan: ` + html.EscapeString(plan) + `</div>
+      <div style="font-size:13px;color:#697180;margin-top:4px;">Account ID: <code>` + html.EscapeString(accountID) + `</code></div>
+    </section>
+    <section style="border:1px solid #d9d4c8;border-radius:8px;background:#fff;padding:22px;">
+      <div style="font-size:13px;color:#697180;margin-bottom:8px;">BotTrade API key</div>
+      <pre style="white-space:pre-wrap;word-break:break-all;background:#101419;color:#f2f4f8;border-radius:6px;padding:14px;font-size:13px;">` + html.EscapeString(apiKey) + `</pre>
+      <p style="font-size:13px;color:#525866;line-height:1.5;">Header format: <code>Authorization: Bearer &lt;api_key&gt;</code> or <code>X-API-Key: &lt;api_key&gt;</code>.</p>
+    </section>
+    <form method="post" action="/logout" style="margin-top:18px;"><button style="border:1px solid #d9d4c8;background:#fff;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer;">Sign out</button></form>
+  </main>
+</body>
+</html>`
+}
+
+func displayAccountName(name, email string) string {
+	if strings.TrimSpace(name) != "" {
+		return name
+	}
+	if strings.TrimSpace(email) != "" {
+		return email
+	}
+	return "BotTrade account"
 }
 
 func oauthParam(c *fiber.Ctx, key string) string {
