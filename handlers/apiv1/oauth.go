@@ -169,7 +169,7 @@ func (h *handlers) oauthLogin(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		MaxAge:   int((10 * time.Minute).Seconds()),
 	})
-	authURL, err := h.providerAuthURL(provider, state, "/oauth/callback/"+provider)
+	authURL, err := h.providerAuthURL(provider, state, "/auth/callback/"+provider)
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
@@ -208,6 +208,9 @@ func (h *handlers) siteProviderLogin(c *fiber.Ctx) error {
 func (h *handlers) siteProviderCallback(c *fiber.Ctx) error {
 	provider := c.Params("provider")
 	state := c.Query("state")
+	if state != "" && state == c.Cookies("bt_oauth_state") {
+		return h.completeOAuthProviderCallback(c, provider, "/auth/callback/"+provider)
+	}
 	if state == "" || state != c.Cookies("bt_site_state") {
 		return c.Status(http.StatusBadRequest).SendString("invalid login state")
 	}
@@ -307,6 +310,10 @@ func (h *handlers) siteSessionAccountID(c *fiber.Ctx) (string, error) {
 
 func (h *handlers) oauthCallback(c *fiber.Ctx) error {
 	provider := c.Params("provider")
+	return h.completeOAuthProviderCallback(c, provider, "/oauth/callback/"+provider)
+}
+
+func (h *handlers) completeOAuthProviderCallback(c *fiber.Ctx, provider, providerCallbackPath string) error {
 	state := c.Query("state")
 	if state == "" || state != c.Cookies("bt_oauth_state") {
 		return c.Status(http.StatusBadRequest).SendString("invalid oauth state")
@@ -316,7 +323,7 @@ func (h *handlers) oauthCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString("authorization request expired")
 	}
-	profile, err := h.fetchOAuthProfile(provider, c.Query("code"), "/oauth/callback/"+provider)
+	profile, err := h.fetchOAuthProfile(provider, c.Query("code"), providerCallbackPath)
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
@@ -707,30 +714,72 @@ func validateRedirectURI(raw string) error {
 func (h *handlers) renderOAuthLogin(requestID string) string {
 	google := "/oauth/login/google?request_id=" + url.QueryEscape(requestID)
 	github := "/oauth/login/github?request_id=" + url.QueryEscape(requestID)
-	return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize BotTrade</title></head>
-<body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#fff;">
-  <main style="width:min(420px,calc(100% - 32px));border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:28px;background:#11151a;">
-    <h1 style="margin:0 0 10px;font-size:26px;">Authorize BotTrade</h1>
-    <p style="line-height:1.5;color:rgba(255,255,255,.72);margin:0 0 20px;">Sign in to connect your BotTrade account. Usage, runs, billing, and leaderboard identity stay attached to that account.</p>
-    <a href="` + html.EscapeString(google) + `" style="display:block;text-align:center;padding:12px 14px;margin-bottom:10px;background:#fff;color:#111;border-radius:6px;text-decoration:none;font-weight:700;">Continue with Google</a>
-    <a href="` + html.EscapeString(github) + `" style="display:block;text-align:center;padding:12px 14px;background:#24292f;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">Continue with GitHub</a>
-  </main>
-</body>
-</html>`
+	return renderAuthPage(
+		"Connect BotTrade",
+		"Sign in once to let your agent run market-simulator scenarios with your BotTrade account.",
+		google,
+		github,
+	)
 }
 
 func (h *handlers) renderSiteLogin() string {
+	return renderAuthPage(
+		"Sign in to BotTrade",
+		"Access your API key, runs, quota, billing, and leaderboard identity.",
+		"/auth/login/google",
+		"/auth/login/github",
+	)
+}
+
+func renderAuthPage(title, copy, googleHref, githubHref string) string {
 	return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · BotTrade</title></head>
-<body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#fff;">
-  <main style="width:min(420px,calc(100% - 32px));border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:28px;background:#11151a;">
-    <h1 style="margin:0 0 10px;font-size:26px;">Sign in to BotTrade</h1>
-    <p style="line-height:1.5;color:rgba(255,255,255,.72);margin:0 0 20px;">Your account owns your API key, runs, quota, billing, and leaderboard identity.</p>
-    <a href="/auth/login/google" style="display:block;text-align:center;padding:12px 14px;margin-bottom:10px;background:#fff;color:#111;border-radius:6px;text-decoration:none;font-weight:700;">Continue with Google</a>
-    <a href="/auth/login/github" style="display:block;text-align:center;padding:12px 14px;background:#24292f;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">Continue with GitHub</a>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>` + html.EscapeString(title) + ` · BotTrade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--bg:#fff;--bg-2:#f5f5f5;--ink:#0a0a0a;--ink-2:#2a2a2a;--ink-3:#6a6a6a;--rule:#0a0a0a;--rule-2:#d8d8d8;--accent:#ff6a00;--accent-soft:#fff1e6}
+*{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.topbar{border-bottom:1px solid var(--rule);padding:14px 32px;display:flex;align-items:center;gap:28px}
+.brand{font-weight:700;font-size:18px;letter-spacing:-.5px;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink)}
+.dot{width:8px;height:8px;background:var(--accent);border-radius:50%;display:inline-block}.slash{color:var(--ink-3);font-weight:400}.crumbs{font-size:13px;color:var(--ink-3)}.crumbs .here{color:var(--ink);font-weight:500}
+.wrap{max-width:1120px;margin:0 auto;padding:0 32px 80px}
+.auth{min-height:calc(100vh - 56px);display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:48px;align-items:center;padding:54px 0}
+.kicker{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--ink-3);margin-bottom:14px}.kicker span{background:var(--accent);color:#fff;padding:2px 8px;border-radius:3px;letter-spacing:1px}
+h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0 16px;max-width:720px}h1 em{color:var(--accent);font-style:italic}
+.lede{font-size:17px;color:var(--ink-2);max-width:620px;line-height:1.55;margin:0}.panel{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:24px}
+.panel h2{font-size:22px;line-height:1.1;margin:0 0 8px;letter-spacing:-.5px}.panel p{color:var(--ink-3);margin:0 0 20px;line-height:1.5}
+.auth-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:46px;border-radius:6px;border:1px solid var(--rule);text-decoration:none;font-weight:700;color:var(--ink);background:#fff;margin-bottom:10px}
+.auth-btn:hover{border-color:var(--accent);color:var(--accent)}.auth-btn.github{background:var(--ink);color:#fff}.auth-btn.github:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.fine{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);padding-top:12px;border-top:1px solid var(--rule-2);margin-top:16px}
+@media (max-width:860px){.topbar{padding:14px 20px}.wrap{padding:0 20px 48px}.auth{grid-template-columns:1fr;gap:28px;align-items:start;padding:36px 0}h1{font-size:44px}.panel{padding:20px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand"><span class="dot"></span>bot<span class="slash">/</span>trade</a>
+    <div class="crumbs"><span class="here">Account</span></div>
+  </header>
+  <main class="wrap">
+    <section class="auth">
+      <div>
+        <div class="kicker"><span>Live</span> deterministic simulator</div>
+        <h1>` + html.EscapeString(title) + ` for <em>agent runs.</em></h1>
+        <p class="lede">` + html.EscapeString(copy) + ` Usage, runs, billing, and leaderboard identity stay attached to your BotTrade account.</p>
+      </div>
+      <div class="panel">
+        <h2>Continue</h2>
+        <p>Choose a provider to access your BotTrade account.</p>
+        <a class="auth-btn" href="` + html.EscapeString(googleHref) + `">Continue with Google</a>
+        <a class="auth-btn github" href="` + html.EscapeString(githubHref) + `">Continue with GitHub</a>
+        <div class="fine">MCP clients connect through mcp.bot-trade.org. This page is for human sign-in.</div>
+      </div>
+    </section>
   </main>
 </body>
 </html>`
