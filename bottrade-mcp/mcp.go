@@ -161,7 +161,8 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		}
 		if status["status"] != "connected" && !s.session.LoginShown {
 			s.auth.store.MarkLoginShown(s.session.ID)
-			return toolOK("Open login_url, then call connect_bottrade again.", status), nil
+			loginURL, _ := status["login_url"].(string)
+			return toolOK("Open this URL: "+loginURL, status), nil
 		}
 		if args.WaitSeconds > 0 {
 			if args.WaitSeconds > 120 {
@@ -182,7 +183,8 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if status["status"] == "connected" {
 			return toolOK("Connected.", status), nil
 		}
-		return toolOK("Open login_url, then call connect_bottrade again.", status), nil
+		loginURL, _ := status["login_url"].(string)
+		return toolOK("Open this URL: "+loginURL, status), nil
 	case "list_scenarios":
 		scenarios, err := s.client.ListScenarios(ctx)
 		if err != nil {

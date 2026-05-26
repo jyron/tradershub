@@ -63,6 +63,21 @@ func (s *SessionStore) GetOrCreate(id string) *MCPSession {
 	return sess
 }
 
+func (s *SessionStore) Get(id string) *MCPSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	if sess := s.sessions[id]; sess != nil {
+		if now.Sub(sess.UpdatedAt) > authSessionTTL {
+			delete(s.sessions, id)
+			return nil
+		}
+		sess.UpdatedAt = now
+		return sess
+	}
+	return nil
+}
+
 func (s *SessionStore) ByState(state string) *MCPSession {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,7 +182,7 @@ func (o *OAuthBridge) Start(ctx context.Context, sess *MCPSession) (map[string]a
 	q.Set("code_challenge_method", "S256")
 	loginURL := o.apiBase + "/oauth/authorize?" + q.Encode()
 	o.store.SetPending(sess.ID, state, verifier, loginURL)
-	return map[string]any{"status": "pending", "login_url": loginURL}, nil
+	return map[string]any{"status": "pending", "login_url": o.publicURL + "/connect/" + url.PathEscape(sess.ID)}, nil
 }
 
 func (o *OAuthBridge) Complete(ctx context.Context, code, state string) error {

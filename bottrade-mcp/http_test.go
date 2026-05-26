@@ -56,8 +56,11 @@ func TestHTTPMCPConnectReturnsAuthorizeURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	loginURL, _ := resp.Result.StructuredContent.(map[string]any)["login_url"].(string)
-	if !strings.Contains(loginURL, "/oauth/authorize") {
+	if !strings.Contains(loginURL, "/connect/") {
 		t.Fatalf("login_url = %#v", loginURL)
+	}
+	if !strings.Contains(resp.Result.Content[0].Text, loginURL) {
+		t.Fatalf("text did not include login URL: %#v", resp.Result.Content[0].Text)
 	}
 	if rec.Header().Get("Mcp-Session-Id") == "" {
 		t.Fatal("missing Mcp-Session-Id")
@@ -86,7 +89,7 @@ func TestHTTPMCPProtectedToolRequiresAuth(t *testing.T) {
 	if bodyMap["error"] != "auth_required" {
 		t.Fatalf("error = %#v", bodyMap["error"])
 	}
-	if !strings.Contains(bodyMap["login_url"].(string), "/oauth/authorize") {
+	if !strings.Contains(bodyMap["login_url"].(string), "/connect/") {
 		t.Fatalf("login_url = %#v", bodyMap["login_url"])
 	}
 	if rec.Header().Get("Mcp-Session-Id") == "" {
@@ -106,6 +109,37 @@ func TestHTTPMCPInitializeCreatesSession(t *testing.T) {
 	}
 	if rec.Header().Get("Mcp-Session-Id") == "" {
 		t.Fatal("missing Mcp-Session-Id")
+	}
+}
+
+func TestHTTPMCPConnectURLRedirectsToOAuth(t *testing.T) {
+	t.Setenv("BOTTRADE_MCP_OAUTH_CLIENT_ID", "test-client")
+	server := NewHTTPMCPServer("https://bot-trade.org")
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"connect_bottrade","arguments":{}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	var resp struct {
+		Result toolResult `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	loginURL, _ := resp.Result.StructuredContent.(map[string]any)["login_url"].(string)
+	u := strings.TrimPrefix(loginURL, "https://mcp.bot-trade.org")
+	req = httptest.NewRequest(http.MethodGet, u, nil)
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Header().Get("Location"), "/oauth/authorize") {
+		t.Fatalf("Location = %q", rec.Header().Get("Location"))
+	}
+	if !strings.Contains(rec.Header().Get("Location"), "response_type=code") {
+		t.Fatalf("Location missing response_type: %q", rec.Header().Get("Location"))
 	}
 }
 

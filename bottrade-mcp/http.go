@@ -6,6 +6,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -48,6 +49,10 @@ func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/mcp":
 		s.handleMCP(w, r)
 	default:
+		if strings.HasPrefix(r.URL.Path, "/connect/") {
+			s.handleConnect(w, r)
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown endpoint"})
 	}
 }
@@ -162,6 +167,33 @@ func (s *HTTPMCPServer) handleOAuthCallback(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeHTML(w, http.StatusOK, "BotTrade connected. Return to your agent.")
+}
+
+func (s *HTTPMCPServer) handleConnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
+		return
+	}
+	id, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/connect/"))
+	if err != nil || id == "" {
+		writeHTML(w, http.StatusBadRequest, "Invalid BotTrade connect link.")
+		return
+	}
+	session := s.sessions.Get(id)
+	if session == nil {
+		writeHTML(w, http.StatusBadRequest, "BotTrade connect link expired. Ask the agent to connect again.")
+		return
+	}
+	if session.ValidToken() != "" {
+		writeHTML(w, http.StatusOK, "BotTrade connected. Return to your agent.")
+		return
+	}
+	if session.LoginURL == "" {
+		writeHTML(w, http.StatusBadRequest, "BotTrade connect link expired. Ask the agent to connect again.")
+		return
+	}
+	http.Redirect(w, r, session.LoginURL, http.StatusFound)
 }
 
 func writeMCPAuthRequired(w http.ResponseWriter, publicURL, loginURL string) {
