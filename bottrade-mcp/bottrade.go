@@ -331,7 +331,11 @@ func (c *BotTradeClient) do(ctx context.Context, method, relPath string, query u
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if c.apiKey != "" {
-		req.Header.Set("X-API-Key", c.apiKey)
+		if strings.HasPrefix(c.apiKey, "bt_oat_") {
+			req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		} else {
+			req.Header.Set("X-API-Key", c.apiKey)
+		}
 	}
 
 	resp, err := c.http.Do(req)

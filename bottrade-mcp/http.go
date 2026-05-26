@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +13,8 @@ import (
 type HTTPMCPServer struct {
 	baseURL   string
 	publicURL string
+	sessions  *SessionStore
+	auth      *OAuthBridge
 }
 
 func NewHTTPMCPServer(baseURL string) *HTTPMCPServer {
@@ -19,10 +22,14 @@ func NewHTTPMCPServer(baseURL string) *HTTPMCPServer {
 	if publicURL == "" {
 		publicURL = "https://mcp.bot-trade.org"
 	}
-	return &HTTPMCPServer{
+	sessions := NewSessionStore()
+	server := &HTTPMCPServer{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		publicURL: strings.TrimRight(publicURL, "/"),
+		sessions:  sessions,
 	}
+	server.auth = NewOAuthBridge(server.baseURL, server.publicURL, sessions)
+	return server
 }
 
 func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +43,8 @@ func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/.well-known/oauth-protected-resource":
 		s.handleProtectedResourceMetadata(w, r)
+	case "/oauth/callback":
+		s.handleOAuthCallback(w, r)
 	case "/mcp":
 		s.handleMCP(w, r)
 	default:
@@ -75,17 +84,28 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeRPCError(w, nil, -32700, err.Error())
 		return
 	}
+	session := s.sessions.GetOrCreate(r.Header.Get("Mcp-Session-Id"))
+	w.Header().Set("Mcp-Session-Id", session.ID)
 	if len(req.ID) == 0 {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 
 	apiKey := apiKeyFromRequest(r)
+	if apiKey == "" {
+		apiKey = session.ValidToken()
+	}
 	if apiKey == "" && mcpRequestRequiresAuth(req) {
-		writeMCPAuthRequired(w, s.publicURL)
+		loginURL := session.LoginURL
+		if status, err := s.auth.Start(r.Context(), session); err == nil {
+			if url, _ := status["login_url"].(string); url != "" {
+				loginURL = url
+			}
+		}
+		writeMCPAuthRequired(w, s.publicURL, loginURL)
 		return
 	}
-	server := NewMCPServer(NewBotTradeClient(s.baseURL, apiKey))
+	server := NewMCPServerWithAuth(NewBotTradeClient(s.baseURL, apiKey), session, s.auth)
 	resp := server.handle(r.Context(), req)
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -121,13 +141,40 @@ func isPublicTool(name string) bool {
 	}
 }
 
-func writeMCPAuthRequired(w http.ResponseWriter, publicURL string) {
+func (s *HTTPMCPServer) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
+		return
+	}
+	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
+		writeHTML(w, http.StatusBadRequest, "BotTrade auth failed: "+errMsg)
+		return
+	}
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if code == "" || state == "" {
+		writeHTML(w, http.StatusBadRequest, "Missing auth code.")
+		return
+	}
+	if err := s.auth.Complete(r.Context(), code, state); err != nil {
+		writeHTML(w, http.StatusBadRequest, "BotTrade auth failed.")
+		return
+	}
+	writeHTML(w, http.StatusOK, "BotTrade connected. Return to your agent.")
+}
+
+func writeMCPAuthRequired(w http.ResponseWriter, publicURL, loginURL string) {
 	metadataURL := strings.TrimRight(publicURL, "/") + "/.well-known/oauth-protected-resource"
 	w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`", scope="bottrade:trade"`)
-	writeJSON(w, http.StatusUnauthorized, map[string]any{
+	if loginURL == "" {
+		loginURL = "https://bot-trade.org/login"
+	}
+	body := map[string]any{
 		"error":     "auth_required",
-		"login_url": "https://bot-trade.org/login",
-	})
+		"login_url": loginURL,
+	}
+	writeJSON(w, http.StatusUnauthorized, body)
 }
 
 func apiKeyFromRequest(r *http.Request) string {
@@ -154,6 +201,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeHTML(w http.ResponseWriter, status int, text string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>BotTrade</title><body style="font-family:system-ui,sans-serif;padding:40px;line-height:1.4"><h1 style="font-size:24px">` + html.EscapeString(text) + `</h1></body>`))
 }
 
 func writeRPCError(w http.ResponseWriter, id any, code int, message string) {

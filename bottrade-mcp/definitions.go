@@ -11,7 +11,9 @@ func tools() []tool {
 		{
 			Name:        "connect_bottrade",
 			Description: "Connect BotTrade.",
-			InputSchema: objectSchema(map[string]any{}, nil),
+			InputSchema: objectSchema(map[string]any{
+				"wait_seconds": integerSchema("Wait for auth.", 0),
+			}, nil),
 		},
 		{
 			Name:        "list_scenarios",

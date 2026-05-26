@@ -38,7 +38,34 @@ func TestHTTPMCPToolList(t *testing.T) {
 	}
 }
 
+func TestHTTPMCPConnectReturnsAuthorizeURL(t *testing.T) {
+	t.Setenv("BOTTRADE_MCP_OAUTH_CLIENT_ID", "test-client")
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"connect_bottrade","arguments":{}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	NewHTTPMCPServer("https://bot-trade.org").ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Result toolResult `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	loginURL, _ := resp.Result.StructuredContent.(map[string]any)["login_url"].(string)
+	if !strings.Contains(loginURL, "/oauth/authorize") {
+		t.Fatalf("login_url = %#v", loginURL)
+	}
+	if rec.Header().Get("Mcp-Session-Id") == "" {
+		t.Fatal("missing Mcp-Session-Id")
+	}
+}
+
 func TestHTTPMCPProtectedToolRequiresAuth(t *testing.T) {
+	t.Setenv("BOTTRADE_MCP_OAUTH_CLIENT_ID", "test-client")
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"start_run","arguments":{"scenario_slug":"sandbox-nov-2024"}}}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -58,6 +85,27 @@ func TestHTTPMCPProtectedToolRequiresAuth(t *testing.T) {
 	}
 	if bodyMap["error"] != "auth_required" {
 		t.Fatalf("error = %#v", bodyMap["error"])
+	}
+	if !strings.Contains(bodyMap["login_url"].(string), "/oauth/authorize") {
+		t.Fatalf("login_url = %#v", bodyMap["login_url"])
+	}
+	if rec.Header().Get("Mcp-Session-Id") == "" {
+		t.Fatal("missing Mcp-Session-Id")
+	}
+}
+
+func TestHTTPMCPInitializeCreatesSession(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	NewHTTPMCPServer("https://bot-trade.org").ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Mcp-Session-Id") == "" {
+		t.Fatal("missing Mcp-Session-Id")
 	}
 }
 

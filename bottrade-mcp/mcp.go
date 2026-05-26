@@ -7,16 +7,23 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 const protocolVersion = "2025-06-18"
 
 type MCPServer struct {
-	client *BotTradeClient
+	client  *BotTradeClient
+	session *MCPSession
+	auth    *OAuthBridge
 }
 
 func NewMCPServer(client *BotTradeClient) *MCPServer {
 	return &MCPServer{client: client}
+}
+
+func NewMCPServerWithAuth(client *BotTradeClient, session *MCPSession, auth *OAuthBridge) *MCPServer {
+	return &MCPServer{client: client, session: session, auth: auth}
 }
 
 type request struct {
@@ -139,10 +146,39 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 
 	switch p.Name {
 	case "connect_bottrade":
-		return toolOK("Auth required. Connect BotTrade.", map[string]any{
-			"status":    "auth_required",
-			"login_url": "https://bot-trade.org/login",
-		}), nil
+		var args struct {
+			WaitSeconds int `json:"wait_seconds"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		if s.auth == nil || s.session == nil {
+			return toolOK("Auth required.", map[string]any{"status": "auth_required"}), nil
+		}
+		status, err := s.auth.Start(ctx, s.session)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		if args.WaitSeconds > 0 {
+			if args.WaitSeconds > 120 {
+				args.WaitSeconds = 120
+			}
+			deadline := time.Now().Add(time.Duration(args.WaitSeconds) * time.Second)
+			for s.session.ValidToken() == "" && time.Now().Before(deadline) {
+				select {
+				case <-ctx.Done():
+					return toolErr(ctx.Err()), nil
+				case <-time.After(time.Second):
+				}
+			}
+			if s.session.ValidToken() != "" {
+				return toolOK("Connected.", map[string]any{"status": "connected"}), nil
+			}
+		}
+		if status["status"] == "connected" {
+			return toolOK("Connected.", status), nil
+		}
+		return toolOK("Open login_url, then call connect_bottrade again.", status), nil
 	case "list_scenarios":
 		scenarios, err := s.client.ListScenarios(ctx)
 		if err != nil {
