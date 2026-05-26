@@ -139,13 +139,15 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 
 	switch p.Name {
 	case "connect_bottrade":
-		return toolOK("Connect BotTrade to continue. Sign in at https://bot-trade.org/login, then retry the protected BotTrade action.", map[string]any{
-			"status":                "authorization_required",
-			"authorization_server":  "https://bot-trade.org",
-			"login_url":             "https://bot-trade.org/login",
-			"mcp_url":               "https://mcp.bot-trade.org/mcp",
-			"resource_metadata_url": "https://mcp.bot-trade.org/.well-known/oauth-protected-resource",
-			"scope":                 "bottrade:trade",
+		return toolOK("Connect BotTrade to continue. Use the MCP client's Connect or Authorize button. If you need a browser sign-in page, open https://bot-trade.org/login. Do not open the MCP endpoint in a browser.", map[string]any{
+			"status":      "authorization_required",
+			"login_url":   "https://bot-trade.org/login",
+			"account_url": "https://bot-trade.org/account",
+			"instructions": []string{
+				"Use the MCP client's Connect or Authorize button for BotTrade.",
+				"Use https://bot-trade.org/login only as the human sign-in page.",
+				"Do not send users to https://mcp.bot-trade.org/mcp in a browser; it is the agent protocol endpoint.",
+			},
 		}), nil
 	case "list_scenarios":
 		scenarios, err := s.client.ListScenarios(ctx)

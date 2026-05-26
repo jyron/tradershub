@@ -61,6 +61,27 @@ func TestHTTPMCPProtectedToolRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestHTTPMCPGetExplainsEndpoint(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	rec := httptest.NewRecorder()
+
+	NewHTTPMCPServer("https://bot-trade.org").ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var bodyMap map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &bodyMap); err != nil {
+		t.Fatal(err)
+	}
+	if bodyMap["login_url"] != "https://bot-trade.org/login" {
+		t.Fatalf("login_url = %#v", bodyMap["login_url"])
+	}
+	if !strings.Contains(bodyMap["hint"].(string), "MCP client") {
+		t.Fatalf("hint = %#v", bodyMap["hint"])
+	}
+}
+
 func TestHTTPMCPNotificationAccepted(t *testing.T) {
 	body := []byte(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
