@@ -139,10 +139,9 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 
 	switch p.Name {
 	case "connect_bottrade":
-		return toolOK("BotTrade is not connected in this MCP session. Use the MCP client's Connect or Authorize action for BotTrade. If the client asks for a sign-in page, use https://bot-trade.org/login.", map[string]any{
-			"status":          "authorization_required",
-			"auth_action":     "Use the MCP client's Connect or Authorize action for BotTrade.",
-			"human_login_url": "https://bot-trade.org/login",
+		return toolOK("Auth required. Connect BotTrade.", map[string]any{
+			"status":    "auth_required",
+			"login_url": "https://bot-trade.org/login",
 		}), nil
 	case "list_scenarios":
 		scenarios, err := s.client.ListScenarios(ctx)
@@ -174,7 +173,7 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return toolOK(fmt.Sprintf("Started run %s at %s", run.ID, run.SimTime.Format(timeFormat)), run), nil
+		return toolOK(fmt.Sprintf("Started %s.", run.ID), run), nil
 	case "get_run":
 		var args struct {
 			RunID string `json:"run_id"`
@@ -301,7 +300,7 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return toolOK("Published run to the BotTrade leaderboard.\n"+summarizeResults(results), results), nil
+		return toolOK("Published. "+summarizeResults(results), results), nil
 	default:
 		return nil, fmt.Errorf("unknown tool %q", p.Name)
 	}
@@ -354,9 +353,9 @@ func cleanSymbols(symbols []string) []string {
 
 func summarizeScenarios(scenarios []Scenario) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Found %d BotTrade scenarios.", len(scenarios))
+	fmt.Fprintf(&b, "%d scenarios.", len(scenarios))
 	for _, s := range scenarios {
-		fmt.Fprintf(&b, "\n- %s: %s, %d symbols, %.0fx leverage, shorting=%t", s.Slug, s.Name, len(s.Universe), s.LeverageCap, s.ShortEnabled)
+		fmt.Fprintf(&b, "\n- %s: %s", s.Slug, s.Name)
 	}
 	return b.String()
 }
@@ -367,11 +366,9 @@ func summarizeRun(snap *RunSnapshot) string {
 		equity = snap.LastEquity.Equity
 	}
 	return fmt.Sprintf(
-		"Run %s is %s at %s. Cash %.2f, equity %.2f, positions %d, queued orders %d.",
+		"%s %s. Equity %.2f. Positions %d. Orders %d.",
 		snap.Run.ID,
 		snap.Run.Status,
-		snap.Run.SimTime.Format(timeFormat),
-		snap.Run.Cash,
 		equity,
 		len(snap.Positions),
 		len(snap.QueuedOrders),
@@ -379,29 +376,27 @@ func summarizeRun(snap *RunSnapshot) string {
 }
 
 func summarizeMarket(market *MarketResponse) string {
-	return fmt.Sprintf("Market snapshot at %s for %d symbols.", market.SimTime, len(market.Bars))
+	return fmt.Sprintf("%d symbols.", len(market.Bars))
 }
 
 func summarizeStep(step *StepResult) string {
 	return fmt.Sprintf(
-		"Advanced %d bar(s) to %s. Fills %d, cash %.2f, equity %.2f, done=%t, liquidated=%t.",
+		"Step +%d. Equity %.2f. Fills %d. Done=%t. Liquidated=%t.",
 		step.BarsAdvanced,
-		step.NewSimTime.Format(timeFormat),
-		len(step.Fills),
-		step.NewCash,
 		step.NewEquity,
+		len(step.Fills),
 		step.Done,
 		step.Liquidated,
 	)
 }
 
 func summarizeTurn(result *SubmitTurnResult) string {
-	return fmt.Sprintf("Queued %d order(s). %s", len(result.QueuedOrders), summarizeStep(&result.Step))
+	return fmt.Sprintf("%d orders. %s", len(result.QueuedOrders), summarizeStep(&result.Step))
 }
 
 func summarizeResults(results *RunResults) string {
 	return fmt.Sprintf(
-		"Final equity %.2f, return %.2f%%, trades %d, liquidated=%t.",
+		"Equity %.2f. Return %.2f%%. Trades %d. Liquidated=%t.",
 		results.FinalEquity,
 		results.ReturnPct,
 		results.TradeCount,

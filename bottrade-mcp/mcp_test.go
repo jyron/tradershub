@@ -80,7 +80,7 @@ func TestProtectedToolRequiresAPIKey(t *testing.T) {
 	if !resp.Result.IsError {
 		t.Fatal("expected tool error")
 	}
-	if got := resp.Result.Content[0].Text; !strings.Contains(got, "authentication is required") {
+	if got := resp.Result.Content[0].Text; !strings.Contains(got, "auth required") {
 		t.Fatalf("unexpected error text: %q", got)
 	}
 }

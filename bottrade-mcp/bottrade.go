@@ -303,7 +303,7 @@ func (c *BotTradeClient) PublishRun(ctx context.Context, runID string) (*RunResu
 
 func (c *BotTradeClient) do(ctx context.Context, method, relPath string, query url.Values, body any, out any) error {
 	if c.apiKey == "" && relPath != "/api/v1/scenarios" && !strings.HasPrefix(relPath, "/api/v1/scenarios/") {
-		return fmt.Errorf("authentication is required for %s %s. Connect BotTrade through OAuth for hosted MCP, or set BOTTRADE_API_KEY for local stdio MCP", method, relPath)
+		return fmt.Errorf("auth required")
 	}
 
 	u, err := url.Parse(c.baseURL)

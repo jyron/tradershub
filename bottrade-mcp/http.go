@@ -46,7 +46,7 @@ func (s *HTTPMCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *HTTPMCPServer) handleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "metadata endpoint accepts GET requests"})
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -61,10 +61,7 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{
-			"error":     "This is the BotTrade MCP endpoint for agent clients.",
-			"mcp_url":   s.publicURL + "/mcp",
-			"login_url": "https://bot-trade.org/login",
-			"hint":      "Add the MCP URL inside an MCP client. Use the login URL in a browser.",
+			"error": "POST required",
 		})
 		return
 	}
@@ -128,10 +125,8 @@ func writeMCPAuthRequired(w http.ResponseWriter, publicURL string) {
 	metadataURL := strings.TrimRight(publicURL, "/") + "/.well-known/oauth-protected-resource"
 	w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`", scope="bottrade:trade"`)
 	writeJSON(w, http.StatusUnauthorized, map[string]any{
-		"error":                 "authorization_required",
-		"authorization_server":  "https://bot-trade.org",
-		"resource_metadata_url": metadataURL,
-		"login_url":             "https://bot-trade.org/login",
+		"error":     "auth_required",
+		"login_url": "https://bot-trade.org/login",
 	})
 }
 

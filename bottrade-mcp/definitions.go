@@ -10,24 +10,24 @@ func tools() []tool {
 	return []tool{
 		{
 			Name:        "connect_bottrade",
-			Description: "Show the BotTrade sign-in and OAuth connection details needed before running protected simulator actions.",
+			Description: "Connect BotTrade.",
 			InputSchema: objectSchema(map[string]any{}, nil),
 		},
 		{
 			Name:        "list_scenarios",
-			Description: "List BotTrade market simulator scenarios that an agent can choose from.",
+			Description: "List scenarios.",
 			InputSchema: objectSchema(map[string]any{}, nil),
 		},
 		{
 			Name:        "get_scenario",
-			Description: "Get full metadata for one scenario by slug or id, including universe, leverage, shorting, and date window.",
+			Description: "Get scenario details.",
 			InputSchema: objectSchema(map[string]any{
 				"id_or_slug": stringSchema("Scenario slug or UUID."),
 			}, []string{"id_or_slug"}),
 		},
 		{
 			Name:        "start_run",
-			Description: "Start a new run on a BotTrade scenario. Returns the run id agents use for all later tools.",
+			Description: "Start a run.",
 			InputSchema: objectSchema(map[string]any{
 				"scenario_slug": stringSchema("Scenario slug from list_scenarios."),
 				"bot_name":      stringSchema("Optional bot, strategy, or experiment name."),
@@ -35,74 +35,74 @@ func tools() []tool {
 		},
 		{
 			Name:        "get_run",
-			Description: "Get current run state, open positions, queued orders, and latest equity sample.",
+			Description: "Get run state.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID returned by start_run."),
 			}, []string{"run_id"}),
 		},
 		{
 			Name:        "get_market",
-			Description: "Low-level market bars tool with token-budget guardrails. Prefer scan_market and inspect_symbols for normal scenario runs.",
+			Description: "Get market bars.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id":   stringSchema("Run UUID."),
 				"symbols":  arraySchema(stringSchema("Ticker symbol from the scenario universe."), "Optional symbol subset. Omit only with lookback=1."),
-				"lookback": integerSchema("Bars per symbol. Large raw requests are rejected; use inspect_symbols for focused history.", 1),
+				"lookback": integerSchema("Bars per symbol.", 1),
 			}, []string{"run_id"}),
 		},
 		{
 			Name:        "scan_market",
-			Description: "Low-token scan of the whole scenario universe. Returns compact per-symbol stats, top movers, and suggested symbols to inspect.",
+			Description: "Scan market.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID."),
 			}, []string{"run_id"}),
 		},
 		{
 			Name:        "inspect_symbols",
-			Description: "Fetch detailed bars for a small selected symbol list. Capped at 8 symbols and 120 bars per symbol.",
+			Description: "Inspect symbols.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id":   stringSchema("Run UUID."),
-				"symbols":  arraySchema(stringSchema("Ticker symbol from scan_market suggestions, current positions, or the scenario universe."), "1-8 symbols to inspect."),
-				"lookback": integerSchema("Bars per symbol. Defaults to 30, max 120.", 1),
+				"symbols":  arraySchema(stringSchema("Ticker symbol."), "1-8 symbols."),
+				"lookback": integerSchema("Bars per symbol.", 1),
 			}, []string{"run_id", "symbols"}),
 		},
 		{
 			Name:        "submit_turn",
-			Description: "Queue zero or more trade orders, advance the simulator, and return fills plus new portfolio state.",
+			Description: "Trade and step.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id":     stringSchema("Run UUID."),
-				"trades":     arraySchema(tradeSchema(), "Trade orders to queue before stepping. Use an empty array to do nothing this turn."),
-				"step_count": integerSchema("Number of bars to advance after queuing trades. Defaults to 1.", 1),
+				"trades":     arraySchema(tradeSchema(), "Orders. Empty array means no trade."),
+				"step_count": integerSchema("Bars to advance.", 1),
 			}, []string{"run_id", "trades"}),
 		},
 		{
 			Name:        "submit_decision",
-			Description: "Human-readable trading-loop tool. Submit either action=hold with no orders or action=trade with orders, then advance one simulator turn.",
+			Description: "Submit decision.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id":     stringSchema("Run UUID."),
-				"action":     map[string]any{"type": "string", "enum": []string{"hold", "trade"}, "description": "Use hold for no trades, trade when orders are included."},
-				"rationale":  stringSchema("Short human-readable reason for the decision."),
-				"orders":     arraySchema(tradeSchema(), "Trade orders to queue before stepping. Empty for action=hold."),
-				"step_count": integerSchema("Number of bars to advance after the decision. Defaults to 1.", 1),
+				"action":     map[string]any{"type": "string", "enum": []string{"hold", "trade"}, "description": "hold or trade."},
+				"rationale":  stringSchema("Short reason."),
+				"orders":     arraySchema(tradeSchema(), "Orders."),
+				"step_count": integerSchema("Bars to advance.", 1),
 			}, []string{"run_id", "action", "orders"}),
 		},
 		{
 			Name:        "step_run",
-			Description: "Advance the simulator without queuing new trades.",
+			Description: "Step run.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID."),
-				"count":  integerSchema("Number of bars to advance. Defaults to 1.", 1),
+				"count":  integerSchema("Bars to advance.", 1),
 			}, []string{"run_id"}),
 		},
 		{
 			Name:        "get_results",
-			Description: "Fetch final metrics for a completed, liquidated, or abandoned run.",
+			Description: "Get results.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID."),
 			}, []string{"run_id"}),
 		},
 		{
 			Name:        "publish_run",
-			Description: "Publish a finished run to the public BotTrade leaderboard. Requires explicit confirm=true.",
+			Description: "Publish run.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id":  stringSchema("Run UUID."),
 				"confirm": map[string]any{"type": "boolean", "description": "Must be true to publish."},
@@ -116,13 +116,13 @@ func resources() []map[string]any {
 		{
 			"uri":         "bottrade://agent-guide",
 			"name":        "BotTrade Agent Guide",
-			"description": "How to complete a BotTrade scenario run through MCP tools.",
+			"description": "Run loop.",
 			"mimeType":    "text/markdown",
 		},
 		{
 			"uri":         "bottrade://scenarios",
 			"name":        "BotTrade Scenarios",
-			"description": "Current scenario catalog from the configured BotTrade API.",
+			"description": "Scenario catalog.",
 			"mimeType":    "application/json",
 		},
 	}
@@ -132,11 +132,11 @@ func prompts() []map[string]any {
 	return []map[string]any{
 		{
 			"name":        "trade_bottrade_scenario",
-			"description": "Guide an agent through one complete BotTrade simulator run.",
+			"description": "Run a scenario.",
 			"arguments": []map[string]any{
 				{
 					"name":        "scenario_slug",
-					"description": "Optional scenario slug to trade.",
+					"description": "Scenario slug.",
 					"required":    false,
 				},
 			},
@@ -193,12 +193,12 @@ func (s *MCPServer) getPrompt(params json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("unknown prompt %q", p.Name)
 	}
 	scenario, _ := p.Arguments["scenario_slug"].(string)
-	text := "Trade one BotTrade scenario to completion. Use list_scenarios if no scenario is specified, get_scenario to learn rules, then start_run. If a protected action requires auth, use connect_bottrade and complete BotTrade sign-in. For each turn use get_run, scan_market, inspect_symbols for a small symbol set, and submit_decision. Stop when submit_decision returns done=true or liquidated=true, then call get_results. Only call publish_run if the user explicitly wants the result public. Avoid raw get_market unless the user specifically asks for raw bars."
+	text := "Run one BotTrade scenario. Use list_scenarios, get_scenario, start_run, then loop scan_market, inspect_symbols, submit_decision until done or liquidated. Then get_results. Do not publish unless asked. If auth is required, use connect_bottrade."
 	if scenario != "" {
 		text += "\n\nRequested scenario: " + scenario
 	}
 	return map[string]any{
-		"description": "Complete a BotTrade simulator run.",
+		"description": "Run a BotTrade scenario.",
 		"messages": []map[string]any{{
 			"role": "user",
 			"content": map[string]any{
@@ -246,10 +246,10 @@ func arraySchema(items map[string]any, description string) map[string]any {
 
 func tradeSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"symbol":    stringSchema("Ticker symbol from the scenario universe."),
+		"symbol":    stringSchema("Ticker."),
 		"side":      map[string]any{"type": "string", "enum": []string{"buy", "sell", "short", "cover"}},
-		"quantity":  integerSchema("Whole-share quantity.", 1),
-		"reasoning": stringSchema("Optional rationale recorded with the fill."),
+		"quantity":  integerSchema("Shares.", 1),
+		"reasoning": stringSchema("Reason."),
 	}, []string{"symbol", "side", "quantity"})
 }
 

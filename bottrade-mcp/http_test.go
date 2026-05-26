@@ -56,7 +56,7 @@ func TestHTTPMCPProtectedToolRequiresAuth(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &bodyMap); err != nil {
 		t.Fatal(err)
 	}
-	if bodyMap["error"] != "authorization_required" {
+	if bodyMap["error"] != "auth_required" {
 		t.Fatalf("error = %#v", bodyMap["error"])
 	}
 }
@@ -74,11 +74,8 @@ func TestHTTPMCPGetExplainsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &bodyMap); err != nil {
 		t.Fatal(err)
 	}
-	if bodyMap["login_url"] != "https://bot-trade.org/login" {
-		t.Fatalf("login_url = %#v", bodyMap["login_url"])
-	}
-	if !strings.Contains(bodyMap["hint"].(string), "MCP client") {
-		t.Fatalf("hint = %#v", bodyMap["hint"])
+	if bodyMap["error"] != "POST required" {
+		t.Fatalf("error = %#v", bodyMap["error"])
 	}
 }
 
