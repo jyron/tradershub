@@ -61,11 +61,10 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{
-			"error":       "This is the BotTrade MCP endpoint for agent clients.",
-			"mcp_url":     s.publicURL + "/mcp",
-			"login_url":   "https://bot-trade.org/login",
-			"account_url": "https://bot-trade.org/account",
-			"hint":        "Add the MCP URL inside an MCP client. Use the login URL in a browser.",
+			"error":     "This is the BotTrade MCP endpoint for agent clients.",
+			"mcp_url":   s.publicURL + "/mcp",
+			"login_url": "https://bot-trade.org/login",
+			"hint":      "Add the MCP URL inside an MCP client. Use the login URL in a browser.",
 		})
 		return
 	}
