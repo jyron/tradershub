@@ -60,6 +60,16 @@ func TestMCPHandshakeAndToolList(t *testing.T) {
 	if !hasTool(listResp.Result.Tools, "submit_decision") {
 		t.Fatal("expected submit_decision tool")
 	}
+	var scan tool
+	for _, candidate := range listResp.Result.Tools {
+		if candidate.Name == "scan_market" {
+			scan = candidate
+			break
+		}
+	}
+	if scan.Annotations["readOnlyHint"] != true {
+		t.Fatalf("scan_market readOnlyHint = %#v, want true", scan.Annotations["readOnlyHint"])
+	}
 }
 
 func TestProtectedToolRequiresAPIKey(t *testing.T) {
@@ -104,6 +114,52 @@ func TestRawMarketGuardrails(t *testing.T) {
 		t.Fatal("expected tool error")
 	}
 	if got := resp.Result.Content[0].Text; !strings.Contains(got, "scan_market") {
+		t.Fatalf("unexpected error text: %q", got)
+	}
+}
+
+func TestStepRunRejectsBatchStepping(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"step_run","arguments":{"run_id":"run_123","count":200}}}` + "\n"
+
+	server := NewMCPServer(NewBotTradeClient("https://bot-trade.org", ""))
+	var out bytes.Buffer
+	if err := server.Serve(context.Background(), strings.NewReader(input), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp struct {
+		Result toolResult `json:"result"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Result.IsError {
+		t.Fatal("expected tool error")
+	}
+	if got := resp.Result.Content[0].Text; !strings.Contains(got, "count=1") {
+		t.Fatalf("unexpected error text: %q", got)
+	}
+}
+
+func TestSubmitDecisionRejectsBatchStepping(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit_decision","arguments":{"run_id":"run_123","action":"hold","orders":[],"step_count":200}}}` + "\n"
+
+	server := NewMCPServer(NewBotTradeClient("https://bot-trade.org", ""))
+	var out bytes.Buffer
+	if err := server.Serve(context.Background(), strings.NewReader(input), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp struct {
+		Result toolResult `json:"result"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Result.IsError {
+		t.Fatal("expected tool error")
+	}
+	if got := resp.Result.Content[0].Text; !strings.Contains(got, "count=1") {
 		t.Fatalf("unexpected error text: %q", got)
 	}
 }

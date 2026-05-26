@@ -49,6 +49,7 @@ type tool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
 type content struct {
@@ -281,6 +282,9 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err := parseArgs(p.Arguments, &args); err != nil {
 			return nil, err
 		}
+		if err := validateLoopStepCount("submit_turn", args.StepCount); err != nil {
+			return toolErr(err), nil
+		}
 		result, err := s.client.SubmitTurn(ctx, args.RunID, args.Trades, args.StepCount)
 		if err != nil {
 			return toolErr(err), nil
@@ -297,6 +301,9 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err := parseArgs(p.Arguments, &args); err != nil {
 			return nil, err
 		}
+		if err := validateLoopStepCount("submit_decision", args.StepCount); err != nil {
+			return toolErr(err), nil
+		}
 		result, err := s.client.SubmitDecision(ctx, args.RunID, args.Action, args.Rationale, args.Orders, args.StepCount)
 		if err != nil {
 			return toolErr(err), nil
@@ -309,6 +316,9 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		}
 		if err := parseArgs(p.Arguments, &args); err != nil {
 			return nil, err
+		}
+		if err := validateLoopStepCount("step_run", args.Count); err != nil {
+			return toolErr(err), nil
 		}
 		step, err := s.client.StepRun(ctx, args.RunID, args.Count)
 		if err != nil {
@@ -380,6 +390,19 @@ func rawID(raw json.RawMessage) any {
 		return string(raw)
 	}
 	return id
+}
+
+func validateLoopStepCount(toolName string, count int) error {
+	if count == 0 {
+		return nil
+	}
+	if count < 0 {
+		return fmt.Errorf("%s count must be at least 1", toolName)
+	}
+	if count > 1 {
+		return fmt.Errorf("%s only supports count=1 in MCP; repeat the loop one bar at a time so the bot can observe and trade before the run ends", toolName)
+	}
+	return nil
 }
 
 func cleanSymbols(symbols []string) []string {

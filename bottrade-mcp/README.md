@@ -95,7 +95,9 @@ publish_run, when requested
 `scan_market` gives a compact whole-universe snapshot and suggested symbols to
 inspect. `inspect_symbols` is capped at 8 symbols and 120 bars per symbol.
 `submit_decision` accepts `action=hold` or `action=trade`, advances the
-simulator, and returns the next phase/action.
+simulator by one bar, and returns the next phase/action. The MCP layer rejects
+multi-bar stepping so autonomous agents do not accidentally skip to the end of
+a scenario without trading.
 
 `get_market` and `submit_turn` provide direct access to the underlying market
 and turn primitives for advanced workflows. `get_market` enforces a market-data
