@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -786,6 +787,59 @@ h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0
 }
 
 func renderAccountPage(accountID, name, email, plan, handle, apiKey string) string {
+	upgradeSection := ""
+	script := ""
+	if strings.TrimSpace(strings.ToLower(plan)) == "free" {
+		upgradeSection = `
+    <section style="border:1px solid #d9d4c8;border-radius:8px;background:#fff;padding:22px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:13px;color:#697180;margin-bottom:8px;">Upgrade available</div>
+          <h2 style="font-size:24px;line-height:1.1;margin:0 0 10px;">Move this account to Pro</h2>
+          <p style="color:#525866;line-height:1.6;margin:0;">Get 500 runs per month and a named leaderboard handle for $39/month.</p>
+        </div>
+        <div style="min-width:220px;">
+          <button id="upgrade-pro-btn" style="width:100%;border:1px solid #246bfe;background:#246bfe;color:#fff;border-radius:6px;padding:12px 14px;font-weight:700;cursor:pointer;">Upgrade to Pro</button>
+          <a href="/pricing" style="display:block;text-align:center;margin-top:10px;color:#246bfe;text-decoration:none;font-size:14px;font-weight:600;">See pricing details</a>
+          <p id="upgrade-pro-error" style="display:none;margin:10px 0 0;font-size:13px;line-height:1.5;color:#b42318;"></p>
+        </div>
+      </div>
+    </section>`
+		script = `
+<script>
+(function () {
+  var btn = document.getElementById('upgrade-pro-btn');
+  var errEl = document.getElementById('upgrade-pro-error');
+  if (!btn || !errEl) return;
+
+  function showError(msg) {
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+  }
+
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    errEl.style.display = 'none';
+    fetch('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: {'X-API-Key': ` + strconv.Quote(apiKey) + `}
+    })
+    .then(function (res) { return res.json().then(function (data) { return {ok: res.ok, data: data}; }); })
+    .then(function (result) {
+      if (result.ok && result.data.url) {
+        window.location = result.data.url;
+        return;
+      }
+      showError(result.data.detail || result.data.error || 'Failed to start checkout.');
+    })
+    .catch(function () {
+      showError('Network error.');
+    });
+  });
+}());
+</script>`
+	}
 	return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Account · BotTrade</title></head>
@@ -800,6 +854,7 @@ func renderAccountPage(accountID, name, email, plan, handle, apiKey string) stri
       <div style="font-size:13px;color:#697180;margin-top:4px;">Plan: ` + html.EscapeString(plan) + `</div>
       <div style="font-size:13px;color:#697180;margin-top:4px;">Account ID: <code>` + html.EscapeString(accountID) + `</code></div>
     </section>
+    ` + upgradeSection + `
     <section style="border:1px solid #d9d4c8;border-radius:8px;background:#fff;padding:22px;">
       <div style="font-size:13px;color:#697180;margin-bottom:8px;">BotTrade API key</div>
       <pre style="white-space:pre-wrap;word-break:break-all;background:#101419;color:#f2f4f8;border-radius:6px;padding:14px;font-size:13px;">` + html.EscapeString(apiKey) + `</pre>
@@ -807,6 +862,7 @@ func renderAccountPage(accountID, name, email, plan, handle, apiKey string) stri
     </section>
     <form method="post" action="/logout" style="margin-top:18px;"><button style="border:1px solid #d9d4c8;background:#fff;border-radius:6px;padding:10px 14px;font-weight:700;cursor:pointer;">Sign out</button></form>
   </main>
+` + script + `
 </body>
 </html>`
 }
