@@ -40,7 +40,7 @@ func TestHTTPMCPToolList(t *testing.T) {
 
 func TestHTTPMCPConnectReturnsAuthorizeURL(t *testing.T) {
 	t.Setenv("BOTTRADE_MCP_OAUTH_CLIENT_ID", "test-client")
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"connect_bottrade","arguments":{}}}`)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"connect_bottrade","arguments":{"wait_seconds":120}}}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 

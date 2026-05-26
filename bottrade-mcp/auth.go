@@ -32,6 +32,7 @@ type MCPSession struct {
 	State        string
 	Verifier     string
 	LoginURL     string
+	LoginShown   bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -85,6 +86,16 @@ func (s *SessionStore) SetPending(id, state, verifier, loginURL string) {
 		sess.State = state
 		sess.Verifier = verifier
 		sess.LoginURL = loginURL
+		sess.LoginShown = false
+		sess.UpdatedAt = time.Now().UTC()
+	}
+}
+
+func (s *SessionStore) MarkLoginShown(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sess := s.sessions[id]; sess != nil {
+		sess.LoginShown = true
 		sess.UpdatedAt = time.Now().UTC()
 	}
 }
@@ -99,6 +110,7 @@ func (s *SessionStore) SetToken(id, accessToken, refreshToken string, expiresIn 
 		sess.State = ""
 		sess.Verifier = ""
 		sess.LoginURL = ""
+		sess.LoginShown = false
 		sess.UpdatedAt = time.Now().UTC()
 	}
 }

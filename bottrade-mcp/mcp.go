@@ -159,6 +159,10 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err != nil {
 			return toolErr(err), nil
 		}
+		if status["status"] != "connected" && !s.session.LoginShown {
+			s.auth.store.MarkLoginShown(s.session.ID)
+			return toolOK("Open login_url, then call connect_bottrade again.", status), nil
+		}
 		if args.WaitSeconds > 0 {
 			if args.WaitSeconds > 120 {
 				args.WaitSeconds = 120
