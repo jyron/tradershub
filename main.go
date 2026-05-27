@@ -67,6 +67,7 @@ func main() {
 	// for backwards compatibility with anything that linked to them.
 	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
 	app.Get("/scenarios", func(c *fiber.Ctx) error { return c.SendFile("./static/scenarios.html") })
+	app.Get("/docs", func(c *fiber.Ctx) error { return c.SendFile("./static/docs.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
 	app.Get("/pricing", func(c *fiber.Ctx) error { return c.SendFile("./static/pricing.html") })
 	app.Get("/billing/success", func(c *fiber.Ctx) error { return c.SendFile("./static/billing-success.html") })

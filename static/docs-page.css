@@ -1,0 +1,140 @@
+.docs-hero {
+  padding: 34px 0 20px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.docs-hero h1 {
+  margin: 0;
+  font-size: clamp(38px, 6vw, 64px);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.docs-hero .sub {
+  max-width: 760px;
+  margin: 16px 0 0;
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.docs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.doc-card {
+  display: block;
+  padding: 24px;
+  border-radius: 22px;
+  border: 1px solid var(--rule);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 243, 237, 0.96)),
+    var(--paper);
+  box-shadow: 0 22px 44px rgba(31, 40, 34, 0.08);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.doc-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(13, 148, 136, 0.28);
+  box-shadow: 0 28px 52px rgba(31, 40, 34, 0.1);
+}
+
+.doc-card.accent {
+  background:
+    linear-gradient(155deg, rgba(13, 148, 136, 0.14), rgba(255, 255, 255, 0.96) 55%),
+    var(--paper);
+}
+
+.doc-card .kicker {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.doc-card h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.doc-card p {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+.doc-card .cta {
+  display: inline-block;
+  margin-top: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.docs-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.mini-card {
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.mini-kicker {
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mini-card code,
+.mini-card a,
+.mini-card p {
+  display: block;
+  margin: 8px 0 0;
+}
+
+.mini-card a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.mini-card p {
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+@media (max-width: 980px) {
+  .docs-grid,
+  .docs-strip {
+    grid-template-columns: 1fr;
+  }
+}
