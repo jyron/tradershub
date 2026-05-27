@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -146,6 +147,9 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 	}
 
 	switch p.Name {
+	case "auth_status":
+		status := s.authStatus()
+		return toolOK("Auth status: "+status["status"].(string)+".", status), nil
 	case "connect_bottrade":
 		var args struct {
 			WaitSeconds int `json:"wait_seconds"`
@@ -154,7 +158,7 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 			return nil, err
 		}
 		if s.auth == nil || s.session == nil {
-			return toolOK("Auth required.", map[string]any{"status": "auth_required"}), nil
+			return toolOK("Auth required.", authRequiredPayload("")), nil
 		}
 		status, err := s.auth.Start(ctx, s.session)
 		if err != nil {
@@ -178,11 +182,11 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 				}
 			}
 			if s.session.ValidToken() != "" {
-				return toolOK("Connected.", map[string]any{"status": "connected"}), nil
+				return toolOK("Connected.", s.authStatus()), nil
 			}
 		}
 		if status["status"] == "connected" {
-			return toolOK("Connected.", status), nil
+			return toolOK("Connected.", s.authStatus()), nil
 		}
 		loginURL, _ := status["login_url"].(string)
 		return toolOK("Open this URL: "+loginURL, status), nil
@@ -325,6 +329,60 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 			return toolErr(err), nil
 		}
 		return toolOK(summarizeStep(step), step), nil
+	case "advance_until_next_session":
+		var args struct {
+			RunID   string `json:"run_id"`
+			MaxBars int    `json:"max_bars"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		result, err := s.client.AdvanceUntilNextSession(ctx, args.RunID, args.MaxBars)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return toolOK(result.HumanSummary, result), nil
+	case "hold_until_end":
+		var args struct {
+			RunID       string `json:"run_id"`
+			MaxBars     int    `json:"max_bars"`
+			RequireFlat bool   `json:"require_flat"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		result, err := s.client.HoldUntilEnd(ctx, args.RunID, args.MaxBars, args.RequireFlat)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return toolOK(result.HumanSummary, result), nil
+	case "liquidate_and_finish":
+		var args struct {
+			RunID     string `json:"run_id"`
+			Rationale string `json:"rationale"`
+			MaxBars   int    `json:"max_bars"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		result, err := s.client.LiquidateAndFinish(ctx, args.RunID, args.Rationale, args.MaxBars)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return toolOK(result.HumanSummary, result), nil
+	case "run_sandbox_smoke_test":
+		var args struct {
+			ScenarioSlug string `json:"scenario_slug"`
+			BotName      string `json:"bot_name"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		result, err := s.client.RunSandboxSmokeTest(ctx, args.ScenarioSlug, args.BotName)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return toolOK(result.HumanSummary, result), nil
 	case "get_results":
 		var args struct {
 			RunID string `json:"run_id"`
@@ -332,11 +390,23 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if err := parseArgs(p.Arguments, &args); err != nil {
 			return nil, err
 		}
-		results, err := s.client.GetResults(ctx, args.RunID)
+		results, err := s.client.GetResultsDetail(ctx, args.RunID)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return toolOK(summarizeResults(results), results), nil
+		return toolOK(results.HumanSummary, results), nil
+	case "get_trades":
+		var args struct {
+			RunID string `json:"run_id"`
+		}
+		if err := parseArgs(p.Arguments, &args); err != nil {
+			return nil, err
+		}
+		trades, err := s.client.GetTrades(ctx, args.RunID)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return toolOK(fmt.Sprintf("%d filled trade(s).", len(trades)), map[string]any{"run_id": args.RunID, "trades": trades}), nil
 	case "publish_run":
 		var args struct {
 			RunID   string `json:"run_id"`
@@ -348,11 +418,11 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		if !args.Confirm {
 			return toolErr(fmt.Errorf("publish_run requires confirm=true")), nil
 		}
-		results, err := s.client.PublishRun(ctx, args.RunID)
+		result, err := s.client.PublishRun(ctx, args.RunID)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return toolOK("Published. "+summarizeResults(results), results), nil
+		return toolOK("Published. "+summarizeResults(&result.Results)+" Public URL: "+result.PublicURL, result), nil
 	default:
 		return nil, fmt.Errorf("unknown tool %q", p.Name)
 	}
@@ -368,10 +438,66 @@ func toolOK(summary string, structured any) toolResult {
 }
 
 func toolErr(err error) toolResult {
+	var authErr *AuthRequiredError
+	if errors.As(err, &authErr) {
+		return toolResult{
+			Content:           []content{{Type: "text", Text: authErr.Error()}},
+			StructuredContent: authRequiredPayload(authErr.LoginURL),
+			IsError:           true,
+		}
+	}
 	return toolResult{
 		Content: []content{{Type: "text", Text: err.Error()}},
 		IsError: true,
 	}
+}
+
+func authRequiredPayload(loginURL string) map[string]any {
+	payload := map[string]any{
+		"error":        "auth_required",
+		"status":       "auth_required",
+		"next_action":  "connect_bottrade",
+		"scope":        "bottrade:trade",
+		"auth_methods": []string{"oauth", "authorization_bearer", "x_api_key", "BOTTRADE_API_KEY"},
+		"message":      "Call connect_bottrade to start OAuth, reuse the returned Mcp-Session-Id after sign-in, or provide a BotTrade API key as Authorization: Bearer or X-API-Key.",
+	}
+	if loginURL != "" {
+		payload["login_url"] = loginURL
+	}
+	return payload
+}
+
+func (s *MCPServer) authStatus() map[string]any {
+	if s.client != nil && strings.TrimSpace(s.client.apiKey) != "" {
+		return map[string]any{
+			"status":      "connected",
+			"auth_method": "api_key_or_bearer",
+		}
+	}
+	if s.session != nil {
+		if token := s.session.ValidToken(); token != "" {
+			return map[string]any{
+				"status":      "connected",
+				"auth_method": "oauth",
+				"expires_at":  s.session.ExpiresAt.Format(time.RFC3339),
+			}
+		}
+		if s.session.LoginURL != "" {
+			loginURL := s.session.LoginURL
+			if s.auth != nil {
+				loginURL = strings.TrimRight(s.auth.publicURL, "/") + "/connect/" + s.session.ID
+			}
+			return map[string]any{
+				"status":      "pending",
+				"auth_method": "oauth",
+				"login_url":   loginURL,
+				"next_action": "open_login_url",
+			}
+		}
+	}
+	status := authRequiredPayload("")
+	status["auth_method"] = "none"
+	return status
 }
 
 func parseArgs(raw json.RawMessage, out any) error {

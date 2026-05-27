@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
+	"time"
 )
 
 const (
-	defaultScanLookback    = 8
-	defaultInspectLookback = 30
-	maxInspectSymbols      = 8
-	maxInspectLookback     = 120
-	maxRawMarketRows       = 500
+	defaultScanLookback     = 8
+	defaultInspectLookback  = 30
+	maxInspectSymbols       = 8
+	maxInspectLookback      = 120
+	maxRawMarketRows        = 500
+	defaultNextSessionBars  = 32
+	defaultHoldUntilEndBars = 256
+	maxAutonomousHoldBars   = 500
 )
 
 type DataBudget struct {
@@ -35,11 +40,16 @@ type ScanMarketResult struct {
 }
 
 type ScanSymbol struct {
-	Symbol          string  `json:"symbol"`
-	Close           float64 `json:"close"`
-	BarReturnPct    float64 `json:"bar_return_pct,omitempty"`
-	WindowReturnPct float64 `json:"window_return_pct,omitempty"`
-	Volume          int64   `json:"volume"`
+	Symbol              string  `json:"symbol"`
+	Close               float64 `json:"close"`
+	BarReturnPct        float64 `json:"bar_return_pct"`
+	WindowReturnPct     float64 `json:"window_return_pct"`
+	Volume              int64   `json:"volume"`
+	PositionQty         int     `json:"position_qty"`
+	PositionAvgCost     float64 `json:"position_avg_cost"`
+	PositionMarketValue float64 `json:"position_market_value"`
+	UnrealizedPnL       float64 `json:"unrealized_pnl"`
+	ExposurePct         float64 `json:"exposure_pct"`
 }
 
 type InspectSymbolsResult struct {
@@ -65,6 +75,52 @@ type SubmitDecisionResult struct {
 	HumanSummary    string          `json:"human_summary"`
 }
 
+type AdvanceRunResult struct {
+	Phase          string       `json:"phase"`
+	NextAction     string       `json:"next_action"`
+	RunID          string       `json:"run_id"`
+	Mode           string       `json:"mode"`
+	InitialSimTime string       `json:"initial_sim_time"`
+	FinalSimTime   string       `json:"final_sim_time"`
+	StepsSubmitted int          `json:"steps_submitted"`
+	BarsAdvanced   int          `json:"bars_advanced"`
+	FinalEquity    float64      `json:"final_equity"`
+	FinalCash      float64      `json:"final_cash"`
+	PositionsValue float64      `json:"positions_value"`
+	Done           bool         `json:"done"`
+	Liquidated     bool         `json:"liquidated"`
+	ReachedLimit   bool         `json:"reached_limit"`
+	Snapshot       *RunSnapshot `json:"snapshot,omitempty"`
+	HumanSummary   string       `json:"human_summary"`
+}
+
+type LiquidateAndFinishResult struct {
+	Phase        string            `json:"phase"`
+	NextAction   string            `json:"next_action"`
+	RunID        string            `json:"run_id"`
+	ExitOrders   []TradeOrder      `json:"exit_orders"`
+	ExitQueued   []QueuedOrder     `json:"exit_queued"`
+	ExitStep     *StepResult       `json:"exit_step,omitempty"`
+	Advance      *AdvanceRunResult `json:"advance,omitempty"`
+	Snapshot     *RunSnapshot      `json:"snapshot,omitempty"`
+	HumanSummary string            `json:"human_summary"`
+}
+
+type SandboxSmokeTestResult struct {
+	Phase               string                `json:"phase"`
+	NextAction          string                `json:"next_action"`
+	RunID               string                `json:"run_id"`
+	ScenarioSlug        string                `json:"scenario_slug"`
+	Run                 *Run                  `json:"run"`
+	ScanSimTime         string                `json:"scan_sim_time"`
+	TopMovers           []string              `json:"top_movers"`
+	SuggestedInspection []string              `json:"suggested_inspection"`
+	DataBudget          DataBudget            `json:"data_budget"`
+	Decision            *SubmitDecisionResult `json:"decision"`
+	Published           bool                  `json:"published"`
+	HumanSummary        string                `json:"human_summary"`
+}
+
 func (c *BotTradeClient) ScanMarket(ctx context.Context, runID string) (*ScanMarketResult, error) {
 	snap, err := c.GetRun(ctx, runID)
 	if err != nil {
@@ -79,6 +135,11 @@ func (c *BotTradeClient) ScanMarket(ctx context.Context, runID string) (*ScanMar
 		return nil, err
 	}
 
+	positions := positionMap(snap.Positions)
+	equity := snap.Run.Cash
+	if snap.LastEquity != nil && snap.LastEquity.Equity != 0 {
+		equity = snap.LastEquity.Equity
+	}
 	rows := make([]ScanSymbol, 0, len(market.Bars))
 	for _, symbol := range scenario.Universe {
 		bars := market.Bars[symbol]
@@ -90,6 +151,15 @@ func (c *BotTradeClient) ScanMarket(ctx context.Context, runID string) (*ScanMar
 			Symbol: symbol,
 			Close:  latest.Close,
 			Volume: latest.Volume,
+		}
+		if pos, ok := positions[symbol]; ok {
+			row.PositionQty = pos.Quantity
+			row.PositionAvgCost = pos.AvgCost
+			row.PositionMarketValue = float64(pos.Quantity) * latest.Close
+			row.UnrealizedPnL = unrealizedPnL(pos, latest.Close)
+			if equity != 0 {
+				row.ExposurePct = row.PositionMarketValue / equity * 100
+			}
 		}
 		if len(bars) >= 2 {
 			prev := bars[len(bars)-2]
@@ -206,6 +276,113 @@ func (c *BotTradeClient) SubmitDecision(ctx context.Context, runID, action, rati
 	}, nil
 }
 
+func (c *BotTradeClient) AdvanceUntilNextSession(ctx context.Context, runID string, maxBars int) (*AdvanceRunResult, error) {
+	return c.advanceWithoutTrades(ctx, runID, advanceOptions{
+		mode:          "next_session",
+		maxBars:       normalizeMaxBars(maxBars, defaultNextSessionBars),
+		stopOnNewDate: true,
+	})
+}
+
+func (c *BotTradeClient) HoldUntilEnd(ctx context.Context, runID string, maxBars int, requireFlat bool) (*AdvanceRunResult, error) {
+	return c.advanceWithoutTrades(ctx, runID, advanceOptions{
+		mode:        "hold_until_end",
+		maxBars:     normalizeMaxBars(maxBars, defaultHoldUntilEndBars),
+		requireFlat: requireFlat,
+	})
+}
+
+func (c *BotTradeClient) LiquidateAndFinish(ctx context.Context, runID, rationale string, maxBars int) (*LiquidateAndFinishResult, error) {
+	snap, err := c.GetRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if snap.Run.Status != "active" {
+		result := &LiquidateAndFinishResult{
+			Phase:        "completed",
+			NextAction:   "get_results",
+			RunID:        runID,
+			Snapshot:     snap,
+			HumanSummary: "Run is already finished; no liquidation orders were queued. Next: get_results.",
+		}
+		return result, nil
+	}
+
+	exitOrders := flattenOrders(snap.Positions, rationale)
+	if rationale == "" {
+		rationale = "Flatten existing positions before finishing the run."
+	}
+	result := &LiquidateAndFinishResult{
+		Phase:      "trading",
+		NextAction: "hold_until_end",
+		RunID:      runID,
+		ExitOrders: exitOrders,
+		Snapshot:   snap,
+	}
+	if len(exitOrders) > 0 {
+		turn, err := c.SubmitTurn(ctx, runID, exitOrders, 1)
+		if err != nil {
+			return nil, err
+		}
+		result.ExitQueued = turn.QueuedOrders
+		result.ExitStep = &turn.Step
+		result.Snapshot = turn.Snapshot
+		if turn.Step.Done || turn.Step.Liquidated {
+			result.Phase = "completed"
+			result.NextAction = "get_results"
+			result.HumanSummary = fmt.Sprintf("Flattened with %d exit order(s). %s Next: get_results.", len(exitOrders), summarizeStep(&turn.Step))
+			return result, nil
+		}
+	}
+
+	advance, err := c.HoldUntilEnd(ctx, runID, maxBars, true)
+	if err != nil {
+		return nil, err
+	}
+	result.Advance = advance
+	result.Snapshot = advance.Snapshot
+	result.Phase = advance.Phase
+	result.NextAction = advance.NextAction
+	result.HumanSummary = fmt.Sprintf("Flattened with %d exit order(s), then held cash. %s", len(exitOrders), advance.HumanSummary)
+	return result, nil
+}
+
+func (c *BotTradeClient) RunSandboxSmokeTest(ctx context.Context, scenarioSlug, botName string) (*SandboxSmokeTestResult, error) {
+	if strings.TrimSpace(scenarioSlug) == "" {
+		scenarioSlug = "sandbox-nov-2024"
+	}
+	if strings.TrimSpace(botName) == "" {
+		botName = "MCP sandbox smoke test"
+	}
+	run, err := c.StartRun(ctx, scenarioSlug, botName)
+	if err != nil {
+		return nil, err
+	}
+	scan, err := c.ScanMarket(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	decision, err := c.SubmitDecision(ctx, run.ID, "hold", "MCP smoke test hold; no strategy decision.", nil, 1)
+	if err != nil {
+		return nil, err
+	}
+	result := &SandboxSmokeTestResult{
+		Phase:               decision.Phase,
+		NextAction:          decision.NextAction,
+		RunID:               run.ID,
+		ScenarioSlug:        scenarioSlug,
+		Run:                 run,
+		ScanSimTime:         scan.SimTime,
+		TopMovers:           scan.TopMovers,
+		SuggestedInspection: scan.SuggestedInspection,
+		DataBudget:          scan.DataBudget,
+		Decision:            decision,
+		Published:           false,
+		HumanSummary:        fmt.Sprintf("Sandbox smoke test created run %s, scanned %d symbols, submitted one hold step, and did not publish. Next: %s.", run.ID, scan.DataBudget.SymbolsReturned, decision.NextAction),
+	}
+	return result, nil
+}
+
 func GuardRawMarketRequest(symbolCount, lookback int, symbolsOmitted bool) error {
 	if lookback <= 0 {
 		lookback = 50
@@ -221,6 +398,183 @@ func GuardRawMarketRequest(symbolCount, lookback int, symbolsOmitted bool) error
 		return fmt.Errorf("raw get_market request is too large (%d estimated rows, max %d); use scan_market then inspect_symbols", estimated, maxRawMarketRows)
 	}
 	return nil
+}
+
+type advanceOptions struct {
+	mode          string
+	maxBars       int
+	stopOnNewDate bool
+	requireFlat   bool
+}
+
+func (c *BotTradeClient) advanceWithoutTrades(ctx context.Context, runID string, opts advanceOptions) (*AdvanceRunResult, error) {
+	if opts.maxBars <= 0 {
+		opts.maxBars = defaultHoldUntilEndBars
+	}
+	if opts.maxBars > maxAutonomousHoldBars {
+		opts.maxBars = maxAutonomousHoldBars
+	}
+	snap, err := c.GetRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if opts.requireFlat && hasOpenPositions(snap.Positions) {
+		return nil, fmt.Errorf("%s requires a flat portfolio; use liquidate_and_finish or set require_flat=false", opts.mode)
+	}
+	if len(snap.QueuedOrders) > 0 {
+		return nil, fmt.Errorf("%s will not advance while %d queued order(s) are pending; use submit_decision or step_run explicitly", opts.mode, len(snap.QueuedOrders))
+	}
+
+	initial := snap.Run.SimTime
+	finalSim := initial
+	finalEquity := snap.Run.Cash
+	finalCash := snap.Run.Cash
+	positionsValue := 0.0
+	if snap.LastEquity != nil {
+		finalEquity = snap.LastEquity.Equity
+		positionsValue = snap.LastEquity.PositionsValue
+	}
+	done := snap.Run.Status != "active"
+	liquidated := snap.Run.Status == "liquidated"
+	stepsSubmitted := 0
+	barsAdvanced := 0
+	reachedLimit := false
+
+	for !done && stepsSubmitted < opts.maxBars {
+		step, err := c.StepRun(ctx, runID, 1)
+		if err != nil {
+			return nil, err
+		}
+		stepsSubmitted++
+		barsAdvanced += step.BarsAdvanced
+		finalSim = step.NewSimTime
+		finalEquity = step.NewEquity
+		finalCash = step.NewCash
+		positionsValue = step.PositionsValue
+		done = step.Done
+		liquidated = step.Liquidated
+		if opts.stopOnNewDate && !sameTradingDate(initial, finalSim) {
+			break
+		}
+		if step.Done || step.Liquidated || step.BarsAdvanced == 0 {
+			break
+		}
+	}
+	if !done && stepsSubmitted >= opts.maxBars {
+		reachedLimit = true
+	}
+	snap, _ = c.GetRun(ctx, runID)
+	if snap != nil {
+		finalSim = snap.Run.SimTime
+		finalCash = snap.Run.Cash
+		if snap.LastEquity != nil {
+			finalEquity = snap.LastEquity.Equity
+			positionsValue = snap.LastEquity.PositionsValue
+		}
+		done = snap.Run.Status != "active"
+		liquidated = snap.Run.Status == "liquidated"
+	}
+
+	phase := "trading"
+	next := "scan_market"
+	if done || liquidated {
+		phase = "completed"
+		next = "get_results"
+	}
+	summary := fmt.Sprintf("%s submitted %d hold step(s), advanced %d bar(s), equity %.2f. Done=%t. Liquidated=%t. Next: %s.",
+		opts.mode, stepsSubmitted, barsAdvanced, finalEquity, done, liquidated, next)
+	if reachedLimit {
+		summary = fmt.Sprintf("%s Reached max_bars=%d before completion.", summary, opts.maxBars)
+	}
+	return &AdvanceRunResult{
+		Phase:          phase,
+		NextAction:     next,
+		RunID:          runID,
+		Mode:           opts.mode,
+		InitialSimTime: initial.Format(time.RFC3339),
+		FinalSimTime:   finalSim.Format(time.RFC3339),
+		StepsSubmitted: stepsSubmitted,
+		BarsAdvanced:   barsAdvanced,
+		FinalEquity:    finalEquity,
+		FinalCash:      finalCash,
+		PositionsValue: positionsValue,
+		Done:           done,
+		Liquidated:     liquidated,
+		ReachedLimit:   reachedLimit,
+		Snapshot:       snap,
+		HumanSummary:   summary,
+	}, nil
+}
+
+func normalizeMaxBars(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if value > maxAutonomousHoldBars {
+		return maxAutonomousHoldBars
+	}
+	return value
+}
+
+func sameTradingDate(a, b time.Time) bool {
+	ay, am, ad := a.UTC().Date()
+	by, bm, bd := b.UTC().Date()
+	return ay == by && am == bm && ad == bd
+}
+
+func positionMap(positions []Position) map[string]Position {
+	out := make(map[string]Position, len(positions))
+	for _, position := range positions {
+		if position.Quantity != 0 {
+			out[position.Symbol] = position
+		}
+	}
+	return out
+}
+
+func hasOpenPositions(positions []Position) bool {
+	for _, position := range positions {
+		if position.Quantity != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func unrealizedPnL(position Position, close float64) float64 {
+	if position.Quantity > 0 {
+		return (close - position.AvgCost) * float64(position.Quantity)
+	}
+	if position.Quantity < 0 {
+		return (position.AvgCost - close) * float64(-position.Quantity)
+	}
+	return 0
+}
+
+func flattenOrders(positions []Position, rationale string) []TradeOrder {
+	if rationale == "" {
+		rationale = "Flatten existing position."
+	}
+	orders := make([]TradeOrder, 0, len(positions))
+	for _, position := range positions {
+		if position.Quantity > 0 {
+			orders = append(orders, TradeOrder{
+				Symbol:    position.Symbol,
+				Side:      "sell",
+				Quantity:  position.Quantity,
+				Reasoning: rationale,
+			})
+		}
+		if position.Quantity < 0 {
+			orders = append(orders, TradeOrder{
+				Symbol:    position.Symbol,
+				Side:      "cover",
+				Quantity:  -position.Quantity,
+				Reasoning: rationale,
+			})
+		}
+	}
+	return orders
 }
 
 func pctChange(from, to float64) float64 {

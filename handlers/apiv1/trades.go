@@ -30,6 +30,18 @@ type TradeQueueOutput struct {
 	}
 }
 
+// TradesListInput identifies a run whose filled trades should be listed.
+type TradesListInput struct {
+	ID string `path:"id" doc:"Run UUID."`
+}
+
+// TradesListOutput returns filled trades for the authenticated run owner.
+type TradesListOutput struct {
+	Body struct {
+		Trades []models.RunTrade `json:"trades"`
+	}
+}
+
 func (h *handlers) registerTrades(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "queueTrade",
@@ -45,6 +57,17 @@ func (h *handlers) registerTrades(api huma.API) {
 		DefaultStatus: http.StatusCreated,
 		Security:      []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.queueTrade)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listTrades",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/runs/{id}/trades",
+		Summary:     "List filled trades for a run",
+		Description: "Returns the immutable filled-trade records for a run owned by the authenticated account. " +
+			"Useful for post-run attribution without publishing the run first.",
+		Tags:     []string{"Runs"},
+		Security: []map[string][]string{{"ApiKeyAuth": {}}},
+	}, h.listTrades)
 }
 
 func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQueueOutput, error) {
@@ -68,4 +91,17 @@ func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQ
 		out.Body.Order = order
 		return out, nil
 	})
+}
+
+func (h *handlers) listTrades(ctx context.Context, in *TradesListInput) (*TradesListOutput, error) {
+	if err := h.assertRunOwner(ctx, in.ID); err != nil {
+		return nil, err
+	}
+	trades, err := loadRunTrades(in.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("db error: " + err.Error())
+	}
+	out := &TradesListOutput{}
+	out.Body.Trades = trades
+	return out, nil
 }

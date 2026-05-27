@@ -108,10 +108,21 @@ type Equity struct {
 }
 
 type RunSnapshot struct {
-	Run          Run           `json:"run"`
-	Positions    []Position    `json:"positions"`
-	QueuedOrders []QueuedOrder `json:"queued_orders"`
-	LastEquity   *Equity       `json:"last_equity,omitempty"`
+	Run          Run            `json:"run"`
+	Positions    []Position     `json:"positions"`
+	QueuedOrders []QueuedOrder  `json:"queued_orders"`
+	LastEquity   *Equity        `json:"last_equity,omitempty"`
+	Workflow     *WorkflowState `json:"workflow,omitempty"`
+}
+
+type WorkflowState struct {
+	Phase          string   `json:"phase"`
+	NextAction     string   `json:"next_action"`
+	AllowedActions []string `json:"allowed_actions"`
+	Done           bool     `json:"done"`
+	Liquidated     bool     `json:"liquidated"`
+	Publishable    bool     `json:"publishable"`
+	Published      bool     `json:"published"`
 }
 
 type MarketBar struct {
@@ -138,19 +149,25 @@ type StepResult struct {
 	NewCash         float64    `json:"cash"`
 	PositionsValue  float64    `json:"positions_value"`
 	Done            bool       `json:"done"`
+	Phase           string     `json:"phase,omitempty"`
+	NextAction      string     `json:"next_action,omitempty"`
+	AllowedActions  []string   `json:"allowed_actions,omitempty"`
 }
 
 type RunResults struct {
-	RunID       string    `json:"run_id"`
-	FinalEquity float64   `json:"final_equity"`
-	ReturnPct   float64   `json:"return_pct"`
-	Sharpe      *float64  `json:"sharpe,omitempty"`
-	Sortino     *float64  `json:"sortino,omitempty"`
-	MaxDrawdown *float64  `json:"max_drawdown,omitempty"`
-	Volatility  *float64  `json:"volatility,omitempty"`
-	TradeCount  int       `json:"trade_count"`
-	Liquidated  bool      `json:"liquidated"`
-	ComputedAt  time.Time `json:"computed_at"`
+	RunID          string    `json:"run_id"`
+	FinalEquity    float64   `json:"final_equity"`
+	ReturnPct      float64   `json:"return_pct"`
+	Sharpe         *float64  `json:"sharpe,omitempty"`
+	Sortino        *float64  `json:"sortino,omitempty"`
+	MaxDrawdown    *float64  `json:"max_drawdown,omitempty"`
+	Volatility     *float64  `json:"volatility,omitempty"`
+	TradeCount     int       `json:"trade_count"`
+	Liquidated     bool      `json:"liquidated"`
+	ComputedAt     time.Time `json:"computed_at"`
+	Published      bool      `json:"published,omitempty"`
+	PublicURL      string    `json:"public_url,omitempty"`
+	LeaderboardURL string    `json:"leaderboard_url,omitempty"`
 }
 
 type TradeOrder struct {
@@ -168,6 +185,55 @@ type SubmitTurnResult struct {
 	QueuedOrders []QueuedOrder `json:"queued_orders"`
 	Step         StepResult    `json:"step"`
 	Snapshot     *RunSnapshot  `json:"snapshot,omitempty"`
+}
+
+type PublishRunResult struct {
+	Published      bool       `json:"published"`
+	PublicURL      string     `json:"public_url"`
+	LeaderboardURL string     `json:"leaderboard_url"`
+	Results        RunResults `json:"results"`
+}
+
+type SymbolPnL struct {
+	Symbol      string  `json:"symbol"`
+	RealizedPnL float64 `json:"realized_pnl"`
+	TradeCount  int     `json:"trade_count"`
+}
+
+type ResultsDetail struct {
+	RunID             string            `json:"run_id"`
+	Results           RunResults        `json:"results"`
+	Benchmark         *BenchmarkSummary `json:"benchmark,omitempty"`
+	Run               *Run              `json:"run,omitempty"`
+	LastEquity        *Equity           `json:"last_equity,omitempty"`
+	FinalPositions    []Position        `json:"final_positions"`
+	QueuedOrders      []QueuedOrder     `json:"queued_orders"`
+	Trades            []Trade           `json:"trades,omitempty"`
+	SymbolPnL         []SymbolPnL       `json:"symbol_pnl,omitempty"`
+	BestTrade         *Trade            `json:"best_trade,omitempty"`
+	WorstTrade        *Trade            `json:"worst_trade,omitempty"`
+	TradeDetailsError string            `json:"trade_details_error,omitempty"`
+	Workflow          *WorkflowState    `json:"workflow,omitempty"`
+	Published         bool              `json:"published"`
+	PublicURL         string            `json:"public_url,omitempty"`
+	LeaderboardURL    string            `json:"leaderboard_url"`
+	HumanSummary      string            `json:"human_summary"`
+}
+
+type BenchmarkSummary struct {
+	Symbol     string  `json:"symbol"`
+	StartClose float64 `json:"start_close"`
+	EndClose   float64 `json:"end_close"`
+	ReturnPct  float64 `json:"return_pct"`
+	BarsUsed   int     `json:"bars_used"`
+}
+
+type AuthRequiredError struct {
+	LoginURL string `json:"login_url,omitempty"`
+}
+
+func (e *AuthRequiredError) Error() string {
+	return "auth required: call connect_bottrade, reuse the Mcp-Session-Id after OAuth, or provide a BotTrade API key as Authorization: Bearer or X-API-Key"
 }
 
 func (c *BotTradeClient) ListScenarios(ctx context.Context) ([]Scenario, error) {
@@ -209,6 +275,7 @@ func (c *BotTradeClient) GetRun(ctx context.Context, runID string) (*RunSnapshot
 	if err := c.do(ctx, http.MethodGet, "/api/v1/runs/"+url.PathEscape(runID), nil, nil, &out); err != nil {
 		return nil, err
 	}
+	decorateRunSnapshot(&out)
 	return &out, nil
 }
 
@@ -256,6 +323,7 @@ func (c *BotTradeClient) StepRun(ctx context.Context, runID string, count int) (
 	if err := c.do(ctx, http.MethodPost, "/api/v1/runs/"+url.PathEscape(runID)+"/step", nil, body, &out); err != nil {
 		return nil, err
 	}
+	decorateStepResult(&out)
 	return &out, nil
 }
 
@@ -287,10 +355,62 @@ func (c *BotTradeClient) GetResults(ctx context.Context, runID string) (*RunResu
 	if err := c.do(ctx, http.MethodGet, "/api/v1/runs/"+url.PathEscape(runID)+"/results", nil, nil, &out); err != nil {
 		return nil, err
 	}
+	out.Results.LeaderboardURL = c.leaderboardURL()
 	return &out.Results, nil
 }
 
-func (c *BotTradeClient) PublishRun(ctx context.Context, runID string) (*RunResults, error) {
+func (c *BotTradeClient) GetTrades(ctx context.Context, runID string) ([]Trade, error) {
+	var out struct {
+		Trades []Trade `json:"trades"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/v1/runs/"+url.PathEscape(runID)+"/trades", nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Trades, nil
+}
+
+func (c *BotTradeClient) GetResultsDetail(ctx context.Context, runID string) (*ResultsDetail, error) {
+	results, err := c.GetResults(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &ResultsDetail{
+		RunID:          runID,
+		Results:        *results,
+		LeaderboardURL: c.leaderboardURL(),
+		HumanSummary:   summarizeResults(results),
+	}
+
+	if snap, err := c.GetRun(ctx, runID); err == nil {
+		detail.Run = &snap.Run
+		detail.LastEquity = snap.LastEquity
+		detail.FinalPositions = snap.Positions
+		detail.QueuedOrders = snap.QueuedOrders
+		detail.Workflow = snap.Workflow
+		detail.Published = snap.Run.Published
+		detail.Results.Published = snap.Run.Published
+		detail.Benchmark = c.benchmarkSummary(ctx, runID, snap.Run.ScenarioID)
+		if snap.Run.Published {
+			detail.PublicURL = c.publicRunURL(runID)
+			detail.Results.PublicURL = detail.PublicURL
+		}
+	} else {
+		detail.TradeDetailsError = "run snapshot unavailable: " + err.Error()
+	}
+
+	if trades, err := c.GetTrades(ctx, runID); err == nil {
+		detail.Trades = trades
+		detail.SymbolPnL = summarizeSymbolPnL(trades)
+		detail.BestTrade, detail.WorstTrade = bestAndWorstTrades(trades)
+	} else if detail.TradeDetailsError == "" {
+		detail.TradeDetailsError = "trade details unavailable: " + err.Error()
+	}
+
+	return detail, nil
+}
+
+func (c *BotTradeClient) PublishRun(ctx context.Context, runID string) (*PublishRunResult, error) {
 	var out struct {
 		Published bool       `json:"published"`
 		Results   RunResults `json:"results"`
@@ -298,12 +418,20 @@ func (c *BotTradeClient) PublishRun(ctx context.Context, runID string) (*RunResu
 	if err := c.do(ctx, http.MethodPost, "/api/v1/runs/"+url.PathEscape(runID)+"/publish", nil, map[string]any{}, &out); err != nil {
 		return nil, err
 	}
-	return &out.Results, nil
+	out.Results.Published = out.Published
+	out.Results.PublicURL = c.publicRunURL(runID)
+	out.Results.LeaderboardURL = c.leaderboardURL()
+	return &PublishRunResult{
+		Published:      out.Published,
+		PublicURL:      out.Results.PublicURL,
+		LeaderboardURL: out.Results.LeaderboardURL,
+		Results:        out.Results,
+	}, nil
 }
 
 func (c *BotTradeClient) do(ctx context.Context, method, relPath string, query url.Values, body any, out any) error {
 	if c.apiKey == "" && relPath != "/api/v1/scenarios" && !strings.HasPrefix(relPath, "/api/v1/scenarios/") {
-		return fmt.Errorf("auth required")
+		return &AuthRequiredError{}
 	}
 
 	u, err := url.Parse(c.baseURL)
@@ -361,6 +489,14 @@ func (c *BotTradeClient) do(ctx context.Context, method, relPath string, query u
 }
 
 func apiError(status int, body []byte) error {
+	if status == http.StatusUnauthorized {
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err == nil {
+			loginURL, _ := payload["login_url"].(string)
+			return &AuthRequiredError{LoginURL: loginURL}
+		}
+		return &AuthRequiredError{}
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err == nil {
 		for _, key := range []string{"detail", "error", "title"} {
@@ -382,4 +518,131 @@ func newID(prefix string) string {
 		return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "-" + hex.EncodeToString(b[:])
+}
+
+func decorateRunSnapshot(snap *RunSnapshot) {
+	if snap == nil {
+		return
+	}
+	snap.Workflow = workflowForRun(snap.Run)
+}
+
+func decorateStepResult(step *StepResult) {
+	if step == nil {
+		return
+	}
+	phase := "trading"
+	next := "scan_market"
+	allowed := []string{"get_run", "scan_market", "inspect_symbols", "submit_decision", "step_run", "advance_until_next_session", "hold_until_end", "liquidate_and_finish"}
+	if step.Done || step.Liquidated {
+		phase = "completed"
+		next = "get_results"
+		allowed = []string{"get_run", "get_results", "publish_run"}
+	}
+	step.Phase = phase
+	step.NextAction = next
+	step.AllowedActions = allowed
+}
+
+func workflowForRun(run Run) *WorkflowState {
+	state := &WorkflowState{
+		Published: run.Published,
+	}
+	switch run.Status {
+	case "completed", "liquidated", "abandoned":
+		state.Phase = "completed"
+		state.NextAction = "get_results"
+		state.AllowedActions = []string{"get_run", "get_results", "publish_run"}
+		state.Done = true
+		state.Liquidated = run.Status == "liquidated"
+		state.Publishable = !run.Published
+	case "active":
+		state.Phase = "trading"
+		state.NextAction = "scan_market"
+		state.AllowedActions = []string{"get_run", "scan_market", "inspect_symbols", "submit_decision", "step_run", "advance_until_next_session", "hold_until_end", "liquidate_and_finish"}
+	default:
+		state.Phase = run.Status
+		state.NextAction = "get_run"
+		state.AllowedActions = []string{"get_run"}
+	}
+	return state
+}
+
+func summarizeSymbolPnL(trades []Trade) []SymbolPnL {
+	bySymbol := map[string]*SymbolPnL{}
+	for _, trade := range trades {
+		row := bySymbol[trade.Symbol]
+		if row == nil {
+			row = &SymbolPnL{Symbol: trade.Symbol}
+			bySymbol[trade.Symbol] = row
+		}
+		row.RealizedPnL += trade.RealizedPnL
+		row.TradeCount++
+	}
+	out := make([]SymbolPnL, 0, len(bySymbol))
+	for _, row := range bySymbol {
+		out = append(out, *row)
+	}
+	return out
+}
+
+func bestAndWorstTrades(trades []Trade) (*Trade, *Trade) {
+	if len(trades) == 0 {
+		return nil, nil
+	}
+	best := trades[0]
+	worst := trades[0]
+	for _, trade := range trades[1:] {
+		if trade.RealizedPnL > best.RealizedPnL {
+			best = trade
+		}
+		if trade.RealizedPnL < worst.RealizedPnL {
+			worst = trade
+		}
+	}
+	return &best, &worst
+}
+
+func (c *BotTradeClient) benchmarkSummary(ctx context.Context, runID, scenarioID string) *BenchmarkSummary {
+	scenario, err := c.GetScenario(ctx, scenarioID)
+	if err != nil || scenario.BenchmarkSymbol == "" {
+		return nil
+	}
+	market, err := c.GetMarket(ctx, runID, []string{scenario.BenchmarkSymbol}, 1000)
+	if err != nil {
+		return nil
+	}
+	bars := market.Bars[scenario.BenchmarkSymbol]
+	if len(bars) < 2 {
+		return nil
+	}
+	start := bars[0].Close
+	end := bars[len(bars)-1].Close
+	return &BenchmarkSummary{
+		Symbol:     scenario.BenchmarkSymbol,
+		StartClose: start,
+		EndClose:   end,
+		ReturnPct:  pctChange(start, end),
+		BarsUsed:   len(bars),
+	}
+}
+
+func (c *BotTradeClient) publicRunURL(runID string) string {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return ""
+	}
+	u.Path = path.Join(u.Path, "/api/v1/runs/"+url.PathEscape(runID)+"/public")
+	u.RawQuery = ""
+	return u.String()
+}
+
+func (c *BotTradeClient) leaderboardURL() string {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return ""
+	}
+	u.Path = path.Join(u.Path, "/leaderboard")
+	u.RawQuery = ""
+	return u.String()
 }

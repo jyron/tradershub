@@ -139,7 +139,7 @@ func toolNameFromParams(raw json.RawMessage) string {
 
 func isPublicTool(name string) bool {
 	switch name {
-	case "connect_bottrade", "list_scenarios", "get_scenario":
+	case "auth_status", "connect_bottrade", "list_scenarios", "get_scenario":
 		return true
 	default:
 		return false
@@ -202,10 +202,8 @@ func writeMCPAuthRequired(w http.ResponseWriter, publicURL, loginURL string) {
 	if loginURL == "" {
 		loginURL = "https://bot-trade.org/login"
 	}
-	body := map[string]any{
-		"error":     "auth_required",
-		"login_url": loginURL,
-	}
+	body := authRequiredPayload(loginURL)
+	body["resource_metadata"] = metadataURL
 	writeJSON(w, http.StatusUnauthorized, body)
 }
 

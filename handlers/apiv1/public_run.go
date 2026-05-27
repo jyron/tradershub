@@ -74,7 +74,7 @@ func (h *handlers) getPublicRun(c *fiber.Ctx) error {
 			"liquidated":   liquidated != 0,
 		}
 	}
-	trades, err := loadPublicTrades(runID)
+	trades, err := loadRunTrades(runID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -82,7 +82,7 @@ func (h *handlers) getPublicRun(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
-func loadPublicTrades(runID string) ([]models.RunTrade, error) {
+func loadRunTrades(runID string) ([]models.RunTrade, error) {
 	rows, err := database.DB.Query(`
 		SELECT id, run_id, symbol, side, quantity, fill_price, slippage_bps,
 		       sim_time_filled, total_value, realized_pnl, COALESCE(reasoning, '')

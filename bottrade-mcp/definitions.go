@@ -9,6 +9,12 @@ import (
 func tools() []tool {
 	return []tool{
 		{
+			Name:        "auth_status",
+			Description: "Check BotTrade MCP auth status.",
+			InputSchema: objectSchema(map[string]any{}, nil),
+			Annotations: readOnlyToolAnnotations("Check whether the MCP session is authenticated."),
+		},
+		{
 			Name:        "connect_bottrade",
 			Description: "Connect BotTrade.",
 			InputSchema: objectSchema(map[string]any{
@@ -59,11 +65,11 @@ func tools() []tool {
 		},
 		{
 			Name:        "scan_market",
-			Description: "Scan market.",
+			Description: "Scan the current market compactly without returning full bar history.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID."),
 			}, []string{"run_id"}),
-			Annotations: readOnlyToolAnnotations("Read a compact whole-universe market scan without changing state."),
+			Annotations: readOnlyToolAnnotations("Read a token-bounded whole-universe market scan without changing state."),
 		},
 		{
 			Name:        "inspect_symbols",
@@ -107,12 +113,58 @@ func tools() []tool {
 			Annotations: mutatingToolAnnotations("Advances the run one bar without queuing new trades."),
 		},
 		{
+			Name:        "advance_until_next_session",
+			Description: "Advance with no new trades until the simulator reaches the next trading date/session or the run ends.",
+			InputSchema: objectSchema(map[string]any{
+				"run_id":   stringSchema("Run UUID."),
+				"max_bars": integerSchema("Safety cap for one-bar advances. Defaults to 32.", 1),
+			}, []string{"run_id"}),
+			Annotations: mutatingToolAnnotations("Safely compresses repeated hold steps across an overnight/session boundary."),
+		},
+		{
+			Name:        "hold_until_end",
+			Description: "Advance with no new trades until the run completes, liquidates, or max_bars is reached.",
+			InputSchema: objectSchema(map[string]any{
+				"run_id":       stringSchema("Run UUID."),
+				"max_bars":     integerSchema("Safety cap for one-bar advances. Defaults to 256.", 1),
+				"require_flat": map[string]any{"type": "boolean", "description": "If true, reject the request unless there are no open positions."},
+			}, []string{"run_id"}),
+			Annotations: mutatingToolAnnotations("Safely compresses repeated hold steps without adding strategy advice or trades."),
+		},
+		{
+			Name:        "liquidate_and_finish",
+			Description: "Flatten current positions, then hold cash until completion or max_bars is reached.",
+			InputSchema: objectSchema(map[string]any{
+				"run_id":    stringSchema("Run UUID."),
+				"rationale": stringSchema("Short reason recorded on the exit orders."),
+				"max_bars":  integerSchema("Safety cap for post-liquidation hold steps. Defaults to 256.", 1),
+			}, []string{"run_id"}),
+			Annotations: mutatingToolAnnotations("Queues only sell/cover orders needed to flatten existing positions, then holds."),
+		},
+		{
+			Name:        "run_sandbox_smoke_test",
+			Description: "Create the sandbox run, scan once, submit one hold decision, and return a compact verification summary.",
+			InputSchema: objectSchema(map[string]any{
+				"scenario_slug": stringSchema("Sandbox scenario slug. Defaults to sandbox-nov-2024."),
+				"bot_name":      stringSchema("Optional bot, strategy, or experiment name."),
+			}, nil),
+			Annotations: mutatingToolAnnotations("Verifies auth, run creation, scan, and hold decision without publishing or giving strategy advice."),
+		},
+		{
 			Name:        "get_results",
-			Description: "Get results.",
+			Description: "Get completed run results with compact attribution.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID."),
 			}, []string{"run_id"}),
-			Annotations: readOnlyToolAnnotations("Read the completed run's final metrics."),
+			Annotations: readOnlyToolAnnotations("Read final metrics plus compact trade attribution without publishing."),
+		},
+		{
+			Name:        "get_trades",
+			Description: "List filled trades for a run.",
+			InputSchema: objectSchema(map[string]any{
+				"run_id": stringSchema("Run UUID."),
+			}, []string{"run_id"}),
+			Annotations: readOnlyToolAnnotations("Read immutable filled-trade records without changing state."),
 		},
 		{
 			Name:        "publish_run",
@@ -208,7 +260,7 @@ func (s *MCPServer) getPrompt(params json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("unknown prompt %q", p.Name)
 	}
 	scenario, _ := p.Arguments["scenario_slug"].(string)
-	text := "Run one BotTrade scenario. Use list_scenarios, get_scenario, start_run, then loop scan_market, inspect_symbols, submit_decision until done or liquidated. Continue autonomously without asking the user to confirm each loop iteration. Advance one bar at a time; do not batch-step or skip bars unless the user explicitly asks. Then get_results. Do not publish unless asked. If auth is required, use connect_bottrade."
+	text := "Run one BotTrade scenario. Use auth_status, list_scenarios, get_scenario, start_run, then loop scan_market, inspect_symbols, submit_decision until done or liquidated. Continue autonomously without asking the user to confirm each normal loop iteration. Use scan_market for compact whole-universe observation and inspect_symbols only for a capped symbol subset. The MCP server does not provide strategy advice; you must choose any trades yourself. Advance one bar at a time during trading decisions. For strategy-neutral waiting, you may use advance_until_next_session or hold_until_end. Then get_results. Do not publish unless asked. If auth is required, use connect_bottrade."
 	if scenario != "" {
 		text += "\n\nRequested scenario: " + scenario
 	}
@@ -289,20 +341,28 @@ const agentGuide = `# BotTrade MCP Agent Guide
 
 Goal: complete one historical market-simulator run.
 
-1. Use list_scenarios and choose a ready scenario.
-2. If a protected action requires auth, use connect_bottrade and complete BotTrade sign-in.
-3. Use start_run with the scenario slug.
-4. Repeat until submit_decision or step_run returns done=true or liquidated=true:
+1. Use auth_status to check whether the current session is connected.
+2. Use list_scenarios and choose a ready scenario.
+3. If a protected action requires auth, use connect_bottrade and complete BotTrade sign-in.
+4. Use start_run with the scenario slug.
+5. Repeat until submit_decision or step_run returns done=true or liquidated=true:
    - Use scan_market to compactly scan the universe.
    - Use inspect_symbols on current positions plus a few interesting symbols.
    - Use submit_decision with action=hold or action=trade.
-5. Use get_results after the run ends.
-6. Use publish_run only when the user explicitly wants a public leaderboard entry.
+6. Use get_results after the run ends.
+7. Use publish_run only when the user explicitly wants a public leaderboard entry.
+
+Boundary:
+- The MCP server is workflow infrastructure, not a strategy engine.
+- scan_market may identify high-movement symbols and current-position symbols for inspection only.
+- The server does not recommend trades, portfolio allocations, entries, exits, or directional views.
 
 Autonomy rules:
 - Continue the loop autonomously. Do not ask the user for confirmation between normal scan, inspect, decide, trade, and step calls.
 - Only stop to ask the user for help if authentication is required, the user explicitly wants to intervene, or the API returns an unrecoverable error.
 - Advance one bar at a time during the normal trading loop. Do not batch-step or skip many bars unless the user explicitly asks for that behavior.
+- For strategy-neutral waiting, use advance_until_next_session or hold_until_end instead of repeatedly asking the user to confirm hold steps.
+- Use liquidate_and_finish only when the agent or user has already decided to flatten; it creates sell/cover orders from existing positions and does not choose a strategy.
 
 Token budget:
 - Prefer scan_market over get_market for whole-universe observation.

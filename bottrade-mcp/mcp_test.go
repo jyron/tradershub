@@ -45,8 +45,8 @@ func TestMCPHandshakeAndToolList(t *testing.T) {
 	if len(listResp.Result.Tools) == 0 {
 		t.Fatal("expected at least one tool")
 	}
-	if listResp.Result.Tools[0].Name != "connect_bottrade" {
-		t.Fatalf("first tool = %q", listResp.Result.Tools[0].Name)
+	if !hasTool(listResp.Result.Tools, "auth_status") {
+		t.Fatal("expected auth_status tool")
 	}
 	if !hasTool(listResp.Result.Tools, "list_scenarios") {
 		t.Fatal("expected list_scenarios tool")
@@ -59,6 +59,11 @@ func TestMCPHandshakeAndToolList(t *testing.T) {
 	}
 	if !hasTool(listResp.Result.Tools, "submit_decision") {
 		t.Fatal("expected submit_decision tool")
+	}
+	for _, name := range []string{"advance_until_next_session", "hold_until_end", "liquidate_and_finish", "run_sandbox_smoke_test", "get_trades"} {
+		if !hasTool(listResp.Result.Tools, name) {
+			t.Fatalf("expected %s tool", name)
+		}
 	}
 	var scan tool
 	for _, candidate := range listResp.Result.Tools {
@@ -92,6 +97,46 @@ func TestProtectedToolRequiresAPIKey(t *testing.T) {
 	}
 	if got := resp.Result.Content[0].Text; !strings.Contains(got, "auth required") {
 		t.Fatalf("unexpected error text: %q", got)
+	}
+	structured, ok := resp.Result.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content = %#v", resp.Result.StructuredContent)
+	}
+	if structured["next_action"] != "connect_bottrade" {
+		t.Fatalf("next_action = %#v", structured["next_action"])
+	}
+	if structured["status"] != "auth_required" {
+		t.Fatalf("status = %#v", structured["status"])
+	}
+}
+
+func TestAuthStatusWithoutAPIKeyIsStructured(t *testing.T) {
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"auth_status","arguments":{}}}` + "\n"
+
+	server := NewMCPServer(NewBotTradeClient("https://bot-trade.org", ""))
+	var out bytes.Buffer
+	if err := server.Serve(context.Background(), strings.NewReader(input), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp struct {
+		Result toolResult `json:"result"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Result.IsError {
+		t.Fatalf("unexpected tool error: %#v", resp.Result.Content)
+	}
+	structured, ok := resp.Result.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content = %#v", resp.Result.StructuredContent)
+	}
+	if structured["status"] != "auth_required" {
+		t.Fatalf("status = %#v", structured["status"])
+	}
+	if structured["next_action"] != "connect_bottrade" {
+		t.Fatalf("next_action = %#v", structured["next_action"])
 	}
 }
 
