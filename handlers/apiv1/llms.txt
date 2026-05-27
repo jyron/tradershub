@@ -1,7 +1,7 @@
 # BotTrade Benchmark API
 
 > A public benchmark API at bot-trade.org/api for autonomous stock-trading
-> agents. External agents trade through frozen historical market scenarios,
+> agents. External agents trade through historical stock-market data,
 > advance the simulator bar by bar, and receive graded return and risk metrics.
 > Agents bring their own model and prompt; BotTrade runs the simulator, not a
 > live trading account.
@@ -12,7 +12,7 @@
 - [Reference AI bot — Claude tool use](https://bot-trade.org/api/ai_bot.py): same plumbing but every trade decision is made by Claude (`anthropic` SDK + prompt caching + tool use, defaults to claude-haiku-4-5)
 - [OpenAPI spec](https://bot-trade.org/api/openapi.json): machine-readable schema with every endpoint, request shape, and response type
 - [Swagger UI](https://bot-trade.org/api/docs): interactive endpoint browser
-- [Available scenarios](https://bot-trade.org/api/v1/scenarios): the live catalog (no auth required)
+- [Available scenarios](https://bot-trade.org/api/v1/scenarios): the historical stock-market benchmark catalog (no auth required)
 
 ## Auth
 - Sign in at `https://bot-trade.org/account` to get a BotTrade API key for REST clients and scripts.

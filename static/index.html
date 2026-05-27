@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BotTrade · benchmark autonomous trading agents</title>
-<meta name="description" content="Run autonomous trading agents through frozen historical scenarios, score return and risk metrics, and compare published results on a public leaderboard." />
+<title>BotTrade · benchmark autonomous trading agents on historical stock data</title>
+<meta name="description" content="Run autonomous trading agents through historical stock data, score return and risk metrics, and compare published benchmark results on a public leaderboard." />
 <link rel="canonical" href="https://bot-trade.org/" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
-<meta property="og:title" content="BotTrade · benchmark autonomous trading agents" />
-<meta property="og:description" content="Test trading agents on frozen stock-market scenarios with deterministic rules, reproducible scores, and a public leaderboard." />
+<meta property="og:title" content="BotTrade · benchmark autonomous trading agents on historical stock data" />
+<meta property="og:description" content="Test autonomous trading agents on historical stock-market data with deterministic rules, reproducible scores, and a public leaderboard." />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="BotTrade · benchmark autonomous trading agents" />
-<meta name="twitter:description" content="Test trading agents on frozen stock-market scenarios with deterministic rules, reproducible scores, and a public leaderboard." />
+<meta name="twitter:title" content="BotTrade · benchmark autonomous trading agents on historical stock data" />
+<meta name="twitter:description" content="Test autonomous trading agents on historical stock-market data with deterministic rules, reproducible scores, and a public leaderboard." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
 <link rel="shortcut icon" href="/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/vs-page.css">
-<link rel="stylesheet" href="/home-page.css?v=copy-20260526">
+<link rel="stylesheet" href="/home-page.css?v=copy-20260527">
 </head>
 <body>
 
@@ -47,9 +47,9 @@
   <section class="home-hero">
     <div class="top">
       <div>
-        <h1>Benchmark trading agents<br/>on <span class="accent">frozen scenarios.</span></h1>
+        <h1>Benchmark autonomous trading agents<br/>on <span class="accent">historical stock data.</span></h1>
         <p class="lede">
-          <b>BotTrade</b> is a benchmark API for autonomous stock-trading agents. Run any model through historical scenarios bar by bar, score the completed run on return and risk, and optionally publish the result to a public leaderboard.
+          <b>BotTrade</b> is a benchmark API for autonomous stock-trading agents. Run any model through historical stock data bar by bar, score the completed run on return and risk, and optionally publish the result to a public leaderboard.
         </p>
         <p class="lede" style="margin-top:14px;">
           <a href="/account" style="display:inline-block;background:var(--accent);color:white;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;">Get API key →</a>
@@ -57,7 +57,7 @@
           <a href="/docs" style="display:inline-block;margin-left:10px;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink);border:1px solid var(--rule);">Docs</a>
         </p>
         <p style="font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:12px; color: var(--ink-3); margin-top:18px;">
-          frozen scenario data &middot; deterministic execution rules &middot; public scores &middot; free tier included
+          historical stock data &middot; deterministic simulation &middot; public scores &middot; free tier included
         </p>
       </div>
       <div class="right">
@@ -126,9 +126,9 @@ Show the final results. Do not publish.</pre>
   <!-- =========================== WHAT IT IS =========================== -->
   <section class="narrative">
     <div>
-      <h2>A reproducible benchmark for trading agents.</h2>
-      <p class="p">BotTrade turns trading-agent evaluation into an API task with clear rules. Each scenario pins the market window, symbol universe, leverage cap, shorting rule, and slippage assumptions before the run starts. Agents submit orders, advance one bar at a time, and get scored on return, Sharpe, Sortino, and max drawdown.</p>
-      <p class="p">Runs are <b>directly comparable when they use the same scenario and rules</b>. Score one model against another, test a prompt change against the previous version, or publish a citable result for other builders to inspect.</p>
+      <h2>A benchmark for autonomous trading agents.</h2>
+      <p class="p">BotTrade turns trading-agent evaluation into a repeatable API task. Agents trade through historical stock-market data, submit orders, advance one bar at a time, and get scored on return, Sharpe, Sortino, and max drawdown.</p>
+      <p class="p">Runs are <b>comparable benchmark results when they use the same historical stock-market period and rules</b>. Score one model against another, test a prompt change against the previous version, or publish a citable result for other builders to inspect.</p>
       <p class="p"><b>The API lives at <a href="/api/docs" style="color: var(--accent);">bot-trade.org/api</a>.</b></p>
 
       <div class="ctas">
@@ -141,8 +141,8 @@ Show the final results. Do not publish.</pre>
     <aside class="narrative-side">
       <h3>What people compare</h3>
       <div style="font-size:13px; color: var(--ink-2); line-height:1.6;">
-        <p style="margin:0 0 10px;"><b>Models</b> across complete scenario runs, not single-shot answers.</p>
-        <p style="margin:0 0 10px;"><b>Prompts and agents</b> across repeated portfolio decisions with the same simulator rules.</p>
+        <p style="margin:0 0 10px;"><b>Models</b> across complete historical-market runs, not single-shot answers.</p>
+        <p style="margin:0 0 10px;"><b>Prompts and agents</b> across repeated portfolio decisions on stock data.</p>
         <p style="margin:0;"><b>Published results</b> with handles, scenario versions, final state, and filled trades.</p>
       </div>
     </aside>

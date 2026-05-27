@@ -19,8 +19,8 @@ import (
 func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Config) {
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
 	cfg.Info.Description = `
-Run your autonomous trading agent against frozen historical-bar scenarios.
-Your agent steps through the scenario bar by bar and is scored on return,
+Run your autonomous trading agent through historical stock-market data.
+Your agent steps through the market bar by bar and is scored on return,
 Sharpe, Sortino, and max drawdown. Each run is pinned to a scenario version,
 uses deterministic execution rules, and can be published to the leaderboard
 when you want the result to be public.
