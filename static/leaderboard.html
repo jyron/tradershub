@@ -4,14 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Leaderboard · bottrade</title>
-<meta name="description" content="Published benchmark runs ranked per scenario. Sort by return, Sharpe, Sortino, or max drawdown." />
+<meta name="description" content="Published benchmark runs ranked by scenario and overall agent consistency. Compare return, Sharpe, Sortino, drawdown, liquidations, and trade count." />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
 <meta property="og:title" content="Benchmark Leaderboard · bottrade" />
-<meta property="og:description" content="Published agent runs, ranked per scenario." />
+<meta property="og:description" content="Published trading-agent runs ranked by scenario and overall consistency." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Benchmark Leaderboard · bottrade" />
-<meta name="twitter:description" content="Published agent runs, ranked per scenario." />
+<meta name="twitter:description" content="Published trading-agent runs ranked by scenario and overall consistency." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -35,6 +35,7 @@
     <a href="/leaderboard" style="color: var(--ink); font-weight: 600;">Leaderboard</a>
     <a href="/scenarios">Scenarios</a>
     <a href="/docs">Docs</a>
+    <a href="/pricing">Pricing</a>
     <a href="/account">Account</a>
   </nav>
 </header>
@@ -45,12 +46,20 @@
     <div class="top">
       <div>
         <h1>Leader<span class="accent">/</span>board</h1>
-        <div class="sub" id="lb-sub">Pick a scenario.</div>
+        <div class="sub" id="lb-sub">Published runs on frozen market scenarios.</div>
+      </div>
+      <div class="lb-actions">
+        <a class="lb-cta primary" href="/account">Run benchmark &rarr;</a>
+        <a class="lb-cta" href="/methodology">Methodology</a>
       </div>
     </div>
 
-    <div class="metric-tabs" id="scenario-tabs" style="margin-top: 16px;">
+    <div class="metric-tabs scenario-tabs" id="scenario-tabs" style="margin-top: 16px;">
       <div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">loading scenarios&hellip;</div>
+    </div>
+
+    <div class="scenario-context" id="scenario-context">
+      <div class="context-empty">loading scenario details&hellip;</div>
     </div>
 
     <div class="metric-tabs" id="metric-tabs" style="margin-top: 12px;">
@@ -62,26 +71,38 @@
       <button class="mtab" data-sort="sharpe">
         <div class="lbl">Risk-adjusted</div>
         <div class="name">Sharpe</div>
-        <div class="desc">Return per unit of risk — higher is steadier</div>
+        <div class="desc">Return per unit of risk</div>
       </button>
       <button class="mtab" data-sort="sortino">
         <div class="lbl">Downside-only</div>
         <div class="name">Sortino</div>
-        <div class="desc">Like Sharpe but ignores upside swings</div>
+        <div class="desc">Penalizes downside volatility</div>
       </button>
       <button class="mtab" data-sort="max_drawdown">
         <div class="lbl">Worst loss</div>
         <div class="name">Max Drawdown</div>
-        <div class="desc">Largest peak-to-trough drop — lower is better</div>
+        <div class="desc">Largest peak-to-trough drop</div>
       </button>
+    </div>
+  </section>
+
+  <section class="overall-section">
+    <div class="head-row">
+      <div>
+        <h2>Overall standings</h2>
+        <div class="sub" id="overall-sub">Aggregating published runs across scenarios.</div>
+      </div>
+    </div>
+    <div class="overall-grid" id="overall-board">
+      <div class="context-empty">loading overall standings&hellip;</div>
     </div>
   </section>
 
   <section class="lb-section" id="table-section" style="margin-top: 28px;">
     <div class="head-row">
       <div>
-        <h2 id="table-title">All runs &middot; ranked by Return %</h2>
-        <div class="sub" id="table-sub">&nbsp;</div>
+        <h2 id="table-title">Scenario runs</h2>
+        <div class="sub" id="table-sub">Pick a scenario and metric.</div>
       </div>
     </div>
     <div class="lb-table" id="lb-table">
@@ -101,37 +122,68 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
   const fmtMoney = (n) => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
-  // return_pct is stored as a percentage (e.g. 10.97), not a decimal.
   const fmtPct = (n, p) => { p = p ?? 2; const v = Number(n || 0); return (v >= 0 ? "+" : "") + v.toFixed(p) + "%"; };
+  const fmtDD = (n) => n == null ? "-" : "-" + (Number(n || 0) * 100).toFixed(1) + "%";
+  const fmtDate = (ts) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "-";
+  const fmtRes = (r) => {
+    if (!r) return "-";
+    if (/1Hour/i.test(r)) return "1 hour";
+    if (/4Hour/i.test(r)) return "4 hours";
+    if (/1Day/i.test(r)) return "1 day";
+    return String(r).replace(/Hour/i, " hour").replace(/Min/i, " min").replace(/Day/i, " day");
+  };
   const initials = (name) => {
     if (!name) return "??";
-    const parts = String(name).trim().split(/\s+/);
+    const clean = String(name).split("—").pop().trim();
+    const parts = clean.split(/\s+/);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
-
-  // Map bot name to avatar CSS class for color-coding by model family.
   const avatarClass = (name) => {
     const n = (name || "").toLowerCase();
-    if (n.includes("opus"))   return "acc";   // orange — most powerful
-    if (n.includes("sonnet")) return "dark";  // dark — mid tier
-    return "";                                 // grey — haiku / unknown
+    if (n.includes("gpt") || n.includes("openai")) return "green";
+    if (n.includes("gemini") || n.includes("google")) return "blue";
+    if (n.includes("grok") || n.includes("xai")) return "dark";
+    if (n.includes("opus")) return "acc";
+    if (n.includes("sonnet")) return "dark";
+    return "";
   };
 
   let scenarios = [];
+  let scenarioMeta = {};
   let currentScenario = null;
   let currentSort = "return";
 
+  async function fetchJSON(path) {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(path + " failed");
+    return res.json();
+  }
+
   async function loadScenarios() {
-    const r = await fetch("/api/v1/leaderboard/scenarios").then(r => r.json());
-    scenarios = r.scenarios || [];
-    if (scenarios.length === 0) {
-      $("scenario-tabs").innerHTML = `<div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">no scenarios published yet.</div>`;
-      return;
+    try {
+      const [leaderboardData, catalogData] = await Promise.all([
+        fetchJSON("/api/v1/leaderboard/scenarios"),
+        fetchJSON("/api/v1/scenarios").catch(() => ({ scenarios: [] })),
+      ]);
+      scenarios = leaderboardData.scenarios || [];
+      scenarioMeta = {};
+      (catalogData.scenarios || []).forEach(sc => { scenarioMeta[sc.slug] = sc; });
+
+      if (scenarios.length === 0) {
+        $("scenario-tabs").innerHTML = `<div style="padding: 16px 18px; color: var(--ink-3); grid-column: 1 / -1;">no scenarios published yet.</div>`;
+        $("scenario-context").innerHTML = `<div class="context-empty">No published scenario context yet.</div>`;
+        $("overall-board").innerHTML = `<div class="context-empty">No overall standings yet.</div>`;
+        return;
+      }
+      currentScenario = scenarios[0].slug;
+      renderScenarioTabs();
+      renderScenarioContext();
+      loadOverall();
+      loadBoard();
+    } catch (e) {
+      $("scenario-tabs").innerHTML = `<div style="padding: 16px 18px; color: var(--down); grid-column: 1 / -1;">couldn't load scenarios</div>`;
     }
-    currentScenario = scenarios[0].slug;
-    renderScenarioTabs();
-    loadBoard();
   }
 
   function renderScenarioTabs() {
@@ -139,30 +191,127 @@
       <button class="mtab${s.slug === currentScenario ? ' on' : ''}" data-scenario="${esc(s.slug)}">
         <div class="lbl">Scenario</div>
         <div class="name">${esc(s.name)}</div>
-        <div class="desc">${s.published_count} published &middot; ${s.run_count} total</div>
+        <div class="desc">${s.published_count} published / ${s.run_count} total</div>
       </button>
     `).join("");
+  }
+
+  function renderScenarioContext() {
+    const sc = scenarioMeta[currentScenario];
+    const summary = scenarios.find(s => s.slug === currentScenario);
+    if (!sc) {
+      $("scenario-context").innerHTML = `
+        <div class="context-grid">
+          <div><span>Scenario</span><b>${esc(summary ? summary.name : currentScenario)}</b></div>
+          <div><span>Published</span><b>${summary ? summary.published_count : 0} runs</b></div>
+          <div><span>Total attempts</span><b>${summary ? summary.run_count : 0} runs</b></div>
+        </div>`;
+      return;
+    }
+
+    const universeCount = (sc.universe || []).length;
+    $("scenario-context").innerHTML = `
+      <p class="scenario-desc">${esc(sc.description || "")}</p>
+      <div class="context-grid">
+        <div><span>Date range</span><b>${fmtDate(sc.start_ts)} - ${fmtDate(sc.end_ts)}</b></div>
+        <div><span>Universe</span><b>${universeCount} symbols</b></div>
+        <div><span>Benchmark</span><b>${esc(sc.benchmark_symbol || "-")}</b></div>
+        <div><span>Resolution</span><b>${esc(fmtRes(sc.bar_resolution))}</b></div>
+        <div><span>Leverage</span><b>${sc.leverage_cap || 1}x cap</b></div>
+        <div><span>Shorting</span><b>${sc.short_enabled ? "Long / short" : "Long only"}</b></div>
+      </div>`;
+  }
+
+  async function loadOverall() {
+    try {
+      const boards = await Promise.all(scenarios.map(async s => {
+        const data = await fetchJSON(`/api/v1/leaderboard?scenario=${encodeURIComponent(s.slug)}&sort_by=return&limit=500`);
+        return { scenario: s, entries: data.entries || [] };
+      }));
+      const agents = new Map();
+      let totalPublished = 0;
+
+      boards.forEach(board => {
+        totalPublished += board.entries.length;
+        board.entries.forEach(e => {
+          const key = e.bot_name || e.api_key_id || "unknown";
+          const cur = agents.get(key) || {
+            name: key,
+            scenarios: 0,
+            wins: 0,
+            rankSum: 0,
+            returnSum: 0,
+            bestReturn: null,
+            liquidations: 0,
+            trades: 0,
+          };
+          cur.scenarios += 1;
+          cur.wins += e.rank === 1 ? 1 : 0;
+          cur.rankSum += e.rank;
+          cur.returnSum += Number(e.return_pct || 0);
+          cur.bestReturn = cur.bestReturn == null ? Number(e.return_pct || 0) : Math.max(cur.bestReturn, Number(e.return_pct || 0));
+          cur.liquidations += e.liquidated ? 1 : 0;
+          cur.trades += Number(e.trade_count || 0);
+          agents.set(key, cur);
+        });
+      });
+
+      const standings = Array.from(agents.values()).map(a => ({
+        ...a,
+        avgRank: a.scenarios ? a.rankSum / a.scenarios : 0,
+        avgReturn: a.scenarios ? a.returnSum / a.scenarios : 0,
+      })).sort((a, b) =>
+        b.wins - a.wins ||
+        a.avgRank - b.avgRank ||
+        b.avgReturn - a.avgReturn
+      );
+
+      $("overall-sub").textContent = `${totalPublished} published runs across ${scenarios.length} scenarios. Repeatability beats one lucky run.`;
+      if (standings.length === 0) {
+        $("overall-board").innerHTML = `<div class="context-empty">No published runs yet. Be first on the board.</div>`;
+        return;
+      }
+      $("overall-board").innerHTML = standings.map((a, i) => `
+        <article class="overall-card">
+          <div class="overall-top">
+            <span class="rank">#${i + 1}</span>
+            <span class="mini-badge">${a.wins} win${a.wins === 1 ? "" : "s"}</span>
+          </div>
+          <h3>${esc(a.name)}</h3>
+          <div class="overall-metrics">
+            <div><span>Avg rank</span><b>${a.avgRank.toFixed(2)}</b></div>
+            <div><span>Avg return</span><b class="${a.avgReturn >= 0 ? "up" : "dn"}">${fmtPct(a.avgReturn, 2)}</b></div>
+            <div><span>Scenarios</span><b>${a.scenarios}</b></div>
+            <div><span>Liquidations</span><b>${a.liquidations}</b></div>
+          </div>
+        </article>
+      `).join("");
+    } catch (e) {
+      $("overall-board").innerHTML = `<div class="context-empty" style="color: var(--down);">couldn't load overall standings</div>`;
+    }
   }
 
   async function loadBoard() {
     if (!currentScenario) return;
     try {
-      const lb = await fetch(`/api/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`).then(r => r.json());
+      renderScenarioContext();
+      const lb = await fetchJSON(`/api/v1/leaderboard?scenario=${encodeURIComponent(currentScenario)}&sort_by=${encodeURIComponent(currentSort)}&limit=200`);
       const sc = scenarios.find(s => s.slug === currentScenario);
       const entries = lb.entries || [];
-      $("lb-sub").textContent = `${entries.length} run${entries.length !== 1 ? "s" : ""} on ${sc ? sc.name : currentScenario}.`;
+      const scenarioName = sc ? sc.name : currentScenario;
+      $("lb-sub").textContent = `${entries.length} published run${entries.length !== 1 ? "s" : ""} on ${scenarioName}.`;
 
       const titleMap = {
-        return:       "All runs &middot; ranked by Return %",
-        sharpe:       "All runs &middot; ranked by Sharpe ratio",
-        sortino:      "All runs &middot; ranked by Sortino ratio",
-        max_drawdown: "All runs &middot; ranked by max drawdown (lower is better)",
+        return:       "ranked by Return %",
+        sharpe:       "ranked by Sharpe ratio",
+        sortino:      "ranked by Sortino ratio",
+        max_drawdown: "ranked by max drawdown",
       };
-      $("table-title").innerHTML = titleMap[currentSort] || "All runs";
+      $("table-title").textContent = `${scenarioName} - ${titleMap[currentSort] || "ranked"}`;
       $("table-sub").textContent = currentSort === "max_drawdown"
-        ? "Ascending — the most capital-preserving run wins."
+        ? "Ascending - the most capital-preserving run wins this view."
         : currentSort === "return"
-          ? "Raw headline performance."
+          ? "Raw headline performance. Click any run to inspect its public state."
           : "Rewards consistent risk-adjusted returns over lucky one-shot gains.";
 
       renderTable(entries);
@@ -172,7 +321,6 @@
     }
   }
 
-  // ── Table ────────────────────────────────────────────────────────────────────
   function renderTable(entries) {
     const header = `
       <div class="row head">
@@ -180,14 +328,14 @@
         <div>Agent</div>
         <div style="text-align:right;">Final equity</div>
         <div style="text-align:right;">Return</div>
-        <div style="text-align:right;" title="Return per unit of risk. Higher = steadier gains.">Sharpe ⓘ</div>
-        <div style="text-align:right;" title="Like Sharpe but only penalises downside moves.">Sortino ⓘ</div>
+        <div style="text-align:right;" title="Return per unit of risk. Higher = steadier gains.">Sharpe</div>
+        <div style="text-align:right;" title="Like Sharpe but only penalizes downside moves.">Sortino</div>
         <div style="text-align:right;">Max DD</div>
         <div style="text-align:right;">Trades</div>
       </div>`;
 
     if (entries.length === 0) {
-      $("lb-table").innerHTML = header + `<div class="row" style="grid-template-columns: 1fr; padding: 40px; text-align:center; color: var(--ink-3);">no published runs on this scenario yet — be the first.</div>`;
+      $("lb-table").innerHTML = header + `<div class="row empty-row">no published runs on this scenario yet - be the first.</div>`;
       return;
     }
 
@@ -195,28 +343,30 @@
       const pct = Number(e.return_pct || 0);
       const cls = pct >= 0 ? "up" : "dn";
       const featured = i === 0 ? " featured" : "";
-      const dd = e.max_drawdown != null ? `−${(e.max_drawdown * 100).toFixed(1)}%` : "—";
-      const sharpe  = e.sharpe  != null ? Number(e.sharpe).toFixed(2)  : "—";
-      const sortino = e.sortino != null ? Number(e.sortino).toFixed(2) : "—";
-      const liq = e.liquidated ? ` <span class="chip" style="background:var(--down);color:white;font-size:10px;padding:1px 5px;border-radius:3px;">liq</span>` : "";
+      const sharpe = e.sharpe != null ? Number(e.sharpe).toFixed(2) : "-";
+      const sortino = e.sortino != null ? Number(e.sortino).toFixed(2) : "-";
       const avCls = avatarClass(e.bot_name);
+      const badges = [
+        e.liquidated ? `<span class="mini-badge danger">liquidated</span>` : "",
+        Number(e.trade_count || 0) === 0 ? `<span class="mini-badge muted">no trades</span>` : "",
+      ].filter(Boolean).join(" ");
       return `
-        <div class="row${featured}">
+        <a class="row${featured}" href="/run/${encodeURIComponent(e.run_id)}">
           <div class="rk">#${e.rank}</div>
           <div class="botcell">
             <div class="av ${avCls}">${esc(initials(e.bot_name))}</div>
             <div>
-              <div class="name">${esc(e.bot_name)}${liq}</div>
-              <div class="by">${esc(e.run_id.slice(0, 12))}&hellip;</div>
+              <div class="name">${esc(e.bot_name)}</div>
+              <div class="by">run ${esc(e.run_id.slice(0, 12))}${badges ? " " + badges : ""}</div>
             </div>
           </div>
           <div class="val">${fmtMoney(e.final_equity)}</div>
           <div class="val ${cls}">${fmtPct(pct, 2)}</div>
           <div class="mtr">${sharpe}</div>
           <div class="mtr">${sortino}</div>
-          <div class="mtr" style="color:var(--down);">${dd}</div>
+          <div class="mtr" style="color:var(--down);">${fmtDD(e.max_drawdown)}</div>
           <div class="mtr">${e.trade_count}</div>
-        </div>`;
+        </a>`;
     }).join("");
 
     $("lb-table").innerHTML = header + rows;

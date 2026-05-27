@@ -46,7 +46,7 @@
 /* ---------- scoreboard ---------- */
 .scoreboard {
   display:grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   border: 1px solid var(--ink);
   border-radius: 10px;
   overflow: hidden;
@@ -511,6 +511,11 @@
   margin-top: 56px;
   padding-top: 36px;
   border-top: 1px solid var(--rule);
+}
+.top-bots.home-proof {
+  margin-top: 36px;
+  padding-top: 0;
+  border-top: none;
 }
 .tb-head {
   display:flex; justify-content:space-between; align-items:flex-end; flex-wrap: wrap;

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Published Run · bottrade</title>
+<meta name="description" content="Inspect a published bottrade benchmark run: score, scenario, final positions, and filled trades." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="bottrade" />
+<meta property="og:title" content="Published Run · bottrade" />
+<meta property="og:description" content="Inspect a published bottrade benchmark run." />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Published Run · bottrade" />
+<meta name="twitter:description" content="Inspect a published bottrade benchmark run." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="shortcut icon" href="/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/vs-page.css">
+<link rel="stylesheet" href="/run-page.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a href="/" class="brand" style="text-decoration:none;"><span class="dot"></span>bot<span class="slash">/</span>trade</a>
+  <div class="crumbs"><span class="here">Published run</span></div>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/leaderboard">Leaderboard</a>
+    <a href="/scenarios">Scenarios</a>
+    <a href="/docs">Docs</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/account">Account</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <section class="run-hero">
+    <div>
+      <span class="eyebrow">Published benchmark run</span>
+      <h1 id="run-title">Loading run...</h1>
+      <p class="sub" id="run-sub">Fetching public run state.</p>
+    </div>
+    <div class="run-actions">
+      <a class="run-btn primary" href="/account">Run the benchmark &rarr;</a>
+      <a class="run-btn" href="/leaderboard">Back to leaderboard</a>
+    </div>
+  </section>
+
+  <section class="score-strip" id="score-strip">
+    <div class="score-loading">loading score...</div>
+  </section>
+
+  <section class="run-grid">
+    <div class="run-card">
+      <div class="card-head">
+        <span class="eyebrow">Scenario</span>
+        <a href="/scenarios">catalog &rarr;</a>
+      </div>
+      <h2 id="scenario-name">-</h2>
+      <p id="scenario-desc" class="muted"></p>
+      <div class="fact-grid" id="scenario-facts"></div>
+    </div>
+
+    <div class="run-card">
+      <div class="card-head">
+        <span class="eyebrow">Final state</span>
+      </div>
+      <div class="fact-grid single" id="run-facts"></div>
+      <div class="positions" id="positions"></div>
+    </div>
+  </section>
+
+  <section class="run-card trades-card">
+    <div class="card-head">
+      <span class="eyebrow">Filled trades</span>
+      <span id="trade-count" class="muted"></span>
+    </div>
+    <div class="trades-table" id="trades-table">
+      <div class="empty">loading trades...</div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>bottrade &middot; public run evidence &middot; deterministic, reproducible</span>
+    <span class="mono" id="foot-time">last sync: &mdash;</span>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
+  const runId = location.pathname.split("/").filter(Boolean).pop();
+  const fmtMoney = n => "$" + Math.round(Number(n || 0)).toLocaleString("en-US");
+  const fmtPct = (n, p) => {
+    const v = Number(n || 0);
+    const places = p == null ? 2 : p;
+    return (v >= 0 ? "+" : "") + v.toFixed(places) + "%";
+  };
+  const fmtMetric = n => n == null ? "-" : Number(n).toFixed(2);
+  const fmtDD = n => n == null ? "-" : "-" + (Number(n || 0) * 100).toFixed(1) + "%";
+  const fmtDate = ts => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "-";
+  const fmtDateTime = ts => ts ? new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).replace(",", "") + " UTC" : "-";
+  const fmtRes = r => {
+    if (!r) return "-";
+    if (/1Hour/i.test(r)) return "1 hour";
+    if (/4Hour/i.test(r)) return "4 hours";
+    if (/1Day/i.test(r)) return "1 day";
+    return String(r).replace(/Hour/i, " hour").replace(/Min/i, " min").replace(/Day/i, " day");
+  };
+
+  async function fetchJSON(path) {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(path + " failed");
+    return res.json();
+  }
+
+  function fact(label, value) {
+    return `<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+  }
+
+  function renderScores(data) {
+    const r = data.results || {};
+    const ret = Number(r.return_pct || 0);
+    $("score-strip").innerHTML = `
+      <div class="score ${ret >= 0 ? "up" : "dn"}"><span>Return</span><b>${fmtPct(ret, 2)}</b></div>
+      <div class="score"><span>Final equity</span><b>${fmtMoney(r.final_equity)}</b></div>
+      <div class="score"><span>Sharpe</span><b>${fmtMetric(r.sharpe)}</b></div>
+      <div class="score"><span>Sortino</span><b>${fmtMetric(r.sortino)}</b></div>
+      <div class="score dn"><span>Max drawdown</span><b>${fmtDD(r.max_drawdown)}</b></div>
+      <div class="score"><span>Trades</span><b>${r.trade_count || 0}</b></div>
+    `;
+  }
+
+  function renderScenario(run, scenario) {
+    $("scenario-name").textContent = scenario ? scenario.name : "Scenario " + run.scenario_id;
+    $("scenario-desc").textContent = scenario && scenario.description ? scenario.description : "";
+    $("scenario-facts").innerHTML = scenario ? [
+      fact("Date range", `${fmtDate(scenario.start_ts)} - ${fmtDate(scenario.end_ts)}`),
+      fact("Universe", `${(scenario.universe || []).length} symbols`),
+      fact("Benchmark", scenario.benchmark_symbol || "-"),
+      fact("Resolution", fmtRes(scenario.bar_resolution)),
+      fact("Leverage", `${scenario.leverage_cap || 1}x cap`),
+      fact("Shorting", scenario.short_enabled ? "Long / short" : "Long only"),
+    ].join("") : [
+      fact("Scenario ID", run.scenario_id),
+      fact("Version", String(run.scenario_version || "-")),
+    ].join("");
+  }
+
+  function renderRunFacts(data) {
+    const run = data.run || {};
+    const last = data.last_equity || {};
+    $("run-facts").innerHTML = [
+      fact("Run ID", run.id || runId),
+      fact("Scenario version", String(run.scenario_version || "-")),
+      fact("Status", run.status || "-"),
+      fact("Published", run.published ? "Yes" : "No"),
+      fact("Sim time", fmtDateTime(run.sim_time)),
+      fact("Cash", fmtMoney(last.cash != null ? last.cash : run.cash)),
+    ].join("");
+  }
+
+  function renderPositions(data) {
+    const positions = data.positions || [];
+    if (positions.length === 0) {
+      $("positions").innerHTML = `<div class="empty">No open positions at the final state.</div>`;
+      return;
+    }
+    $("positions").innerHTML = `
+      <div class="pos-head">Open positions at final state</div>
+      ${positions.map(p => `
+        <div class="pos-row">
+          <span>${esc(p.symbol)}</span>
+          <b class="${Number(p.quantity) >= 0 ? "up" : "dn"}">${Number(p.quantity).toLocaleString("en-US")} shares</b>
+          <span>${fmtMoney(p.avg_cost)} avg</span>
+        </div>
+      `).join("")}
+    `;
+  }
+
+  function renderTrades(data) {
+    const trades = data.trades || [];
+    $("trade-count").textContent = `${trades.length} fill${trades.length === 1 ? "" : "s"}`;
+    if (trades.length === 0) {
+      $("trades-table").innerHTML = `<div class="empty">No filled trades recorded for this run.</div>`;
+      return;
+    }
+    $("trades-table").innerHTML = `
+      <div class="trade-row head">
+        <div>Time</div><div>Symbol</div><div>Side</div><div>Qty</div><div>Fill</div><div>Slippage</div><div>Value</div>
+      </div>
+      ${trades.map(t => `
+        <div class="trade-row">
+          <div>${fmtDateTime(t.sim_time_filled)}</div>
+          <div class="sym">${esc(t.symbol)}</div>
+          <div><span class="side ${esc(t.side)}">${esc(t.side)}</span></div>
+          <div>${Number(t.quantity || 0).toLocaleString("en-US")}</div>
+          <div>${fmtMoney(t.fill_price)}</div>
+          <div>${Number(t.slippage_bps || 0)} bps</div>
+          <div>${fmtMoney(t.total_value)}</div>
+        </div>
+      `).join("")}
+    `;
+  }
+
+  async function load() {
+    try {
+      const [data, catalog] = await Promise.all([
+        fetchJSON(`/api/v1/runs/${encodeURIComponent(runId)}/public`),
+        fetchJSON("/api/v1/scenarios").catch(() => ({ scenarios: [] })),
+      ]);
+      const run = data.run || {};
+      const scenario = (catalog.scenarios || []).find(sc => sc.id === run.scenario_id);
+      $("run-title").textContent = run.bot_name || "Published run";
+      $("run-sub").textContent = scenario
+        ? `${scenario.name} / run ${String(run.id || runId).slice(0, 12)}`
+        : `run ${String(run.id || runId).slice(0, 12)}`;
+      document.title = `${run.bot_name || "Published Run"} · bottrade`;
+      renderScores(data);
+      renderScenario(run, scenario);
+      renderRunFacts(data);
+      renderPositions(data);
+      renderTrades(data);
+      $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
+    } catch (e) {
+      $("run-title").textContent = "Run not public";
+      $("run-sub").textContent = "This run may be private, unpublished, or no longer available.";
+      $("score-strip").innerHTML = `<div class="score-loading error">Could not load public run state.</div>`;
+      $("trades-table").innerHTML = `<div class="empty">No public run data available.</div>`;
+    }
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

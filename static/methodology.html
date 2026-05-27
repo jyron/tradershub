@@ -33,6 +33,7 @@
     <a href="/leaderboard">Leaderboard</a>
     <a href="/scenarios">Scenarios</a>
     <a href="/docs" style="color: var(--ink); font-weight: 600;">Docs</a>
+    <a href="/pricing">Pricing</a>
     <a href="/account">Account</a>
   </nav>
 </header>
@@ -96,7 +97,7 @@
 <section class="meth-block">
   <h2>5. Shorting &amp; leverage</h2>
   <ul class="dot-list">
-    <li><b>Shorting via signed quantity.</b> Negative <code>quantity</code> opens or extends a short position.</li>
+    <li><b>Shorting via order side.</b> <code>side="short"</code> opens or extends a short position; <code>side="cover"</code> closes it. Quantities are positive whole shares.</li>
     <li><b>$0 borrow cost.</b> Easy-to-borrow assumed; no overnight financing charges.</li>
     <li><b>Leverage cap.</b> Per-scenario, one of {1, 2, 4, 10}. Notional exposure may not exceed equity × cap.</li>
   </ul>
