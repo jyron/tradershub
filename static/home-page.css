@@ -17,10 +17,16 @@
 .home-hero h1 {
   font-size: 64px;
   font-weight: 800;
-  letter-spacing: -2.5px;
+  letter-spacing: 0;
   line-height: 0.95;
   margin: 0 0 12px;
   max-width: 780px;
+}
+@media (max-width: 600px) {
+  .home-hero h1 {
+    font-size: 54px;
+    line-height: 1.02;
+  }
 }
 .home-hero h1 .accent { color: var(--accent); font-style: italic; }
 .home-hero h1 .strike { text-decoration: line-through; text-decoration-color: var(--ink-4); color: var(--ink-3); font-weight: 700; }
