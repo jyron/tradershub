@@ -90,16 +90,26 @@
     </div>
 
     <section class="upgrade" id="upgrade-card">
-      <div>
+      <div id="upgrade-content">
         <span class="kicker">Upgrade available</span>
         <h2>Move this account to <span class="accent">Pro.</span></h2>
         <p>500 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
         <div class="ctas">
-          <a class="btn primary" id="upgrade-link" href="/pricing">Upgrade to Pro · $39/mo <span class="arrow">→</span></a>
+          <button class="btn primary" id="upgrade-btn" type="button">Upgrade to Pro · $39/mo <span class="arrow">→</span></button>
           <a href="/pricing" class="btn ghost-light">See pricing</a>
         </div>
+        <p id="upgrade-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
       </div>
-      <div class="perks">
+      <div id="manage-content" style="display:none;">
+        <span class="kicker">Pro plan active</span>
+        <h2>Pro <span class="accent">subscription.</span></h2>
+        <p>Manage your payment method, view invoices, or cancel any time through the Stripe customer portal.</p>
+        <div class="ctas">
+          <button class="btn primary" id="manage-btn" type="button">Manage subscription <span class="arrow">→</span></button>
+        </div>
+        <p id="manage-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
+      </div>
+      <div class="perks" id="perks-section">
         <div class="perk"><span class="num">01</span><span class="txt"><b>500 runs/mo</b> instead of 25.</span></div>
         <div class="perk"><span class="num">02</span><span class="txt"><b>Named handle</b> on published leaderboard entries.</span></div>
         <div class="perk"><span class="num">03</span><span class="txt"><b>Same account</b> for REST, scripts, agents, and MCP clients.</span></div>
@@ -263,8 +273,11 @@
     $('reset-distance').textContent = daysUntilReset === 1 ? '1 day' : (daysUntilReset + ' days');
     $('key-meta').textContent = 'created ' + formatDate(data.api_key_created_at) + ' · last used ' + formatTimestamp(data.last_used_at);
     $('last-sync').textContent = 'last sync: ' + now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'UTC' }) + ' UTC';
-    $('upgrade-link').href = '/pricing?api_key=' + encodeURIComponent(state.realKey) + '#subscribe-form';
-    $('upgrade-card').classList.toggle('show', !isPro);
+    $('upgrade-card').classList.add('show');
+    $('upgrade-card').classList.toggle('pro', isPro);
+    $('upgrade-content').style.display = isPro ? 'none' : '';
+    $('manage-content').style.display = isPro ? '' : 'none';
+    $('perks-section').style.display = isPro ? 'none' : '';
 
     setRevealed(false);
     setCode('curl');
@@ -290,6 +303,41 @@
       $('copyBtn').classList.remove('copied');
       $('copyBtn').textContent = 'copy';
     }, 1400);
+  });
+
+  function billingPost(path, btnId, errId) {
+    var btn = $(btnId);
+    var err = $(errId);
+    btn.disabled = true;
+    err.style.display = 'none';
+    fetch(path, { method: 'POST', credentials: 'same-origin' })
+      .then(function (res) {
+        return res.json().then(function (d) { return { ok: res.ok, status: res.status, data: d }; });
+      })
+      .then(function (r) {
+        if (r.ok && r.data.url) {
+          window.location = r.data.url;
+        } else if (r.status === 401) {
+          window.location = '/login';
+        } else {
+          err.textContent = r.data.error || r.data.detail || 'Request failed.';
+          err.style.display = 'block';
+          btn.disabled = false;
+        }
+      })
+      .catch(function () {
+        err.textContent = 'Network error.';
+        err.style.display = 'block';
+        btn.disabled = false;
+      });
+  }
+
+  $('upgrade-btn').addEventListener('click', function () {
+    billingPost('/billing/checkout', 'upgrade-btn', 'upgrade-error');
+  });
+
+  $('manage-btn').addEventListener('click', function () {
+    billingPost('/billing/portal', 'manage-btn', 'manage-error');
   });
 
   document.querySelectorAll('.tab').forEach(function (tab) {

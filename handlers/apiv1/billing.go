@@ -127,16 +127,32 @@ type SessionOutput struct {
 }
 
 func (h *handlers) billingCheckout(ctx context.Context, _ *CheckoutInput) (*CheckoutOutput, error) {
+	key := apiKeyFrom(ctx)
+	url, alreadyPro, err := h.createCheckoutOrPortalURL(key)
+	if err != nil {
+		return nil, huma.NewError(http.StatusInternalServerError, "stripe checkout create failed: "+err.Error())
+	}
+	if alreadyPro {
+		return nil, huma.Error409Conflict("already subscribed — manage here: " + url)
+	}
+	out := &CheckoutOutput{}
+	out.Body.URL = url
+	return out, nil
+}
+
+// createCheckoutOrPortalURL returns a Stripe URL to send the user to:
+//   - if the account is already on Pro with a Stripe subscription, returns a
+//     Customer Portal session URL and alreadyPro=true;
+//   - otherwise returns a Checkout Session URL.
+//
+// Callable from both API handlers (which auth via X-API-Key) and site handlers
+// (which auth via bt_session cookie). Always sets stripe.Key from config first.
+func (h *handlers) createCheckoutOrPortalURL(key models.APIKey) (string, bool, error) {
 	stripe.Key = h.StripeSecretKey
 
-	key := apiKeyFrom(ctx)
-
 	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && key.Plan == "pro" {
-		ps, err := h.createPortalSession(key.StripeCustomerID)
-		if err != nil {
-			return nil, err
-		}
-		return nil, huma.Error409Conflict("already subscribed — manage here: " + ps)
+		url, err := h.createPortalSession(key.StripeCustomerID)
+		return url, true, err
 	}
 
 	metadata := map[string]string{
@@ -166,12 +182,9 @@ func (h *handlers) billingCheckout(ctx context.Context, _ *CheckoutInput) (*Chec
 
 	cs, err := session.New(csParams)
 	if err != nil {
-		return nil, huma.NewError(http.StatusInternalServerError, "stripe checkout create failed: "+err.Error())
+		return "", false, err
 	}
-
-	out := &CheckoutOutput{}
-	out.Body.URL = cs.URL
-	return out, nil
+	return cs.URL, false, nil
 }
 
 func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutput, error) {
@@ -192,9 +205,10 @@ func (h *handlers) billingPortal(ctx context.Context, _ *struct{}) (*PortalOutpu
 }
 
 func (h *handlers) createPortalSession(stripeCustomerID string) (string, error) {
+	stripe.Key = h.StripeSecretKey
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(stripeCustomerID),
-		ReturnURL: stripe.String(h.AppBaseURL + "/pricing"),
+		ReturnURL: stripe.String(h.AppBaseURL + "/account"),
 	}
 	ps, err := stripebillingportalsession.New(params)
 	if err != nil {

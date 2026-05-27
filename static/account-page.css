@@ -262,6 +262,10 @@
   display: grid;
 }
 
+.upgrade.pro {
+  grid-template-columns: 1fr;
+}
+
 .upgrade::before {
   content: "";
   position: absolute;

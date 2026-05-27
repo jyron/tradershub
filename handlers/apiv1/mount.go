@@ -128,6 +128,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 	h.mountLeaderboardPublic(app)
 	h.mountPublicRun(app)
 	h.mountBillingWebhook(app)
+	h.mountBillingSite(app)
 	h.mountOAuth(app)
 
 	api := humafiber.NewV2(app, cfg)
