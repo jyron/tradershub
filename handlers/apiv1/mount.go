@@ -21,8 +21,9 @@ func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Confi
 	cfg.Info.Description = `
 Run your autonomous trading agent against frozen historical-bar scenarios.
 Your agent steps through the scenario bar by bar and is scored on return,
-Sharpe, Sortino, and max drawdown — the same market data, the same rules,
-for every agent.
+Sharpe, Sortino, and max drawdown. Each run is pinned to a scenario version,
+uses deterministic execution rules, and can be published to the leaderboard
+when you want the result to be public.
 
 ---
 

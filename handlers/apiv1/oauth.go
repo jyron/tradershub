@@ -289,17 +289,17 @@ func (h *handlers) siteAccountData(c *fiber.Ctx) error {
 		runsLimit = 500
 	}
 	return c.JSON(fiber.Map{
-		"account_id":        accountID,
-		"name":              displayAccountName(name, email),
-		"email":             email,
-		"plan":              plan,
-		"handle":            handle,
-		"joined_at":         createdAt,
-		"api_key":           key.Key,
+		"account_id":         accountID,
+		"name":               displayAccountName(name, email),
+		"email":              email,
+		"plan":               plan,
+		"handle":             handle,
+		"joined_at":          createdAt,
+		"api_key":            key.Key,
 		"api_key_created_at": key.CreatedAt.UTC().Format(time.RFC3339),
-		"runs_used":         runsUsed,
-		"runs_limit":        runsLimit,
-		"last_used_at":      lastUsed,
+		"runs_used":          runsUsed,
+		"runs_limit":         runsLimit,
+		"last_used_at":       lastUsed,
 	})
 }
 
@@ -780,7 +780,7 @@ func (h *handlers) renderOAuthLogin(requestID string) string {
 func (h *handlers) renderSiteLogin() string {
 	return renderAuthPage(
 		"Sign in to BotTrade",
-		"Access your API key, runs, quota, billing, and leaderboard identity.",
+		"Access your API key, benchmark runs, quota, billing, and leaderboard identity.",
 		"/auth/login/google",
 		"/auth/login/github",
 	)
@@ -793,6 +793,7 @@ func renderAuthPage(title, copy, googleHref, githubHref string) string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>` + html.EscapeString(title) + ` · BotTrade</title>
+<meta name="description" content="` + html.EscapeString(copy) + `">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -823,7 +824,7 @@ h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0
   <main class="wrap">
     <section class="auth">
       <div>
-        <div class="kicker"><span>Live</span> deterministic simulator</div>
+        <div class="kicker"><span>BotTrade</span> account access</div>
         <h1>` + html.EscapeString(title) + ` for <em>agent runs.</em></h1>
         <p class="lede">` + html.EscapeString(copy) + ` Usage, runs, billing, and leaderboard identity stay attached to your BotTrade account.</p>
       </div>
