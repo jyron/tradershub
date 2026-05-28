@@ -286,7 +286,7 @@ func (h *handlers) siteAccountData(c *fiber.Ctx) error {
 	).Scan(&lastUsed)
 	runsLimit := 25
 	if strings.EqualFold(strings.TrimSpace(plan), "pro") {
-		runsLimit = 500
+		runsLimit = 200
 	}
 	return c.JSON(fiber.Map{
 		"account_id":         accountID,

@@ -28,9 +28,9 @@ func (e *quotaFreeLimitError) Error() string  { return e.Err }
 func (e *quotaFreeLimitError) GetStatus() int { return http.StatusPaymentRequired }
 
 // quotaProLimitError is returned (as HTTP 429) when a pro-tier account has
-// exhausted its 500-run monthly allowance. Its JSON shape matches the spec:
+// exhausted its 200-run monthly allowance. Its JSON shape matches the spec:
 //
-//	{ "error": "...", "runs_used": N, "runs_limit": 500, "resets_at": "..." }
+//	{ "error": "...", "runs_used": N, "runs_limit": 200, "resets_at": "..." }
 type quotaProLimitError struct {
 	Err       string `json:"error"`
 	RunsUsed  int    `json:"runs_used"`
@@ -144,7 +144,7 @@ func (h *handlers) enforceRunQuota(key models.APIKey) error {
 	}
 
 	if key.Plan == "pro" {
-		const limit = 500
+		const limit = 200
 		if runsUsed >= limit {
 			now := time.Now().UTC()
 			nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)

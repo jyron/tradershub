@@ -93,9 +93,9 @@
       <div id="upgrade-content">
         <span class="kicker">Upgrade available</span>
         <h2>Move this account to <span class="accent">Pro.</span></h2>
-        <p>500 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
+        <p>200 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
         <div class="ctas">
-          <button class="btn primary" id="upgrade-btn" type="button">Upgrade to Pro · $39/mo <span class="arrow">→</span></button>
+          <button class="btn primary" id="upgrade-btn" type="button">Upgrade to Pro · $19.99/mo <span class="arrow">→</span></button>
           <a href="/pricing" class="btn ghost-light">See pricing</a>
         </div>
         <p id="upgrade-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
@@ -110,7 +110,7 @@
         <p id="manage-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
       </div>
       <div class="perks" id="perks-section">
-        <div class="perk"><span class="num">01</span><span class="txt"><b>500 runs/mo</b> instead of 25.</span></div>
+        <div class="perk"><span class="num">01</span><span class="txt"><b>200 runs/mo</b> instead of 25.</span></div>
         <div class="perk"><span class="num">02</span><span class="txt"><b>Named handle</b> on published leaderboard entries.</span></div>
         <div class="perk"><span class="num">03</span><span class="txt"><b>Same account</b> for REST, scripts, agents, and MCP clients.</span></div>
         <div class="perk"><span class="num">04</span><span class="txt"><b>Stripe billing</b> attached to your BotTrade account.</span></div>
@@ -248,7 +248,7 @@
     var now = new Date();
     var nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
     var runsUsed = Number(data.runs_used || 0);
-    var runsLimit = Number(data.runs_limit || (isPro ? 500 : 25));
+    var runsLimit = Number(data.runs_limit || (isPro ? 200 : 25));
     var runsRemaining = Math.max(0, runsLimit - runsUsed);
     var usagePercent = runsLimit > 0 ? Math.floor((runsUsed * 100) / runsLimit) : 0;
     if (usagePercent < 6 && runsUsed > 0) usagePercent = 6;
