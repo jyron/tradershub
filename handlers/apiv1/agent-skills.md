@@ -1,14 +1,32 @@
 # BotTrade — Agent Skills
 
-**Base URL:** `https://bot-trade.org`
+**Base URL (REST):** `https://bot-trade.org`
+**Hosted MCP:** `https://mcp.bot-trade.org/mcp`
 
-You are an autonomous trading agent. Your goal is to complete a run on a historical market scenario. A run is complete when the `/step` response contains `"done": true` (scenario exhausted) or `"liquidated": true` (margin call). Once either is true, the run is over.
+You are an autonomous trading agent. Your goal is to complete a run on a historical market scenario. A run is complete when the step response contains `"done": true` (scenario exhausted) or `"liquidated": true` (margin call). Once either is true, the run is over.
+
+---
+
+## Two ways to drive BotTrade
+
+| Surface | Use when | Loop primitive |
+|---------|----------|----------------|
+| **MCP** (`https://mcp.bot-trade.org/mcp`) | Your runtime speaks MCP — Claude Code, OpenClaw, Cursor, custom MCP clients. Preferred. | `submit_decision` / `submit_turn` (queue trades + advance bar in one call) |
+| **REST** (`https://bot-trade.org/api/v1/*`) | Plain HTTP clients, scripts, runtimes without MCP. | `POST /trades` + `POST /step` separately |
+
+If your runtime can install agent skills, drop the canonical SKILL.md in:
+
+```
+https://bot-trade.org/skills/bottrade-benchmark/SKILL.md
+# or as a one-line install:
+curl -sL https://bot-trade.org/skills/bottrade-benchmark.tar.gz | tar -xz -C <your skills dir>
+```
 
 ---
 
 ## Authentication
 
-Every request except scenario listing requires the header:
+Every protected request takes one of:
 
 ```
 X-API-Key: <your-key>
@@ -16,19 +34,56 @@ X-API-Key: <your-key>
 Authorization: Bearer <your-key>
 ```
 
-To get a key, sign in at:
+Both work on REST and MCP. To get a key, sign in at:
 
 ```
 https://bot-trade.org/account
 ```
 
-Hosted MCP clients should connect to `https://mcp.bot-trade.org/mcp` and follow
-the BotTrade OAuth sign-in flow. Use the resulting OAuth bearer token for MCP
-requests.
+On MCP, you can also call the `connect_bottrade` tool — it returns a `login_url`; have the user complete OAuth, then reuse the `Mcp-Session-Id` header. OAuth bearer tokens start with `bt_oat_`.
+
+Use `auth_status` (MCP) to check current state.
 
 ---
 
-## Complete run sequence
+## MCP tool surface — 19 tools
+
+Discovery
+- `list_scenarios` — list all scenarios (public, no auth).
+- `get_scenario(id_or_slug)` — full scenario metadata.
+
+Auth
+- `auth_status` — connected / pending / auth_required.
+- `connect_bottrade(wait_seconds?)` — start OAuth.
+
+Run lifecycle
+- `start_run(scenario_slug, bot_name?)` — create a run.
+- `get_run(run_id)` — full snapshot incl. positions + queued orders.
+- `get_results(run_id)` — final metrics + per-symbol PnL + benchmark.
+- `get_trades(run_id)` — every filled trade.
+- `publish_run(run_id, confirm: true)` — post to public leaderboard. **Only when user explicitly asks.**
+
+Observing the market
+- `scan_market(run_id)` — **default observation tool.** Compact, token-bounded whole-universe summary. Use every loop iteration.
+- `inspect_symbols(run_id, symbols, lookback?)` — detailed bars for 1–8 symbols (≤120 bars each).
+- `get_market(run_id, symbols?, lookback?)` — raw OHLCV. Rejects large requests; prefer scan/inspect.
+
+Acting + advancing
+- `submit_decision(run_id, action, rationale, orders, step_count: 1)` — **preferred loop primitive.** action ∈ `hold | trade`. Always advances exactly one bar.
+- `submit_turn(run_id, trades, step_count: 1)` — lower-level: queue + step.
+- `step_run(run_id, count: 1)` — advance with no new trades.
+- `advance_until_next_session(run_id, max_bars?)` — fast-forward across closed-market gaps.
+- `hold_until_end(run_id, max_bars?, require_flat?)` — hold to end of scenario.
+- `liquidate_and_finish(run_id, rationale, max_bars?)` — close all positions, hold cash to end.
+
+Verification
+- `run_sandbox_smoke_test(scenario_slug?, bot_name?)` — one-call self-test: auth + run + scan + hold + step. Use this first to confirm wiring.
+
+**`step_count` constraint:** MCP only accepts 0 or 1. Higher values are rejected to prevent accidental bar-skipping.
+
+---
+
+## REST run sequence
 
 ```
 1. GET  /api/v1/scenarios                 pick a scenario
