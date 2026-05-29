@@ -111,7 +111,10 @@
       "mcp__railway__whoami",
       "mcp__railway__list_services",
       "WebFetch(domain:huma.rocks)",
-      "WebSearch"
+      "WebSearch",
+      "Read(//Users/jyron/**)",
+      "Bash(stripe *)",
+      "Bash(jobs -p)"
     ]
   }
 }

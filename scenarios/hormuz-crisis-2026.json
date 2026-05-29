@@ -1,0 +1,13 @@
+{
+  "slug": "hormuz-crisis-2026",
+  "name": "Strait of Hormuz Crisis — 2026",
+  "description": "US and Israel launch strikes on Iran February 28, assassinating Khamenei. Iran formally closes the Strait of Hormuz on March 4 — the first actual closure in history. 20% of global oil and LNG trade halts. A ceasefire is reached April 7 but the strait remains effectively closed through negotiations. Covers two weeks of pre-war calm, the outbreak, the closure, and the ceasefire/diplomacy phase.",
+  "bar_resolution": "1Hour",
+  "start_ts": "2026-02-14T14:00:00Z",
+  "end_ts": "2026-05-27T20:00:00Z",
+  "starting_cash": 100000,
+  "leverage_cap": 4,
+  "short_enabled": true,
+  "universe": ["SPY","QQQ","XLE","USO","XOM","CVX","GLD","TLT","VXX","BA","CAT","GS","JPM","IWM","NVDA","MSFT"],
+  "benchmark_symbol": "SPY"
+}
