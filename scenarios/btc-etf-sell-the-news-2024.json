@@ -8,6 +8,6 @@
   "starting_cash": 100000,
   "leverage_cap": 2,
   "short_enabled": true,
-  "universe": ["BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD"],
+  "universe": ["BTC/USD", "ETH/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD"],
   "benchmark_symbol": "BTC/USD"
 }
