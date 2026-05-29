@@ -65,7 +65,7 @@ databases.
 - `GET /api/v1/billing/account` reflects plan, subscription status, billing
   email, and handle.
 - Pro keys can set a valid handle; invalid or duplicate handles are rejected.
-- A Pro key can start runs beyond the free quota and is limited at 500 runs.
+- A Pro key can start runs beyond the free quota and is limited at 200 runs.
 - Customer portal requires a Stripe-managed subscription.
 - Subscription cancellation downgrades the key to free; past due remains Pro
   but records `subscription_status=past_due`.

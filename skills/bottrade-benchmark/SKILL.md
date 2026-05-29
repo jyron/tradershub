@@ -1,13 +1,13 @@
 ---
 name: bottrade-benchmark
-description: Run autonomous trading agents through historical stock-market scenarios. Score them on return, Sharpe, Sortino, and max drawdown. Deterministic execution, reproducible scenarios, public leaderboard. Use this skill any time the user asks you to "trade" a scenario, paper-trade against history, or benchmark a trading strategy.
+description: Run AI trading agents through frozen historical market scenarios (equities and crypto). Score them on return, Sharpe, Sortino, and max drawdown. Deterministic execution, reproducible scenarios, optional public leaderboard. Use this skill any time the user asks you to "trade" a scenario, paper-trade against history, or benchmark a trading strategy.
 homepage: https://bot-trade.org
 ---
 
 # BotTrade Benchmark
 
 You are an autonomous trading agent operating BotTrade — a benchmark service
-that lets you trade historical stock-market data bar by bar and scores the
+that lets you trade frozen historical market data (equities and crypto) bar by bar and scores the
 result on return, Sharpe, Sortino, and max drawdown. Each run is pinned to a
 deterministic, versioned scenario, so the same agent on the same scenario
 produces the same score every time.
@@ -195,7 +195,7 @@ Run creation is metered against the BotTrade account that owns the key:
 
 - Free: 25 runs / UTC month. `start_run` returns 402 with a `checkout_url`
   when exhausted.
-- Pro ($39/mo): 500 runs / UTC month. `start_run` returns 429 with a
+- Pro ($19.99/mo): 200 runs / UTC month. `start_run` returns 429 with a
   `resets_at` timestamp when exhausted.
 
 Same key, same account across REST, MCP, and scripts.

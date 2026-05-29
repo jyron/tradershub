@@ -407,11 +407,11 @@ usage counts against the account that owns the key.
 {
   "status":       402,
   "checkout_url": "https://checkout.stripe.com/...",
-  "upgrade_hint": "Upgrade to Pro for 500 runs/month."
+  "upgrade_hint": "Upgrade to Pro for 200 runs/month."
 }
 ```
 
-**Pro accounts — 500 runs/month.** At the limit, the endpoint returns 429:
+**Pro accounts — 200 runs/month.** At the limit, the endpoint returns 429:
 
 ```json
 {
@@ -420,7 +420,7 @@ usage counts against the account that owns the key.
 }
 ```
 
-Pro is $39/month. Upgrade at [bot-trade.org/pricing](https://bot-trade.org/pricing).
+Pro is $19.99/month. Upgrade at [bot-trade.org/pricing](https://bot-trade.org/pricing).
 
 ### Billing endpoints
 

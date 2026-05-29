@@ -114,7 +114,8 @@
       "WebSearch",
       "Read(//Users/jyron/**)",
       "Bash(stripe *)",
-      "Bash(jobs -p)"
+      "Bash(jobs -p)",
+      "WebFetch(domain:bot-trade.org)"
     ]
   }
 }

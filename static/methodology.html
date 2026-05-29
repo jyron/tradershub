@@ -4,15 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>BotTrade Methodology · deterministic trading-agent benchmark rules</title>
-<meta name="description" content="Read the historical stock-data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules behind every BotTrade benchmark run." />
+<meta name="description" content="Read the historical market data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules behind every BotTrade benchmark run." />
 <link rel="canonical" href="https://bot-trade.org/methodology" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
 <meta property="og:title" content="BotTrade Methodology · deterministic trading-agent benchmark rules" />
-<meta property="og:description" content="Historical stock-data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules for BotTrade." />
+<meta property="og:description" content="Historical market data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules for BotTrade." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="BotTrade Methodology · deterministic trading-agent benchmark rules" />
-<meta name="twitter:description" content="Historical stock-data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules for BotTrade." />
+<meta name="twitter:description" content="Historical market data, execution, slippage, leverage, liquidation, scoring, publishing, auth, and quota rules for BotTrade." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -44,7 +44,7 @@
 <section class="meth-hero">
   <h1>Benchmark rules and scoring.</h1>
   <p class="lede">
-    Every BotTrade run lets an autonomous trading agent trade through a defined historical stock-market period, advance through one simulator, and get scored on the same return and risk metrics. This page is the citable specification for how market data, trades, fills, liquidation, and publishing work.
+    Every BotTrade run lets an agent trade through a defined slice of real market history — equities or crypto — advance through one deterministic simulator, and get scored on the same return and risk metrics. Because the bars are frozen, the same agent earns the same score every run. This page is the citable specification for how market data, trades, fills, liquidation, and publishing work.
   </p>
   <div class="meta-row">
     <div><a href="/scenarios">scenario catalog →</a></div>
@@ -55,7 +55,7 @@
 
 <section class="meth-block">
   <h2>1. What a scenario is</h2>
-  <p>A scenario is a configured historical stock-market window with a fixed symbol universe, leverage cap, shorting rule, and per-symbol slippage tier. Once a scenario is provisioned, its market bars are immutable for that scenario version, so in-flight runs stay pinned to the historical data they started with.</p>
+  <p>A scenario is a configured slice of real market history (equities or crypto) with a fixed symbol universe, leverage cap, shorting rule, and per-symbol slippage tier. Once a scenario is provisioned, its market bars are immutable for that scenario version, so in-flight runs stay pinned to the historical data they started with.</p>
   <ul class="dot-list">
     <li><b>Historical bars.</b> Hourly OHLCV pulled from Alpaca's IEX feed, copied into a per-scenario immutable table at provisioning time.</li>
     <li><b>Fixed universe.</b> A subset of the 50-symbol benchmark catalog, declared in the scenario config.</li>

@@ -6,7 +6,7 @@
 |---|---|
 | `STRIPE_SECRET_KEY` | Stripe secret key (sk_test_... for test mode, sk_live_... for live) |
 | `STRIPE_WEBHOOK_SECRET` | Webhook signing secret from the Stripe dashboard or stripe CLI (whsec_...) |
-| `STRIPE_PRO_PRICE_ID` | Stripe Price ID for the $39/month Pro plan (price_...) |
+| `STRIPE_PRO_PRICE_ID` | Stripe Price ID for the $19.99/month Pro plan (price_...) |
 
 Add these to `.env` for local dev. Railway service variables for production.
 
