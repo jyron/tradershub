@@ -2,9 +2,15 @@
 // services.BenchmarkUniverse over a date range and writes them into the
 // market DB's `bars` table. Idempotent — re-runs are safe.
 //
+// Symbols are routed by asset class: crypto pairs (those containing a slash,
+// e.g. BTC/USD) come from Alpaca's crypto feed, everything else from the
+// equities feed. Pass crypto pairs explicitly via --symbols.
+//
 // Usage:
-//   go run ./cmd/backfill_bars --start 2024-01-01 --end 2024-06-30
-//   go run ./cmd/backfill_bars --start 2024-01-01 --end 2024-06-30 --symbols AAPL,MSFT
+//
+//	go run ./cmd/backfill_bars --start 2024-01-01 --end 2024-06-30
+//	go run ./cmd/backfill_bars --start 2024-01-01 --end 2024-06-30 --symbols AAPL,MSFT
+//	go run ./cmd/backfill_bars --start 2024-01-01 --end 2024-06-30 --symbols BTC/USD,ETH/USD
 //
 // Honors TURSO_MARKET_DATABASE_URL / TURSO_MARKET_AUTH_TOKEN from .env. Falls
 // back to a local file (./bottrade-market.db) if unset.
@@ -89,7 +95,13 @@ func main() {
 			if chunkEnd.After(end) {
 				chunkEnd = end
 			}
-			bars, err := ac.GetHistoricalCandles(symbol, "1Hour", chunkStart, chunkEnd)
+			var bars []services.Candle
+			var err error
+			if services.IsCryptoSymbol(symbol) {
+				bars, err = ac.GetHistoricalCryptoCandles(symbol, "1Hour", chunkStart, chunkEnd)
+			} else {
+				bars, err = ac.GetHistoricalCandles(symbol, "1Hour", chunkStart, chunkEnd)
+			}
 			if err != nil {
 				log.Printf("  %s [%s..%s]: %v", symbol, chunkStart.Format("2006-01-02"), chunkEnd.Format("2006-01-02"), err)
 				continue

@@ -373,6 +373,60 @@ func TestEngine_PartialClose(t *testing.T) {
 	}
 }
 
+// Fractional quantity (crypto): three 0.1 BTC buys accumulate a position that
+// is NOT exactly 0.3 in binary floating point (0.1+0.1+0.1 == 0.30000000000000004).
+// Selling 0.3 must still close it flat via the dust-snap epsilon rather than
+// leaving a ~1e-17 phantom position row.
+func TestEngine_FractionalQuantity(t *testing.T) {
+	bars := make([][]testBar, 6)
+	for i := range bars {
+		bars[i] = []testBar{{Symbol: "BTC/USD", Open: 60000, High: 60000, Low: 60000, Close: 60000, Volume: 100}}
+	}
+	ts := newTestSetup(t, []string{"BTC/USD"}, 1.0, false, map[string]int{"BTC/USD": 0}, bars, 100000)
+	run, err := ts.Engine.StartRun(ts.APIKeyID, ts.ScenarioID, "test-bot")
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Three 0.1 BTC buys, one fill per bar, all at 60000.
+	for i := 0; i < 3; i++ {
+		if _, err := ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "BTC/USD", Side: "buy", Quantity: 0.1}); err != nil {
+			t.Fatalf("QueueTrade buy %d: %v", i, err)
+		}
+		if _, err := ts.Engine.AdvanceStep(run.ID, 1); err != nil {
+			t.Fatalf("AdvanceStep buy %d: %v", i, err)
+		}
+	}
+
+	positions, _ := ts.Engine.loadPositions(run.ID)
+	if len(positions) != 1 || math.Abs(positions[0].Quantity-0.3) > 1e-9 {
+		t.Fatalf("expected ~0.3 BTC long, got %+v", positions)
+	}
+	if math.Abs(positions[0].AvgCost-60000.0) > 1e-6 {
+		t.Errorf("avg cost = %v, want 60000", positions[0].AvgCost)
+	}
+
+	// Sell exactly 0.3 → fills next bar @ 60000. Position must snap flat.
+	if _, err := ts.Engine.QueueTrade(run.ID, QueueTradeRequest{Symbol: "BTC/USD", Side: "sell", Quantity: 0.3}); err != nil {
+		t.Fatalf("QueueTrade sell: %v", err)
+	}
+	step, err := ts.Engine.AdvanceStep(run.ID, 1)
+	if err != nil {
+		t.Fatalf("AdvanceStep sell: %v", err)
+	}
+	if len(step.Fills) != 1 || math.Abs(step.Fills[0].Quantity-0.3) > 1e-9 {
+		t.Fatalf("expected one 0.3 fill, got %+v", step.Fills)
+	}
+	positions, _ = ts.Engine.loadPositions(run.ID)
+	if len(positions) != 0 {
+		t.Errorf("expected flat after full close (dust snapped), got %+v", positions)
+	}
+	// Round trip at a flat price nets ~0; equity returns to starting cash.
+	if math.Abs(step.NewEquity-100000.0) > 1e-6 {
+		t.Errorf("final equity = %v, want 100000", step.NewEquity)
+	}
+}
+
 // ComputeResults populates the row + idempotent re-runs.
 func TestEngine_ComputeResults(t *testing.T) {
 	bars := [][]testBar{

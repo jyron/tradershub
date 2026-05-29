@@ -101,7 +101,7 @@ class BotTradeClient:
             params={"symbols": ",".join(symbols), "lookback": lookback},
         )
 
-    def queue_trade(self, run_id: str, symbol: str, side: str, quantity: int,
+    def queue_trade(self, run_id: str, symbol: str, side: str, quantity: float,
                     reasoning: str = "") -> dict:
         return self._request(
             "POST", f"/api/v1/runs/{run_id}/trades",
@@ -128,7 +128,7 @@ class BotTradeClient:
 # -----------------------------------------------------------------------------
 # Strategies. Each returns a list of orders given the current market + state.
 # Order shape: {"symbol": str, "side": "buy"|"sell"|"short"|"cover",
-#               "quantity": int, "reasoning": str}
+#               "quantity": float, "reasoning": str}  (fractional ok, e.g. crypto)
 # -----------------------------------------------------------------------------
 
 def strat_buy_hold(symbol: str):
@@ -140,7 +140,7 @@ def strat_buy_hold(symbol: str):
             return []
         fired = True
         last_close = bars[symbol][-1]["close"]
-        qty = int(cash * 0.95 / last_close)
+        qty = round(cash * 0.95 / last_close, 6)
         if qty <= 0:
             return []
         return [{"symbol": symbol, "side": "buy", "quantity": qty,
@@ -166,7 +166,7 @@ def strat_equal_weight(universe: list[str], rebalance_every: int = 50):
         target_per_symbol = portfolio_value / len(symbols_with_bars)
         for sym in symbols_with_bars:
             last_close = bars[sym][-1]["close"]
-            target_qty = int(target_per_symbol / last_close)
+            target_qty = round(target_per_symbol / last_close, 6)
             current_qty = positions.get(sym, 0)
             delta = target_qty - current_qty
             if delta > 0:
@@ -203,7 +203,7 @@ def strat_momentum(universe: list[str], lookback: int = 20):
         # If we don't hold the winner, open it.
         if positions.get(winner, 0) == 0:
             last_close = bars[winner][-1]["close"]
-            qty = int(cash * 0.95 / last_close)
+            qty = round(cash * 0.95 / last_close, 6)
             if qty > 0:
                 actions.append({"symbol": winner, "side": "buy", "quantity": qty,
                                 "reasoning": f"momentum leader {winner_ret:+.1%}"})
@@ -221,8 +221,8 @@ def strat_random(universe: list[str], seed: int = 42):
         last_close = bars[sym][-1]["close"]
         # 50% try to buy, 50% try to sell.
         if rng.random() < 0.5:
-            qty = max(1, int(cash * 0.05 / last_close))
-            if qty * last_close > cash:
+            qty = round(cash * 0.05 / last_close, 6)
+            if qty <= 0 or qty * last_close > cash:
                 return []
             return [{"symbol": sym, "side": "buy", "quantity": qty,
                      "reasoning": "random"}]
@@ -230,7 +230,7 @@ def strat_random(universe: list[str], seed: int = 42):
             held = positions.get(sym, 0)
             if held <= 0:
                 return []
-            qty = max(1, held // 2)
+            qty = round(held / 2, 6)
             return [{"symbol": sym, "side": "sell", "quantity": qty,
                      "reasoning": "random"}]
     return decide
@@ -248,8 +248,8 @@ STRATEGIES = {
 # The loop.
 # -----------------------------------------------------------------------------
 
-def positions_to_dict(snapshot_positions: list[dict]) -> dict[str, int]:
-    return {p["symbol"]: int(p["quantity"]) for p in snapshot_positions}
+def positions_to_dict(snapshot_positions: list[dict]) -> dict[str, float]:
+    return {p["symbol"]: float(p["quantity"]) for p in snapshot_positions}
 
 
 def run_agent(client: BotTradeClient, scenario_slug: str, decide_fn,

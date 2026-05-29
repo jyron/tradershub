@@ -78,13 +78,16 @@ services/
   scenario_engine.go             — StartRun, QueueTrade, AdvanceStep, ComputeResults
   scenario_bars.go               — in-process bar cache (reads MarketDB)
   scenario_provisioner.go        — FreezeScenario (bars → scenario_bars)
-  scenario_universe.go           — 50-symbol catalog + default slippage tiers
+  scenario_universe.go           — equity catalog (BenchmarkUniverse) + crypto
+                                   pairs (CryptoUniverse) + IsCryptoSymbol +
+                                   default slippage tiers
   alpaca_client.go market_history.go
-                                 — Alpaca SDK + GetHistoricalCandles
+                                 — Alpaca SDK + GetHistoricalCandles (equities)
+                                   and GetHistoricalCryptoCandles (24/7 crypto)
   scenario_engine_test.go        — unit tests for the engine
 models/api_key.go run.go scenario.go — the three model types
 jobs/
-  bar_ingest.go                  — hourly Alpaca → market.bars
+  bar_ingest.go                  — hourly Alpaca → market.bars (equities + crypto)
   idempotency_sweep.go           — prune run_idempotency rows older than 24h
   idle_run_cleanup.go            — runs idle 5d → status='abandoned'
   run_results_compute.go         — compute Sharpe/Sortino/maxDD for finished runs
@@ -103,11 +106,13 @@ static/                          — site HTML/CSS (4 pages, no build step)
 - **`tradershub-v2`** (app DB) — API keys, scenarios, runs, results, leaderboard.
   `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`. App migrations end at
   `database/migrations/004_drop_idempotency_status_code.sql`.
-- **`tradershub-market`** (market DB) — `bars` (hourly OHLCV from Alpaca)
-  and `scenario_bars` (immutable per-scenario-version frozen bars). 90k+
-  bars covering 2024-01-02 → present. `TURSO_MARKET_DATABASE_URL` /
+- **`tradershub-market`** (market DB) — `bars` (hourly OHLCV from Alpaca, both
+  equities and crypto pairs like `BTC/USD`) and `scenario_bars` (immutable
+  per-scenario-version frozen bars). 90k+ bars covering 2024-01-02 → present
+  for equities; crypto history reaches back to ~2021. `TURSO_MARKET_DATABASE_URL` /
   `TURSO_MARKET_AUTH_TOKEN`. **Do not reset this DB** — pulling bars from
-  the free Alpaca IEX feed takes weeks.
+  the free Alpaca feed takes weeks. `volume` is stored as a REAL (crypto coin
+  volume is fractional); equity/crypto bars share the table, keyed by symbol.
 
 In local dev both default to `file:` SQLite paths when URLs aren't set.
 
@@ -127,13 +132,21 @@ In local dev both default to `file:` SQLite paths when URLs aren't set.
 
 ## Adding a new scenario
 
-1. Drop `scenarios/<slug>.json`. See `scenarios/tech-2024-q2.json`.
-2. `go run ./cmd/provision_scenario --config scenarios/<slug>.json`
+1. Drop `scenarios/<slug>.json`. See `scenarios/tech-2024-q2.json` (equities)
+   or `scenarios/ftx-collapse-2022.json` (crypto). A crypto scenario lists
+   `BTC/USD`-style pairs in its `universe` and a crypto `benchmark_symbol`;
+   keep crypto and equity symbols in separate scenarios so the timeline (the
+   union of all symbols' bars) stays on one 24/7 or one RTH grid.
+2. Ensure the window's bars are backfilled (see below), then
+   `go run ./cmd/provision_scenario --config scenarios/<slug>.json`
    with `TURSO_MARKET_DATABASE_URL` / `TURSO_MARKET_AUTH_TOKEN` set.
 3. Visible at `https://bot-trade.org/api/v1/scenarios`.
 
-You only re-run `cmd/backfill_bars` if you need bars older than
-2024-01-02 or you added a new symbol to `services.BenchmarkUniverse`.
+Run `cmd/backfill_bars` if you need bars the rolling ingest hasn't pulled —
+equity history older than 2024-01-02, a new `services.BenchmarkUniverse`
+symbol, or a crypto window (pass the pairs explicitly, e.g.
+`--symbols BTC/USD,ETH/USD`). Quantities are fractional end-to-end, so crypto
+agents can hold e.g. 0.25 BTC.
 
 ## Deploying
 

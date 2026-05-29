@@ -140,18 +140,18 @@ other tool requires authentication.
 Order shape (used by `submit_decision.orders`, `submit_turn.trades`):
 
     {
-      "symbol":    "AAPL",          // must be in scenario universe
+      "symbol":    "AAPL",          // must be in scenario universe (e.g. BTC/USD for crypto)
       "side":      "buy",           // buy | sell | short | cover
-      "quantity":  10,              // positive integer shares
+      "quantity":  10,              // positive; fractional ok (e.g. 0.25 for crypto)
       "reasoning": "earnings beat"  // optional, recorded with the fill
     }
 
 | Side | What it does |
 |------|--------------|
 | `buy` | Open or increase a long position. |
-| `sell` | Reduce or close a long position. Quantity ≤ shares owned. |
+| `sell` | Reduce or close a long position. Quantity ≤ amount owned. |
 | `short` | Open or increase a short. Requires `scenario.short_enabled == true`. |
-| `cover` | Reduce or close a short. Quantity ≤ shares shorted. |
+| `cover` | Reduce or close a short. Quantity ≤ amount shorted. |
 
 Orders are **queued**, not filled, when you submit. They fill at the next
 bar's open price ± slippage when the simulator steps. If you queue zero
@@ -179,7 +179,7 @@ When either `done` or `liquidated` is `true`, **exit the loop and call
 | Rule | Detail |
 |------|--------|
 | Universe lock | Trades must use symbols in `scenario.universe`. Others rejected. |
-| Integer shares | `quantity` is whole positive shares. Fractions rejected. |
+| Positive quantity | `quantity` must be positive; fractional is allowed (e.g. 0.25 for crypto pairs). Zero or negative rejected. |
 | Sell ≤ owned | `sell` quantity cannot exceed your long position. Same for `cover` vs short. |
 | Shorting | `short` only valid when `scenario.short_enabled == true`. |
 | Buying power | Insufficient cash or margin → order rejected with explanatory `detail`. |

@@ -97,7 +97,7 @@ class BotTradeClient:
             "lookback": lookback,
         })
 
-    def queue_trade(self, run_id: str, symbol: str, side: str, qty: int, reasoning: str) -> dict:
+    def queue_trade(self, run_id: str, symbol: str, side: str, qty: float, reasoning: str) -> dict:
         return self._req("POST", f"/api/v1/runs/{run_id}/trades", json={
             "symbol": symbol, "side": side, "quantity": qty, "reasoning": reasoning,
             "idempotency_key": str(uuid.uuid4()),
@@ -173,8 +173,8 @@ PLACE_TRADES_TOOL = {
                             "description": "buy/sell for longs; short/cover only if short_enabled.",
                         },
                         "quantity": {
-                            "type": "integer",
-                            "description": "Whole shares, positive integer.",
+                            "type": "number",
+                            "description": "Order size, positive. Fractional allowed for crypto pairs (e.g. 0.25 BTC/USD); equities are typically whole.",
                         },
                     },
                     "required": ["symbol", "side", "quantity"],
@@ -213,7 +213,7 @@ MARKET MODEL
 DECISION TOOL
 You have one tool, `place_trades`. Each call submits zero or more orders.
 - side: buy/sell for long positions; short/cover for shorts (only if shorting is enabled).
-- quantity: positive integer (whole shares).
+- quantity: positive number; fractional is allowed (e.g. 0.25 for crypto pairs like BTC/USD).
 - Empty trades array = "do nothing this turn". A valid and often correct choice.
 
 SCENARIO
@@ -228,7 +228,7 @@ SCENARIO
 
 RISK
 - Equity below maintenance margin (notional / (2 × {lev})) → all positions force-close at next bar's open. Run over.
-- You cannot sell shares you don't own or cover shorts you don't hold.
+- You cannot sell more than you hold or cover shorts you don't have.
 - Insufficient buying power → order rejected; you'll see the rejection next turn.
 
 STYLE
@@ -294,7 +294,7 @@ def build_user_message(
         for b in bars:
             sections.append(
                 f"    {b['ts']} O={b['open']:.2f} H={b['high']:.2f} "
-                f"L={b['low']:.2f} C={b['close']:.2f} V={int(b['volume'])}"
+                f"L={b['low']:.2f} C={b['close']:.2f} V={b['volume']:g}"
             )
 
     sections.append("\nCall `place_trades` with your decision for this turn.")
@@ -484,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     symbol = str(t["symbol"]).upper()
                     side = str(t["side"]).lower()
-                    qty = int(t["quantity"])
+                    qty = float(t["quantity"])
                 except (KeyError, TypeError, ValueError) as e:
                     msg = f"malformed order {t!r}: {e}"
                     last_rejections.append(msg)

@@ -177,9 +177,17 @@ func (e *ScenarioEngine) GetRunState(runID string) (*models.RunSnapshot, error) 
 type QueueTradeRequest struct {
 	Symbol    string
 	Side      string // buy | sell | short | cover
-	Quantity  int
+	Quantity  float64
 	Reasoning string
 }
+
+// qtyEpsilon is the dust threshold below which a position is treated as flat.
+// Fractional (crypto) quantities accumulate floating-point rounding, so closing
+// 0.3 against a 0.3 long can leave a phantom ~1e-17 residue. 1e-9 units is far
+// below any real position (a satoshi is 1e-8 BTC), so it snaps clean without
+// ever swallowing a legitimate holding. Also gives the sell/cover "exceeds"
+// checks a tolerance so closing your exact position isn't rejected by rounding.
+const qtyEpsilon = 1e-9
 
 // QueueTrade validates the request against scenario rules + projected
 // margin and inserts a row into run_orders. The order fills on the
@@ -222,16 +230,16 @@ func (e *ScenarioEngine) QueueTrade(runID string, req QueueTradeRequest) (*model
 			if pos == nil || pos.Quantity <= 0 {
 				return nil, fmt.Errorf("no long position in %s to sell", req.Symbol)
 			}
-			if req.Quantity > pos.Quantity {
-				return nil, fmt.Errorf("sell quantity %d exceeds long %d", req.Quantity, pos.Quantity)
+			if req.Quantity > pos.Quantity+qtyEpsilon {
+				return nil, fmt.Errorf("sell quantity %g exceeds long %g", req.Quantity, pos.Quantity)
 			}
 		}
 		if side == "cover" {
 			if pos == nil || pos.Quantity >= 0 {
 				return nil, fmt.Errorf("no short position in %s to cover", req.Symbol)
 			}
-			if req.Quantity > -pos.Quantity {
-				return nil, fmt.Errorf("cover quantity %d exceeds short %d", req.Quantity, -pos.Quantity)
+			if req.Quantity > -pos.Quantity+qtyEpsilon {
+				return nil, fmt.Errorf("cover quantity %g exceeds short %g", req.Quantity, -pos.Quantity)
 			}
 		}
 	}
@@ -292,7 +300,7 @@ func (e *ScenarioEngine) QueueTrade(runID string, req QueueTradeRequest) (*model
 
 // projectedNotional returns the absolute total notional the run would have
 // AFTER adding the new order, using estPrice as the marker for the new order.
-func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, asOf time.Time, addQty int, estPrice float64) (float64, error) {
+func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, asOf time.Time, addQty float64, estPrice float64) (float64, error) {
 	positions, err := e.loadPositions(runID)
 	if err != nil {
 		return 0, err
@@ -303,9 +311,9 @@ func (e *ScenarioEngine) projectedNotional(runID string, scen *models.Scenario, 
 		if !ok {
 			continue
 		}
-		total += math.Abs(float64(p.Quantity) * bar.Close)
+		total += math.Abs(p.Quantity * bar.Close)
 	}
-	total += float64(addQty) * estPrice
+	total += addQty * estPrice
 	return total, nil
 }
 
@@ -410,8 +418,8 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 				if !ok {
 					continue
 				}
-				positionsValue += float64(p.Quantity) * bar.Close
-				notional += math.Abs(float64(p.Quantity) * bar.Close)
+				positionsValue += p.Quantity * bar.Close
+				notional += math.Abs(p.Quantity * bar.Close)
 			}
 			equity := cur + positionsValue
 
@@ -472,7 +480,7 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 				bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, newSimTime)
 			}
 			if ok {
-				positionsValue += float64(p.Quantity) * bar.Close
+				positionsValue += p.Quantity * bar.Close
 			}
 		}
 		equity := cur + positionsValue
@@ -521,7 +529,7 @@ func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.
 		case "sell", "short":
 			fillPrice = bar.Open * (1.0 - float64(slippage)/10000.0)
 		}
-		totalValue := fillPrice * float64(o.Quantity)
+		totalValue := fillPrice * o.Quantity
 
 		// Apply position delta.
 		pos, err := e.getPositionTx(tx, runID, o.Symbol)
@@ -537,11 +545,11 @@ func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.
 			pos = applyAdd(pos, -o.Quantity, fillPrice)
 			cash += totalValue
 		case "sell":
-			realized = (fillPrice - pos.AvgCost) * float64(o.Quantity)
+			realized = (fillPrice - pos.AvgCost) * o.Quantity
 			pos = applyReduce(pos, o.Quantity)
 			cash += totalValue
 		case "cover":
-			realized = (pos.AvgCost - fillPrice) * float64(o.Quantity)
+			realized = (pos.AvgCost - fillPrice) * o.Quantity
 			pos = applyReduce(pos, o.Quantity)
 			cash -= totalValue
 		}
@@ -600,7 +608,7 @@ func (e *ScenarioEngine) liquidatePositionsTx(tx *sql.Tx, runID string, scen *mo
 		// "bad" direction relative to position side.
 		var fillPrice float64
 		var side string
-		var qty int
+		var qty float64
 		if p.Quantity > 0 {
 			side = "sell"
 			fillPrice = bar.Close * (1.0 - float64(slippage)/10000.0)
@@ -611,13 +619,13 @@ func (e *ScenarioEngine) liquidatePositionsTx(tx *sql.Tx, runID string, scen *mo
 			qty = -p.Quantity
 		}
 
-		totalValue := fillPrice * float64(qty)
+		totalValue := fillPrice * qty
 		realized := 0.0
 		if side == "sell" {
-			realized = (fillPrice - p.AvgCost) * float64(qty)
+			realized = (fillPrice - p.AvgCost) * qty
 			cash += totalValue
 		} else {
-			realized = (p.AvgCost - fillPrice) * float64(qty)
+			realized = (p.AvgCost - fillPrice) * qty
 			cash -= totalValue
 		}
 
@@ -658,7 +666,7 @@ func (e *ScenarioEngine) liquidatePositionsTx(tx *sql.Tx, runID string, scen *mo
 
 // applyAdd adds delta to a position, returning new quantity + avg_cost.
 // delta can be negative (opening or extending a short).
-func applyAdd(pos models.RunPosition, delta int, price float64) models.RunPosition {
+func applyAdd(pos models.RunPosition, delta float64, price float64) models.RunPosition {
 	if pos.Quantity == 0 || sign(pos.Quantity) == sign(delta) {
 		// Same-direction add or fresh: recompute weighted avg cost.
 		newQ := pos.Quantity + delta
@@ -666,8 +674,7 @@ func applyAdd(pos models.RunPosition, delta int, price float64) models.RunPositi
 		if pos.Quantity == 0 {
 			newAvg = price
 		} else {
-			newAvg = (pos.AvgCost*float64(pos.Quantity) + price*float64(delta)) /
-				float64(newQ)
+			newAvg = (pos.AvgCost*pos.Quantity + price*delta) / newQ
 		}
 		// For shorts (negative qty), avg_cost stays positive (entry price).
 		if newAvg < 0 {
@@ -681,19 +688,22 @@ func applyAdd(pos models.RunPosition, delta int, price float64) models.RunPositi
 }
 
 // applyReduce reduces the magnitude of a position by qty. avg_cost stays the same.
-func applyReduce(pos models.RunPosition, qty int) models.RunPosition {
+func applyReduce(pos models.RunPosition, qty float64) models.RunPosition {
 	if pos.Quantity > 0 {
 		pos.Quantity -= qty
 	} else {
 		pos.Quantity += qty // qty here is positive; we're adding to a negative
 	}
-	if pos.Quantity == 0 {
+	// Snap dust to flat: a fractional close can leave float residue that would
+	// otherwise persist as a phantom position and keep a stale avg_cost.
+	if math.Abs(pos.Quantity) < qtyEpsilon {
+		pos.Quantity = 0
 		pos.AvgCost = 0
 	}
 	return pos
 }
 
-func sign(n int) int {
+func sign(n float64) int {
 	if n > 0 {
 		return 1
 	}
@@ -704,7 +714,7 @@ func sign(n int) int {
 }
 
 func upsertPositionTx(tx *sql.Tx, runID, symbol string, pos models.RunPosition) error {
-	if pos.Quantity == 0 {
+	if math.Abs(pos.Quantity) < qtyEpsilon {
 		_, err := tx.Exec(`DELETE FROM run_positions WHERE run_id = ?1 AND symbol = ?2`, runID, symbol)
 		return err
 	}

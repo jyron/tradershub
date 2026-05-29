@@ -1,0 +1,13 @@
+{
+  "slug": "btc-100k-breakout-2024",
+  "name": "Bitcoin's $100k Breakout — Post-Election Rally 2024",
+  "description": "Bitcoin enters November 2024 around $69k. The US election on November 5 delivers a decisively pro-crypto outcome, and the market rips: Bitcoin runs almost without pause and crosses $100,000 for the first time on December 5, 2024, dragging Solana, Dogecoin, and the rest of the majors up with it. A sustained one-way momentum regime with sharp pullbacks along the way — tests whether a bot can stay with a strong trend and size into strength without getting shaken out, the mirror image of the crash scenarios.",
+  "bar_resolution": "1Hour",
+  "start_ts": "2024-10-28T00:00:00Z",
+  "end_ts": "2024-12-18T00:00:00Z",
+  "starting_cash": 100000,
+  "leverage_cap": 2,
+  "short_enabled": true,
+  "universe": ["BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD"],
+  "benchmark_symbol": "BTC/USD"
+}

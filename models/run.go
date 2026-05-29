@@ -21,11 +21,12 @@ type Run struct {
 }
 
 // RunPosition is a single symbol holding within a run. quantity is signed:
-// positive = long, negative = short.
+// positive = long, negative = short. Fractional to support assets that trade
+// in fractions of a unit (e.g. 0.25 BTC); stocks still use whole numbers.
 type RunPosition struct {
 	RunID     string    `json:"run_id"`
 	Symbol    string    `json:"symbol"`
-	Quantity  int       `json:"quantity"`
+	Quantity  float64   `json:"quantity"`
 	AvgCost   float64   `json:"avg_cost"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -36,7 +37,7 @@ type RunOrder struct {
 	RunID           string    `json:"run_id"`
 	Symbol          string    `json:"symbol"`
 	Side            string    `json:"side"` // buy|sell|short|cover
-	Quantity        int       `json:"quantity"`
+	Quantity        float64   `json:"quantity"`
 	Reasoning       string    `json:"reasoning,omitempty"`
 	QueuedAt        time.Time `json:"queued_at"`
 	QueuedAtSimTime time.Time `json:"queued_at_sim_time"`
@@ -48,7 +49,7 @@ type RunTrade struct {
 	RunID         string    `json:"run_id"`
 	Symbol        string    `json:"symbol"`
 	Side          string    `json:"side"`
-	Quantity      int       `json:"quantity"`
+	Quantity      float64   `json:"quantity"`
 	FillPrice     float64   `json:"fill_price"`
 	SlippageBps   int       `json:"slippage_bps"`
 	SimTimeFilled time.Time `json:"sim_time_filled"`

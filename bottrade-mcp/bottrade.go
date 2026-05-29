@@ -69,7 +69,7 @@ type Run struct {
 type Position struct {
 	RunID     string    `json:"run_id"`
 	Symbol    string    `json:"symbol"`
-	Quantity  int       `json:"quantity"`
+	Quantity  float64   `json:"quantity"`
 	AvgCost   float64   `json:"avg_cost"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -79,7 +79,7 @@ type QueuedOrder struct {
 	RunID           string    `json:"run_id"`
 	Symbol          string    `json:"symbol"`
 	Side            string    `json:"side"`
-	Quantity        int       `json:"quantity"`
+	Quantity        float64   `json:"quantity"`
 	Reasoning       string    `json:"reasoning,omitempty"`
 	QueuedAt        time.Time `json:"queued_at"`
 	QueuedAtSimTime time.Time `json:"queued_at_sim_time"`
@@ -90,7 +90,7 @@ type Trade struct {
 	RunID         string    `json:"run_id"`
 	Symbol        string    `json:"symbol"`
 	Side          string    `json:"side"`
-	Quantity      int       `json:"quantity"`
+	Quantity      float64   `json:"quantity"`
 	FillPrice     float64   `json:"fill_price"`
 	SlippageBps   int       `json:"slippage_bps"`
 	SimTimeFilled time.Time `json:"sim_time_filled"`
@@ -131,7 +131,7 @@ type MarketBar struct {
 	High   float64 `json:"high"`
 	Low    float64 `json:"low"`
 	Close  float64 `json:"close"`
-	Volume int64   `json:"volume"`
+	Volume float64 `json:"volume"` // fractional for crypto coin volume
 }
 
 type MarketResponse struct {
@@ -171,10 +171,10 @@ type RunResults struct {
 }
 
 type TradeOrder struct {
-	Symbol    string `json:"symbol"`
-	Side      string `json:"side"`
-	Quantity  int    `json:"quantity"`
-	Reasoning string `json:"reasoning,omitempty"`
+	Symbol    string  `json:"symbol"`
+	Side      string  `json:"side"`
+	Quantity  float64 `json:"quantity"`
+	Reasoning string  `json:"reasoning,omitempty"`
 }
 
 type QueuedTradeResult struct {

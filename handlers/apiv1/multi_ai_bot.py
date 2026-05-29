@@ -95,7 +95,7 @@ class BotTrade:
             params["symbols"] = ",".join(symbols)
         return self.req("GET", f"/api/v1/runs/{run_id}/market", params=params)
 
-    def trade(self, run_id: str, symbol: str, side: str, quantity: int, reasoning: str) -> None:
+    def trade(self, run_id: str, symbol: str, side: str, quantity: float, reasoning: str) -> None:
         self.retry_req("POST", f"/api/v1/runs/{run_id}/trades", json={
             "symbol": symbol,
             "side": side,
@@ -118,10 +118,10 @@ class BotTrade:
 
 
 def current_positions(run_snap: dict) -> dict[str, int]:
-    return {p["symbol"]: int(p["quantity"]) for p in (run_snap.get("positions") or [])}
+    return {p["symbol"]: float(p["quantity"]) for p in (run_snap.get("positions") or [])}
 
 
-def pick_focus(scan: dict, positions: dict[str, int], n: int = 8) -> list[str]:
+def pick_focus(scan: dict, positions: dict[str, float], n: int = 8) -> list[str]:
     focus = set(positions.keys())
     movers = []
     for symbol, bars in scan.get("bars", {}).items():
@@ -150,7 +150,7 @@ def build_prompt(scenario: dict, run_snap: dict, scan: dict, detail: dict, fills
         "Rules:",
         "- trades can be empty.",
         "- side must be one of buy, sell, short, cover.",
-        "- quantity must be a positive whole number.",
+        "- quantity must be positive; fractional is allowed (e.g. 0.25 for crypto pairs like BTC/USD).",
         "- orders fill on the next bar open with slippage.",
         "- avoid overtrading.",
         "",
@@ -172,12 +172,12 @@ def build_prompt(scenario: dict, run_snap: dict, scan: dict, detail: dict, fills
         if not bars:
             continue
         b = bars[-1]
-        lines.append(f"{symbol}: O={b['open']} H={b['high']} L={b['low']} C={b['close']} V={int(b['volume'])}")
+        lines.append(f"{symbol}: O={b['open']} H={b['high']} L={b['low']} C={b['close']} V={b['volume']:g}")
 
     lines.append("\nRecent bars for held symbols and biggest movers:")
     for symbol, bars in detail.get("bars", {}).items():
         compact = [
-            [b["ts"], round(b["open"], 2), round(b["high"], 2), round(b["low"], 2), round(b["close"], 2), int(b["volume"])]
+            [b["ts"], round(b["open"], 2), round(b["high"], 2), round(b["low"], 2), round(b["close"], 2), round(b["volume"], 4)]
             for b in bars
         ]
         lines.append(f"{symbol}: {compact}")
@@ -308,7 +308,7 @@ def main() -> int:
                 try:
                     symbol = str(t["symbol"]).upper()
                     side = str(t["side"]).lower()
-                    quantity = int(t["quantity"])
+                    quantity = float(t["quantity"])
                     if side not in {"buy", "sell", "short", "cover"} or quantity <= 0:
                         raise ValueError("bad side or quantity")
                     api.trade(run["id"], symbol, side, quantity, rationale)

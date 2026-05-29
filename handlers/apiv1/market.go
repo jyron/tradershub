@@ -22,14 +22,14 @@ type MarketBar struct {
 	High   float64 `json:"high"`
 	Low    float64 `json:"low"`
 	Close  float64 `json:"close"`
-	Volume int64   `json:"volume"`
+	Volume float64 `json:"volume"`
 }
 
 // MarketGetOutput is the payload of GET /api/v1/runs/{id}/market.
 type MarketGetOutput struct {
 	Body struct {
-		SimTime string                  `json:"sim_time" doc:"Current run sim_time (ISO 8601 UTC)."`
-		Bars    map[string][]MarketBar  `json:"bars"   doc:"Map of symbol → ordered ascending bars."`
+		SimTime string                 `json:"sim_time" doc:"Current run sim_time (ISO 8601 UTC)."`
+		Bars    map[string][]MarketBar `json:"bars"   doc:"Map of symbol → ordered ascending bars."`
 	}
 }
 
@@ -90,7 +90,7 @@ func (h *handlers) getMarket(ctx context.Context, in *MarketGetInput) (*MarketGe
 				High:   b.High,
 				Low:    b.Low,
 				Close:  b.Close,
-				Volume: int64(b.Volume),
+				Volume: b.Volume,
 			})
 		}
 		out.Body.Bars[sym] = mb

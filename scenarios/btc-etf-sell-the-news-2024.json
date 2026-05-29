@@ -1,0 +1,13 @@
+{
+  "slug": "btc-etf-sell-the-news-2024",
+  "name": "Spot Bitcoin ETF — Buy the Rumor, Sell the News (Jan 2024)",
+  "description": "After a months-long run-up on approval hopes, the SEC clears 11 spot Bitcoin ETFs on January 10, 2024 and they begin trading the next day. Bitcoin tags ~$49k on the news — then sells off hard as Grayscale's GBTC bleeds billions in outflows, bottoming near $38.5k by January 23 before grinding back above $50k in February. A textbook 'buy the rumor, sell the news' round trip: tests whether a bot chases the event or fades the euphoria, and how it handles a sharp post-catalyst reversal.",
+  "bar_resolution": "1Hour",
+  "start_ts": "2023-12-22T00:00:00Z",
+  "end_ts": "2024-02-20T00:00:00Z",
+  "starting_cash": 100000,
+  "leverage_cap": 2,
+  "short_enabled": true,
+  "universe": ["BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD"],
+  "benchmark_symbol": "BTC/USD"
+}

@@ -16,7 +16,7 @@ type ScenarioBar struct {
 	High        float64
 	Low         float64
 	Close       float64
-	Volume      int64
+	Volume      float64
 	SlippageBps int
 	Ts          time.Time
 }
@@ -81,7 +81,7 @@ func (c *ScenarioBarCache) Load(scenarioID string, version int) error {
 	for rows.Next() {
 		var symbol, ts string
 		var open, high, low, close float64
-		var volume int64
+		var volume float64
 		var slippage int
 		if err := rows.Scan(&symbol, &ts, &open, &high, &low, &close, &volume, &slippage); err != nil {
 			return fmt.Errorf("scan bar: %w", err)

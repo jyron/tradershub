@@ -1,5 +1,7 @@
 package services
 
+import "strings"
+
 // BenchmarkUniverse is the full set of symbols the bar-ingester pulls from
 // Alpaca and the catalog of symbols a scenario's universe_json may reference.
 // Scenarios pick subsets — a scenario doesn't have to use every symbol.
@@ -34,11 +36,34 @@ var BenchmarkUniverse = []string{
 	"PLTR", "COIN", "SMCI", "SHOP", "RBLX",
 }
 
+// CryptoUniverse is the set of crypto pairs the bar-ingester pulls from
+// Alpaca's crypto feed and that a crypto scenario's universe_json may
+// reference. Pairs use Alpaca's BASE/QUOTE form (e.g. "BTC/USD").
+//
+// Deliberately limited to liquid majors. Because a scenario's timeline is the
+// union of all its symbols' bar timestamps, a thinly-traded pair with gaps
+// would inject timestamps at which it has no bar — leaving orders to silently
+// defer. Liquid majors keep the 24/7 grid dense.
+var CryptoUniverse = []string{
+	"BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD",
+	"LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD",
+}
+
+// IsCryptoSymbol reports whether a symbol is a crypto pair. Alpaca crypto
+// pairs are written "BASE/QUOTE" (BTC/USD); equity tickers never contain a
+// slash, so it's an unambiguous discriminator for routing ingest, backfill,
+// and slippage defaults.
+func IsCryptoSymbol(symbol string) bool {
+	return strings.Contains(symbol, "/")
+}
+
 // DefaultSlippageBps returns the per-symbol slippage tier baked into a
-// scenario at freeze time. Three tiers:
+// scenario at freeze time. Tiers:
 //   - tight (3 bps): broad ETFs and SPY-grade liquidity
 //   - medium (8 bps): megacap single names and sector ETFs
 //   - wide (20 bps): high-variance / lower-liquidity / themed names
+//   - crypto majors (5 bps for BTC/ETH, 18 bps for other pairs): crypto
+//     spreads run wider than large-cap equities even for the deepest pairs.
 //
 // These are conservative defaults; a scenario can override per-symbol via
 // its slippage_json field.
@@ -47,10 +72,16 @@ func DefaultSlippageBps(symbol string) int {
 	// Tightest — full-volume ETFs
 	case "SPY", "QQQ", "IWM", "DIA":
 		return 3
+	// Deepest crypto — major pairs
+	case "BTC/USD", "ETH/USD":
+		return 5
 	// Widest — high-variance / themed / lower-cap
 	case "PLTR", "COIN", "SMCI", "SHOP", "RBLX", "VXX", "USO":
 		return 20
 	default:
+		if IsCryptoSymbol(symbol) {
+			return 18
+		}
 		return 8
 	}
 }

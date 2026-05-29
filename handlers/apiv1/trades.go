@@ -14,11 +14,11 @@ import (
 type TradeQueueInput struct {
 	ID   string `path:"id" doc:"Run UUID."`
 	Body struct {
-		Symbol         string `json:"symbol"   example:"AAPL" doc:"Symbol from the scenario universe."`
-		Side           string `json:"side"     enum:"buy,sell,short,cover" doc:"Trade direction. buy/sell are for long positions, short opens a short, cover reduces a short."`
-		Quantity       int    `json:"quantity" minimum:"1" doc:"Whole-share quantity (positive)."`
-		Reasoning      string `json:"reasoning,omitempty" doc:"Optional free-text note recorded with the fill."`
-		IdempotencyKey string `json:"idempotency_key,omitempty" doc:"If set, retries of this same key + body return the cached response; same key + different body returns 409."`
+		Symbol         string  `json:"symbol"   example:"AAPL" doc:"Symbol from the scenario universe."`
+		Side           string  `json:"side"     enum:"buy,sell,short,cover" doc:"Trade direction. buy/sell are for long positions, short opens a short, cover reduces a short."`
+		Quantity       float64 `json:"quantity" exclusiveMinimum:"0" doc:"Order quantity (positive). Fractional is allowed, e.g. 0.25 for crypto pairs like BTC/USD; equities are typically whole numbers."`
+		Reasoning      string  `json:"reasoning,omitempty" doc:"Optional free-text note recorded with the fill."`
+		IdempotencyKey string  `json:"idempotency_key,omitempty" doc:"If set, retries of this same key + body return the cached response; same key + different body returns 409."`
 	}
 }
 

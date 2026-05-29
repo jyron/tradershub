@@ -41,15 +41,15 @@ func (j *BarIngestJob) Run() error {
 		return fmt.Errorf("alpaca client not initialized")
 	}
 
-	// Pull the last 36 hours so we cover the prior trading session even
-	// if the ticker fired during a long weekend. Alpaca returns nothing
-	// for hours outside RTH, which is fine.
-	end := time.Now().UTC().Add(-15 * time.Minute) // dodge free-tier SIP block
-	start := end.Add(-36 * time.Hour)
-
 	total := 0
+
+	// Equities: pull the last 36 hours so we cover the prior trading session
+	// even if the ticker fired during a long weekend. Alpaca returns nothing
+	// for hours outside RTH, which is fine.
+	stockEnd := time.Now().UTC().Add(-15 * time.Minute) // dodge free-tier SIP block
+	stockStart := stockEnd.Add(-36 * time.Hour)
 	for _, symbol := range services.BenchmarkUniverse {
-		bars, err := ac.GetHistoricalCandles(symbol, "1Hour", start, end)
+		bars, err := ac.GetHistoricalCandles(symbol, "1Hour", stockStart, stockEnd)
 		if err != nil {
 			log.Printf("BarIngest: %s: %v", symbol, err)
 			continue
@@ -61,8 +61,28 @@ func (j *BarIngestJob) Run() error {
 		}
 		total += n
 	}
+
+	// Crypto trades 24/7 from a continuous, non-SIP feed, so pull right up to
+	// now with no delay to dodge and no RTH gaps to step around.
+	cryptoEnd := time.Now().UTC()
+	cryptoStart := cryptoEnd.Add(-36 * time.Hour)
+	for _, symbol := range services.CryptoUniverse {
+		bars, err := ac.GetHistoricalCryptoCandles(symbol, "1Hour", cryptoStart, cryptoEnd)
+		if err != nil {
+			log.Printf("BarIngest: %s: %v", symbol, err)
+			continue
+		}
+		n, err := UpsertBars(symbol, bars)
+		if err != nil {
+			log.Printf("BarIngest: %s: upsert failed: %v", symbol, err)
+			continue
+		}
+		total += n
+	}
+
 	if total > 0 {
-		log.Printf("BarIngest: upserted %d bars across %d symbols", total, len(services.BenchmarkUniverse))
+		log.Printf("BarIngest: upserted %d bars across %d symbols", total,
+			len(services.BenchmarkUniverse)+len(services.CryptoUniverse))
 	}
 	return nil
 }

@@ -32,11 +32,11 @@ type CreateScenarioInput struct {
 	Slug            string
 	Name            string
 	Description     string
-	BarResolution   string         // default "1Hour"
+	BarResolution   string // default "1Hour"
 	StartTs         time.Time
 	EndTs           time.Time
-	StartingCash    float64        // default 100000
-	LeverageCap     float64        // 1 | 2 | 4 | 10
+	StartingCash    float64 // default 100000
+	LeverageCap     float64 // 1 | 2 | 4 | 10
 	ShortEnabled    bool
 	Universe        []string
 	SlippageBps     map[string]int // optional overrides; absent → DefaultSlippageBps
@@ -174,9 +174,9 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 	const freezeBatchSize = 50
 
 	type barRow struct {
-		ts   string
+		ts         string
 		o, h, l, c float64
-		v    int64
+		v          float64
 	}
 
 	for _, symbol := range s.Universe {

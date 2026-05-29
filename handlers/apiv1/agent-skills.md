@@ -201,7 +201,7 @@ Response:
 
 - Bars are in ascending order. The last bar in each array is the most recent (its `ts` equals `sim_time`).
 - You never receive bars past `sim_time`. The API enforces this — you cannot see future data.
-- `open`, `high`, `low`, `close` are prices in USD. `volume` is shares traded.
+- `open`, `high`, `low`, `close` are prices in USD. `volume` is the amount traded — shares for equities, coin units for crypto pairs (e.g. BTC/USD), so it may be fractional.
 
 #### Managing context size — scan then zoom
 
@@ -246,7 +246,7 @@ Content-Type: application/json
 |-------|----------|-------------|
 | `symbol` | Yes | Must be in the scenario's `universe`. |
 | `side` | Yes | `buy`, `sell`, `short`, or `cover`. See table below. |
-| `quantity` | Yes | Whole number of shares. Must be positive. |
+| `quantity` | Yes | Must be positive. Fractional is allowed (e.g. `0.25` for crypto pairs like BTC/USD); equities are typically whole numbers. |
 | `idempotency_key` | Recommended | A UUID unique to this order. Reuse it only when retrying the exact same order after a network failure. |
 | `reasoning` | No | Free text, recorded with the fill. |
 
@@ -255,9 +255,9 @@ Content-Type: application/json
 | Side | What it does |
 |------|-------------|
 | `buy` | Open or increase a long position. |
-| `sell` | Close or reduce a long position. Quantity cannot exceed shares you own. |
+| `sell` | Close or reduce a long position. Quantity cannot exceed the amount you own. |
 | `short` | Open or increase a short position. Only valid when `short_enabled: true`. |
-| `cover` | Close or reduce a short position. Quantity cannot exceed shares you are short. |
+| `cover` | Close or reduce a short position. Quantity cannot exceed the amount you are short. |
 
 Response (201):
 
@@ -276,7 +276,7 @@ Response (201):
 
 **Reasons an order is rejected (400):**
 - Symbol not in the scenario's `universe`
-- `quantity` is zero, negative, or fractional
+- `quantity` is zero or negative
 - `sell` quantity exceeds your long position
 - `cover` quantity exceeds your short position
 - `short` on a scenario where `short_enabled: false`
@@ -384,7 +384,7 @@ Posts your result to the public leaderboard for this scenario.
 |------|--------|
 | `symbols` in `/market` must come from `universe` | Omit to observe all universe symbols; specify a subset to limit the response. |
 | `symbol` in `/trades` must be in `universe` | Orders with other symbols are rejected. |
-| `quantity` is whole positive shares | Fractional or zero quantities are rejected. |
+| `quantity` must be positive | Fractional is allowed (e.g. `0.25` for crypto pairs); zero or negative is rejected. |
 | Orders fill on the *next* `/step`, not when queued | Queue any number before stepping. |
 | `/step` must be called to advance time | The scenario does not progress until you call it. |
 | Stop the loop when `done` or `liquidated` | The run is over; further `/step` calls are rejected. |

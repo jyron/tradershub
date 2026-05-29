@@ -303,6 +303,14 @@ func integerSchema(description string, minimum int) map[string]any {
 	}
 }
 
+func numberSchema(description string, exclusiveMinimum float64) map[string]any {
+	return map[string]any{
+		"type":             "number",
+		"description":      description,
+		"exclusiveMinimum": exclusiveMinimum,
+	}
+}
+
 func readOnlyToolAnnotations(title string) map[string]any {
 	return map[string]any{
 		"title":         title,
@@ -332,7 +340,7 @@ func tradeSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"symbol":    stringSchema("Ticker."),
 		"side":      map[string]any{"type": "string", "enum": []string{"buy", "sell", "short", "cover"}},
-		"quantity":  integerSchema("Shares.", 1),
+		"quantity":  numberSchema("Order size, positive. Fractional allowed for crypto pairs (e.g. 0.25 for BTC/USD); equities are typically whole.", 0),
 		"reasoning": stringSchema("Reason."),
 	}, []string{"symbol", "side", "quantity"})
 }

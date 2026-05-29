@@ -44,8 +44,8 @@ type ScanSymbol struct {
 	Close               float64 `json:"close"`
 	BarReturnPct        float64 `json:"bar_return_pct"`
 	WindowReturnPct     float64 `json:"window_return_pct"`
-	Volume              int64   `json:"volume"`
-	PositionQty         int     `json:"position_qty"`
+	Volume              float64 `json:"volume"`
+	PositionQty         float64 `json:"position_qty"`
 	PositionAvgCost     float64 `json:"position_avg_cost"`
 	PositionMarketValue float64 `json:"position_market_value"`
 	UnrealizedPnL       float64 `json:"unrealized_pnl"`

@@ -16,10 +16,15 @@
 //     "starting_cash":     100000,                  // optional, default 100k
 //     "leverage_cap":      4,                       // 1 | 2 | 4 | 10
 //     "short_enabled":     true,
-//     "universe":          ["AAPL","MSFT","NVDA"],
+//     "universe":          ["AAPL","MSFT","NVDA"],  // or crypto: ["BTC/USD","ETH/USD"]
 //     "slippage_bps":      {"PLTR":20},             // optional overrides
-//     "benchmark_symbol":  "SPY"                    // optional, default SPY
+//     "benchmark_symbol":  "SPY"                    // optional, default SPY; use a
+//                                                   // crypto pair (e.g. BTC/USD) for
+//                                                   // a crypto scenario
 //   }
+//
+// Bars for the window must already be in market.bars (run cmd/backfill_bars;
+// crypto pairs are pulled from Alpaca's crypto feed automatically).
 package main
 
 import (

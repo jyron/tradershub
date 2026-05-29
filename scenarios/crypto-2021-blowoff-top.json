@@ -1,0 +1,13 @@
+{
+  "slug": "crypto-2021-blowoff-top",
+  "name": "Crypto Blow-Off Top and May Crash — 2021",
+  "description": "Bitcoin prints an all-time high near $64.8k on April 14, 2021 (Coinbase's direct listing day) after a parabolic bull run, with Dogecoin riding peak retail mania into Elon Musk's May 8 SNL appearance. Then it unwinds fast: Tesla suspends Bitcoin payments on May 12, China renews its mining crackdown, and on May 19 the whole market flash-crashes — Bitcoin briefly halving from its high to near $30k. Tests whether a bot can ride a euphoric top, recognize the regime change, and protect capital (or short) through a violent deleveraging.",
+  "bar_resolution": "1Hour",
+  "start_ts": "2021-04-12T00:00:00Z",
+  "end_ts": "2021-05-24T00:00:00Z",
+  "starting_cash": 100000,
+  "leverage_cap": 2,
+  "short_enabled": true,
+  "universe": ["BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "DOGE/USD"],
+  "benchmark_symbol": "BTC/USD"
+}

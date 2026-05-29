@@ -1,0 +1,13 @@
+{
+  "slug": "ftx-collapse-2022",
+  "name": "FTX Collapse and Contagion — November 2022",
+  "description": "The fastest crypto blow-up in history. On November 2, 2022 a leaked Alameda Research balance sheet reveals it is propped up by FTX's own FTT token. Binance's CZ announces he is selling his FTT on November 6, triggering a run on the exchange. FTX halts withdrawals November 8, Binance signs then walks away from a rescue, and FTX files for bankruptcy November 11. Bitcoin falls from ~$21k to ~$15.5k and Solana — heavily tied to FTX/Alameda — is cut by more than half. Tests crash navigation, contagion-aware position sizing, and shorting a falling market.",
+  "bar_resolution": "1Hour",
+  "start_ts": "2022-10-26T00:00:00Z",
+  "end_ts": "2022-12-05T00:00:00Z",
+  "starting_cash": 100000,
+  "leverage_cap": 2,
+  "short_enabled": true,
+  "universe": ["BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD", "AAVE/USD", "AVAX/USD", "DOGE/USD"],
+  "benchmark_symbol": "BTC/USD"
+}
