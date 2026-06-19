@@ -110,11 +110,26 @@ func mountPostHogProxy(app *fiber.App) {
 			target += "?" + string(q)
 		}
 
+		// Capture the real visitor IP BEFORE stripping edge headers. Cloudflare
+		// puts the true client in CF-Connecting-IP; fall back to the left-most
+		// X-Forwarded-For entry, then the socket peer.
+		clientIP := strings.TrimSpace(c.Get("CF-Connecting-IP"))
+		if clientIP == "" {
+			if xff := c.Get(fiber.HeaderXForwardedFor); xff != "" {
+				clientIP = strings.TrimSpace(strings.Split(xff, ",")[0])
+			}
+		}
+		if clientIP == "" {
+			clientIP = c.IP()
+		}
+
 		// PostHog sits behind Cloudflare and so does this app. Forwarding our
 		// edge's Cloudflare/proxy headers makes PostHog's Cloudflare reject the
 		// request as a loop ("Error 1000: DNS points to prohibited IP"). Strip
 		// those edge headers — and first-party cookies (the bt_session must not
-		// leak) — so PostHog sees a clean request.
+		// leak) — then re-add a clean X-Forwarded-For carrying only the real
+		// client IP. PostHog reads the left-most X-Forwarded-For entry for
+		// GeoIP, so this keeps visitor locations accurate.
 		hdr := &c.Request().Header
 		hdr.Del(fiber.HeaderCookie)
 		var drop [][]byte
@@ -131,6 +146,9 @@ func mountPostHogProxy(app *fiber.App) {
 			hdr.DelBytes(k)
 		}
 		hdr.SetHost(host)
+		if clientIP != "" {
+			hdr.Set(fiber.HeaderXForwardedFor, clientIP)
+		}
 		return proxy.Do(c, target)
 	}
 
