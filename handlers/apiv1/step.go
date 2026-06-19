@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/services"
 	"context"
 	"net/http"
@@ -46,6 +47,7 @@ func (h *handlers) step(ctx context.Context, in *StepInput) (*StepOutput, error)
 	if err := h.assertRunOwner(ctx, in.ID); err != nil {
 		return nil, err
 	}
+	key := apiKeyFrom(ctx)
 	count := in.Body.Count
 	if count == 0 {
 		count = 1
@@ -58,6 +60,13 @@ func (h *handlers) step(ctx context.Context, in *StepInput) (*StepOutput, error)
 			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
+
+		h.Analytics.Capture(key.AccountID.String(), "run_stepped", analytics.Props().
+			Set("run_id", in.ID).
+			Set("bars_advanced", result.BarsAdvanced).
+			Set("done", result.Done).
+			Set("liquidated", result.Liquidated))
+
 		return &StepOutput{Body: *result}, nil
 	})
 }

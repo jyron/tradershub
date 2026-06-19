@@ -166,7 +166,7 @@ func newStripeTestEnv(t *testing.T, stripeSecret, priceID string) *stripeTestEnv
 		AppBaseURL:       "http://stripe-e2e.example.test",
 		StripeSecretKey:  stripeSecret,
 		StripeProPriceID: priceID,
-	})
+	}, nil)
 	return &stripeTestEnv{t: t, app: app, appDB: appDB}
 }
 

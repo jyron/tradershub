@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bottrade/analytics"
 	"bottrade/config"
 	"bottrade/database"
 	apiv1 "bottrade/handlers/apiv1"
@@ -37,6 +38,9 @@ func main() {
 		log.Fatal("Failed to run market migrations:", err)
 	}
 
+	analyticsClient := analytics.New(cfg.PostHogAPIKey, cfg.PostHogEndpoint)
+	defer analyticsClient.Close()
+
 	engine := services.NewScenarioEngine(database.DB, database.MarketDB)
 
 	scheduler := jobs.NewScheduler()
@@ -60,7 +64,7 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	apiv1.Mount(app, engine, cfg)
+	apiv1.Mount(app, engine, cfg, analyticsClient)
 
 	// Clean-URL aliases for the marketing site. Registered BEFORE app.Static
 	// so they win the route match. The .html paths still work via app.Static

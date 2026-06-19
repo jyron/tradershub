@@ -16,6 +16,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/account-page.css">
+<script src="/posthog-init.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -263,6 +264,9 @@
     $('handle').textContent = data.handle ? '@' + data.handle : '— unset (Pro)';
     $('handle').classList.toggle('muted', !data.handle);
     $('account-id').textContent = data.account_id || '';
+    if (window.posthog && data.account_id) {
+      posthog.identify(data.account_id, { plan: plan, name: data.name || '' });
+    }
     $('quota-month').textContent = monthLabel(now);
     $('runs-used').textContent = String(runsUsed);
     $('runs-limit').textContent = String(runsLimit);

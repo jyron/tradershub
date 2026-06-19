@@ -16,6 +16,7 @@ type HTTPMCPServer struct {
 	publicURL string
 	sessions  *SessionStore
 	auth      *OAuthBridge
+	analytics *Analytics
 }
 
 func NewHTTPMCPServer(baseURL string) *HTTPMCPServer {
@@ -111,6 +112,8 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	server := NewMCPServerWithAuth(NewBotTradeClient(s.baseURL, apiKey), session, s.auth)
+	server.analytics = s.analytics
+	server.transport = "http"
 	resp := server.handle(r.Context(), req)
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -247,10 +250,12 @@ func writeRPCError(w http.ResponseWriter, id any, code int, message string) {
 	})
 }
 
-func runHTTP(ctx context.Context, addr, baseURL string) error {
+func runHTTP(ctx context.Context, addr, baseURL string, an *Analytics) error {
+	handler := NewHTTPMCPServer(baseURL)
+	handler.analytics = an
 	server := &http.Server{
 		Addr:    addr,
-		Handler: NewHTTPMCPServer(baseURL),
+		Handler: handler,
 	}
 	go func() {
 		<-ctx.Done()

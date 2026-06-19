@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/database"
 	"bottrade/models"
 	"context"
@@ -135,6 +136,10 @@ func (h *handlers) billingCheckout(ctx context.Context, _ *CheckoutInput) (*Chec
 	if alreadyPro {
 		return nil, huma.Error409Conflict("already subscribed — manage here: " + url)
 	}
+
+	h.Analytics.Capture(key.AccountID.String(), "billing_checkout_started", analytics.Props().
+		Set("plan", key.Plan))
+
 	out := &CheckoutOutput{}
 	out.Body.URL = url
 	return out, nil
@@ -405,7 +410,19 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 		       billing_email = COALESCE(NULLIF(?6, ''), billing_email)
 		 WHERE id = ?7
 	`, plan, stripeCustomerID, stripeSubscriptionID, subStatus, periodEnd, email, accountID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if plan == "pro" {
+		h.Analytics.Identify(accountID, analytics.Props().
+			Set("plan", "pro").
+			Set("billing_email", email))
+		h.Analytics.Capture(accountID, "subscription_activated", analytics.Props().
+			Set("plan", "pro").
+			Set("subscription_status", subStatus))
+	}
+	return nil
 }
 
 func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {

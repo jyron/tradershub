@@ -128,7 +128,7 @@ func newWebhookTestEnv(t *testing.T, webhookSecret string) *webhookTestEnv {
 		AppBaseURL:          "http://stripe-webhook.example.test",
 		StripeWebhookSecret: webhookSecret,
 		StripeProPriceID:    "price_test",
-	})
+	}, nil)
 	return &webhookTestEnv{t: t, app: app, appDB: appDB}
 }
 

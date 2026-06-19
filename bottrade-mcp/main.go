@@ -18,6 +18,9 @@ func main() {
 		baseURL = "https://bot-trade.org"
 	}
 
+	an := NewAnalytics()
+	defer an.Close()
+
 	transport := strings.TrimSpace(os.Getenv("BOTTRADE_MCP_TRANSPORT"))
 	port := strings.TrimSpace(os.Getenv("PORT"))
 	if transport == "" && port != "" {
@@ -32,7 +35,7 @@ func main() {
 			addr = ":" + port
 		}
 		log.Printf("bottrade-mcp listening on %s", addr)
-		if err := runHTTP(context.Background(), addr, baseURL); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := runHTTP(context.Background(), addr, baseURL, an); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("bottrade-mcp: %v", err)
 		}
 		return
@@ -40,6 +43,8 @@ func main() {
 
 	client := NewBotTradeClient(baseURL, strings.TrimSpace(os.Getenv("BOTTRADE_API_KEY")))
 	server := NewMCPServer(client)
+	server.analytics = an
+	server.transport = "stdio"
 	if err := server.Serve(context.Background(), os.Stdin, os.Stdout); err != nil {
 		log.Fatalf("bottrade-mcp: %v", err)
 	}

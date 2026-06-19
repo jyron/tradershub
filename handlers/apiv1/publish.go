@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/models"
 	"context"
 	"net/http"
@@ -73,6 +74,16 @@ func (h *handlers) publish(ctx context.Context, in *PublishInput) (*PublishOutpu
 	); err != nil {
 		return nil, huma.Error500InternalServerError("db error: " + err.Error())
 	}
+
+	props := analytics.Props().
+		Set("run_id", in.ID).
+		Set("scenario_id", scenarioID).
+		Set("bot_name", botName).
+		Set("return_pct", results.ReturnPct)
+	if results.Sharpe != nil {
+		props.Set("sharpe", *results.Sharpe)
+	}
+	h.Analytics.Capture(apiKeyFrom(ctx).AccountID.String(), "run_published", props)
 
 	out := &PublishOutput{}
 	out.Body.Published = true

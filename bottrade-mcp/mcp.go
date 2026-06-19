@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +16,27 @@ import (
 const protocolVersion = "2025-06-18"
 
 type MCPServer struct {
-	client  *BotTradeClient
-	session *MCPSession
-	auth    *OAuthBridge
+	client    *BotTradeClient
+	session   *MCPSession
+	auth      *OAuthBridge
+	analytics *Analytics
+	transport string
+}
+
+// distinctID is a stable, non-secret PostHog identity for the caller: a hash of
+// the API key when present, else the MCP session id, else anonymous. We never
+// send the raw API key.
+func (s *MCPServer) distinctID() string {
+	if s.client != nil {
+		if k := strings.TrimSpace(s.client.apiKey); k != "" {
+			sum := sha256.Sum256([]byte(k))
+			return "key_" + hex.EncodeToString(sum[:])[:24]
+		}
+	}
+	if s.session != nil && s.session.ID != "" {
+		return "sess_" + s.session.ID
+	}
+	return "mcp_anon"
 }
 
 func NewMCPServer(client *BotTradeClient) *MCPServer {
@@ -106,6 +126,8 @@ func (s *MCPServer) handle(ctx context.Context, req request) response {
 func (s *MCPServer) dispatch(ctx context.Context, req request) (any, error) {
 	switch req.Method {
 	case "initialize":
+		s.analytics.Capture(s.distinctID(), "mcp_session_initialized", phProps().
+			Set("transport", s.transport))
 		return map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities": map[string]any{
@@ -145,6 +167,10 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
+
+	s.analytics.Capture(s.distinctID(), "mcp_tool_called", phProps().
+		Set("tool", p.Name).
+		Set("transport", s.transport))
 
 	switch p.Name {
 	case "auth_status":

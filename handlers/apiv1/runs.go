@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/database"
 	"bottrade/models"
 	"context"
@@ -120,6 +121,13 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
+
+	h.Analytics.Capture(key.AccountID.String(), "run_started", analytics.Props().
+		Set("scenario_id", scenarioID).
+		Set("scenario_slug", in.Body.ScenarioSlug).
+		Set("bot_name", in.Body.BotName).
+		Set("plan", key.Plan))
+
 	out := &RunCreateOutput{Status: http.StatusCreated}
 	out.Body.Run = run
 	return out, nil
@@ -148,6 +156,10 @@ func (h *handlers) enforceRunQuota(key models.APIKey) error {
 		if runsUsed >= limit {
 			now := time.Now().UTC()
 			nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			h.Analytics.Capture(key.AccountID.String(), "run_quota_exceeded", analytics.Props().
+				Set("plan", "pro").
+				Set("runs_used", runsUsed).
+				Set("runs_limit", limit))
 			return &quotaProLimitError{
 				Err:       "Monthly run limit reached",
 				RunsUsed:  runsUsed,
@@ -158,6 +170,10 @@ func (h *handlers) enforceRunQuota(key models.APIKey) error {
 	} else {
 		const limit = 25
 		if runsUsed >= limit {
+			h.Analytics.Capture(key.AccountID.String(), "run_quota_exceeded", analytics.Props().
+				Set("plan", "free").
+				Set("runs_used", runsUsed).
+				Set("runs_limit", limit))
 			return &quotaFreeLimitError{
 				Err:         "Free tier limit reached",
 				RunsUsed:    runsUsed,

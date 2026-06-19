@@ -34,6 +34,12 @@ type Config struct {
 	GitHubOAuthClientID     string
 	GitHubOAuthClientSecret string
 
+	// PostHog product analytics. The project token (phc_…) is a public,
+	// client-embeddable key — the same one used in the browser snippet — so it
+	// ships as a default and is overridable per environment.
+	PostHogAPIKey   string
+	PostHogEndpoint string
+
 	Port string
 }
 
@@ -55,6 +61,8 @@ func Load() *Config {
 		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		GitHubOAuthClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
 		GitHubOAuthClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+		PostHogAPIKey:           getEnv("POSTHOG_API_KEY", "phc_wpKjBjqE88hkyBUPLFoowVgeuE8cnhV5MwmE4eUDszw6"),
+		PostHogEndpoint:         getEnv("POSTHOG_HOST", "https://us.i.posthog.com"),
 		Port:                    getEnv("PORT", "3000"),
 	}
 }

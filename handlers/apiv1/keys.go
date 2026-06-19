@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/database"
 	"bottrade/models"
 	"crypto/rand"
@@ -86,6 +87,15 @@ func (h *handlers) issueKey(c *fiber.Ctx) error {
 			"error": "Failed to generate API key",
 		})
 	}
+
+	// Link this backend account to the same distinct_id the browser uses, then
+	// record the key issuance. distinct_id is the account id everywhere.
+	h.Analytics.Identify(accountID, analytics.Props().
+		Set("plan", key.Plan).
+		Set("name", key.Name).
+		Set("email", key.CreatorEmail))
+	h.Analytics.Capture(accountID, "api_key_issued", analytics.Props().
+		Set("plan", key.Plan))
 
 	return c.Status(fiber.StatusOK).JSON(issueKeyResponse{
 		APIKey:    key.Key,

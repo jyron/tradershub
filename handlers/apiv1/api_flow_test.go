@@ -350,7 +350,7 @@ func newAPITestEnv(t *testing.T, bars [][]apiTestBar, startingCash, leverageCap 
 	Mount(env.app, engine, &config.Config{
 		AppBaseURL:       "http://example.test",
 		StripeProPriceID: "price_test",
-	})
+	}, nil)
 	return env
 }
 

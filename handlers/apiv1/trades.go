@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/models"
 	"bottrade/services"
 	"context"
@@ -74,6 +75,7 @@ func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQ
 	if err := h.assertRunOwner(ctx, in.ID); err != nil {
 		return nil, err
 	}
+	key := apiKeyFrom(ctx)
 	return idempotent(in.ID, in.Body.IdempotencyKey, in.Body, func() (*TradeQueueOutput, error) {
 		order, err := h.Engine.QueueTrade(in.ID, services.QueueTradeRequest{
 			Symbol:    in.Body.Symbol,
@@ -87,6 +89,13 @@ func (h *handlers) queueTrade(ctx context.Context, in *TradeQueueInput) (*TradeQ
 			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
+
+		h.Analytics.Capture(key.AccountID.String(), "trade_queued", analytics.Props().
+			Set("run_id", in.ID).
+			Set("symbol", in.Body.Symbol).
+			Set("side", in.Body.Side).
+			Set("quantity", in.Body.Quantity))
+
 		out := &TradeQueueOutput{}
 		out.Body.Order = order
 		return out, nil

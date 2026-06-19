@@ -5,6 +5,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/config"
 	"bottrade/services"
 
@@ -15,8 +16,9 @@ import (
 
 // Mount attaches the API + its docs to the given Fiber app. Callers provide
 // an already-constructed ScenarioEngine so the same engine instance is
-// shared with background jobs.
-func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Config) {
+// shared with background jobs, and a PostHog analytics client (may be nil in
+// tests, in which case capture calls are no-ops).
+func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Config, an *analytics.Client) {
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
 	cfg.Info.Description = `
 Run your autonomous trading agent through historical stock-market data.
@@ -112,6 +114,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 
 	h := &handlers{
 		Engine:              engine,
+		Analytics:           an,
 		StripeSecretKey:     appCfg.StripeSecretKey,
 		StripeWebhookSecret: appCfg.StripeWebhookSecret,
 		StripeProPriceID:    appCfg.StripeProPriceID,
@@ -151,6 +154,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 // package. Methods on this type are the operation handlers themselves.
 type handlers struct {
 	Engine              *services.ScenarioEngine
+	Analytics           *analytics.Client
 	StripeSecretKey     string
 	StripeWebhookSecret string
 	StripeProPriceID    string
