@@ -109,10 +109,28 @@ func mountPostHogProxy(app *fiber.App) {
 		if q := c.Request().URI().QueryString(); len(q) > 0 {
 			target += "?" + string(q)
 		}
-		// Never forward first-party cookies (e.g. the bt_session) to PostHog;
-		// posthog-js carries its own state and needs none of ours.
-		c.Request().Header.Del(fiber.HeaderCookie)
-		c.Request().Header.SetHost(host)
+
+		// PostHog sits behind Cloudflare and so does this app. Forwarding our
+		// edge's Cloudflare/proxy headers makes PostHog's Cloudflare reject the
+		// request as a loop ("Error 1000: DNS points to prohibited IP"). Strip
+		// those edge headers — and first-party cookies (the bt_session must not
+		// leak) — so PostHog sees a clean request.
+		hdr := &c.Request().Header
+		hdr.Del(fiber.HeaderCookie)
+		var drop [][]byte
+		hdr.VisitAll(func(key, _ []byte) {
+			k := strings.ToUpper(string(key))
+			if strings.HasPrefix(k, "CF-") ||
+				strings.HasPrefix(k, "X-FORWARDED-") ||
+				strings.HasPrefix(k, "X-RAILWAY-") ||
+				k == "CDN-LOOP" || k == "FORWARDED" || k == "X-REAL-IP" {
+				drop = append(drop, append([]byte(nil), key...))
+			}
+		})
+		for _, k := range drop {
+			hdr.DelBytes(k)
+		}
+		hdr.SetHost(host)
 		return proxy.Do(c, target)
 	}
 
