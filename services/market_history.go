@@ -44,12 +44,15 @@ func (ac *AlpacaClient) GetHistoricalCandles(symbol string, timeframe string, st
 		return nil, fmt.Errorf("Alpaca client not initialized")
 	}
 
-	// Fetch bars from Alpaca
+	// Fetch bars from Alpaca. Adjustment MUST be split: raw bars ship stock
+	// splits as giant overnight "crashes" (NVDA 10:1 read as -90% and
+	// margin-called every agent holding it, 2026-07 incident).
 	bars, err := ac.marketData.GetBars(symbol, marketdata.GetBarsRequest{
-		TimeFrame: parseTimeFrame(timeframe),
-		Start:     start,
-		End:       end,
-		Feed:      marketdata.IEX, // Use IEX feed for free tier
+		TimeFrame:  parseTimeFrame(timeframe),
+		Start:      start,
+		End:        end,
+		Feed:       marketdata.IEX, // Use IEX feed for free tier
+		Adjustment: marketdata.Split,
 	})
 
 	if err != nil {
