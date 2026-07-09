@@ -1,6 +1,9 @@
 package apiv1
 
 import (
+	"sync"
+	"encoding/hex"
+	"crypto/sha256"
 	"bottrade/database"
 	"bottrade/models"
 	"context"
@@ -57,6 +60,7 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 		}
 
 		recordUsageEvent(key, "rest", ctx.URL().Path, ctx.Method())
+		h.aliasCredential(apiKey, key.AccountID.String())
 		ctx = huma.WithValue(ctx, apiKeyContextKey{}, key)
 		next(ctx)
 	}
@@ -167,7 +171,7 @@ func loadAPIKeyByOAuthAccessToken(token string) (models.APIKey, error) {
 	if revokedAt != "" || time.Now().UTC().After(exp) {
 		return models.APIKey{}, sql.ErrNoRows
 	}
-	key, err := ensureAccountAPIKey(accountID, "", "")
+	key, _, err := ensureAccountAPIKey(accountID, "", "")
 	if err != nil {
 		return models.APIKey{}, err
 	}
@@ -221,4 +225,29 @@ func apiKeyFrom(ctx context.Context) models.APIKey {
 		return models.APIKey{}
 	}
 	return v.(models.APIKey)
+}
+
+// aliasCredential links the MCP server's hashed-credential distinct_id
+// ("key_" + sha256(credential)[:24]) to the canonical account distinct_id, so
+// anonymous-looking MCP tool events join the account's event stream. Sent at
+// most once per credential per process.
+var (
+	aliasedMu   sync.Mutex
+	aliasedKeys = map[string]bool{}
+)
+
+func (h *handlers) aliasCredential(credential, accountID string) {
+	if credential == "" || accountID == "" {
+		return
+	}
+	sum := sha256.Sum256([]byte(credential))
+	hashed := "key_" + hex.EncodeToString(sum[:])[:24]
+	aliasedMu.Lock()
+	seen := aliasedKeys[hashed]
+	aliasedKeys[hashed] = true
+	aliasedMu.Unlock()
+	if seen {
+		return
+	}
+	h.Analytics.Alias(accountID, hashed)
 }

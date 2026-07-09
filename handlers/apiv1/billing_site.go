@@ -1,6 +1,8 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
+
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
@@ -30,6 +32,10 @@ func (h *handlers) siteBillingCheckout(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	h.Analytics.Capture(accountID, "billing_checkout_started", analytics.Props().
+		Set("plan", key.Plan).
+		Set("flow", "site").
+		Set("$ip", clientIP(c)))
 	return c.JSON(fiber.Map{"url": url})
 }
 

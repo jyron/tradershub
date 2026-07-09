@@ -81,7 +81,7 @@ func (h *handlers) issueKey(c *fiber.Ctx) error {
 		})
 	}
 
-	key, err := ensureAccountAPIKey(accountID, req.Name, req.Email)
+	key, created, err := ensureAccountAPIKey(accountID, req.Name, req.Email)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate API key",
@@ -89,13 +89,16 @@ func (h *handlers) issueKey(c *fiber.Ctx) error {
 	}
 
 	// Link this backend account to the same distinct_id the browser uses, then
-	// record the key issuance. distinct_id is the account id everywhere.
+	// record the key issuance (creation only, not re-reads). distinct_id is the
+	// account id everywhere.
 	h.Analytics.Identify(accountID, analytics.Props().
 		Set("plan", key.Plan).
 		Set("name", key.Name).
 		Set("email", key.CreatorEmail))
-	h.Analytics.Capture(accountID, "api_key_issued", analytics.Props().
-		Set("plan", key.Plan))
+	if created {
+		h.Analytics.Capture(accountID, "api_key_issued", analytics.Props().
+			Set("plan", key.Plan).Set("flow", "api"))
+	}
 
 	return c.Status(fiber.StatusOK).JSON(issueKeyResponse{
 		APIKey:    key.Key,
@@ -168,20 +171,21 @@ func createAccountAPIKey(accountID uuid.UUID, requestedName, email, plan string)
 	}, nil
 }
 
-func ensureAccountAPIKey(accountID, name, email string) (models.APIKey, error) {
+func ensureAccountAPIKey(accountID, name, email string) (models.APIKey, bool, error) {
 	key, err := loadAPIKeyByAccountID(accountID)
 	if err == nil {
-		return key, nil
+		return key, false, nil
 	}
 	parsed, err := uuid.Parse(accountID)
 	if err != nil {
-		return models.APIKey{}, err
+		return models.APIKey{}, false, err
 	}
 	resp, err := createAccountAPIKey(parsed, name, email, "free")
 	if err != nil {
-		return models.APIKey{}, err
+		return models.APIKey{}, false, err
 	}
-	return loadAPIKeyBySecret(resp.APIKey)
+	key, err = loadAPIKeyBySecret(resp.APIKey)
+	return key, err == nil, err
 }
 
 // generateAPIKey returns 64 hex chars of CSPRNG output.

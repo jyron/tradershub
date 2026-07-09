@@ -66,6 +66,12 @@ func (h *handlers) step(ctx context.Context, in *StepInput) (*StepOutput, error)
 			Set("bars_advanced", result.BarsAdvanced).
 			Set("done", result.Done).
 			Set("liquidated", result.Liquidated))
+		if result.Done || result.Liquidated {
+			h.Analytics.Capture(key.AccountID.String(), "run_completed", analytics.Props().
+				Set("run_id", in.ID).
+				Set("liquidated", result.Liquidated).
+				Set("final_equity", result.NewEquity))
+		}
 
 		return &StepOutput{Body: *result}, nil
 	})

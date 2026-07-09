@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"context"
 	"encoding/json"
 	"html"
@@ -114,6 +115,7 @@ func (s *HTTPMCPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 	server := NewMCPServerWithAuth(NewBotTradeClient(s.baseURL, apiKey), session, s.auth)
 	server.analytics = s.analytics
 	server.transport = "http"
+	server.clientIP = realClientIP(r)
 	resp := server.handle(r.Context(), req)
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -262,4 +264,19 @@ func runHTTP(ctx context.Context, addr, baseURL string, an *Analytics) error {
 		_ = server.Shutdown(context.Background())
 	}()
 	return server.ListenAndServe()
+}
+
+// realClientIP resolves the caller's IP behind the Cloudflare/Railway edge.
+func realClientIP(r *http.Request) string {
+	if ip := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); ip != "" {
+		return ip
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return strings.TrimSpace(strings.Split(xff, ",")[0])
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

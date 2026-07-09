@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/posthog/posthog-go"
 	"bufio"
 	"context"
 	"crypto/sha256"
@@ -21,6 +22,7 @@ type MCPServer struct {
 	auth      *OAuthBridge
 	analytics *Analytics
 	transport string
+	clientIP  string // real caller IP for PostHog GeoIP; empty on stdio
 }
 
 // distinctID is a stable, non-secret PostHog identity for the caller: a hash of
@@ -126,8 +128,7 @@ func (s *MCPServer) handle(ctx context.Context, req request) response {
 func (s *MCPServer) dispatch(ctx context.Context, req request) (any, error) {
 	switch req.Method {
 	case "initialize":
-		s.analytics.Capture(s.distinctID(), "mcp_session_initialized", phProps().
-			Set("transport", s.transport))
+		s.analytics.Capture(s.distinctID(), "mcp_session_initialized", s.baseProps())
 		return map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities": map[string]any{
@@ -168,9 +169,8 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		return nil, err
 	}
 
-	s.analytics.Capture(s.distinctID(), "mcp_tool_called", phProps().
-		Set("tool", p.Name).
-		Set("transport", s.transport))
+	s.analytics.Capture(s.distinctID(), "mcp_tool_called", s.baseProps().
+		Set("tool", p.Name))
 
 	switch p.Name {
 	case "auth_status":
@@ -619,4 +619,14 @@ func summarizeResults(results *RunResults) string {
 		results.TradeCount,
 		results.Liquidated,
 	)
+}
+
+// baseProps returns the property bag every MCP event carries: transport plus
+// the caller's real IP ($ip) so PostHog GeoIP resolves agent operators too.
+func (s *MCPServer) baseProps() posthog.Properties {
+	props := phProps().Set("transport", s.transport)
+	if s.clientIP != "" {
+		props = props.Set("$ip", s.clientIP)
+	}
+	return props
 }

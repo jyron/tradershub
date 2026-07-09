@@ -55,6 +55,18 @@ func (c *Client) Identify(distinctID string, props posthog.Properties) {
 	})
 }
 
+// Alias links a secondary distinct_id (e.g. the MCP server's hashed-credential
+// id) to the canonical one (the account id), joining the two event streams.
+func (c *Client) Alias(distinctID, alias string) {
+	if c == nil || c.ph == nil || distinctID == "" || alias == "" {
+		return
+	}
+	_ = c.ph.Enqueue(posthog.Alias{
+		DistinctId: distinctID,
+		Alias:      alias,
+	})
+}
+
 // Close flushes any queued events. Call it on shutdown.
 func (c *Client) Close() {
 	if c == nil || c.ph == nil {

@@ -1,6 +1,7 @@
 package apiv1
 
 import (
+	"bottrade/analytics"
 	"bottrade/database"
 	"crypto/rand"
 	"crypto/sha256"
@@ -219,12 +220,18 @@ func (h *handlers) siteProviderCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
-	accountID, err := upsertOAuthAccount(profile)
+	accountID, created, err := upsertOAuthAccount(profile)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).SendString("failed to create account")
 	}
-	if _, err := ensureAccountAPIKey(accountID, profile.Name, profile.Email); err != nil {
+	key, keyCreated, err := ensureAccountAPIKey(accountID, profile.Name, profile.Email)
+	if err != nil {
 		return c.Status(http.StatusInternalServerError).SendString("failed to create account key")
+	}
+	h.captureAuth(c, accountID, created, profile, "site")
+	if keyCreated {
+		h.Analytics.Capture(accountID, "api_key_issued", analytics.Props().
+			Set("plan", key.Plan).Set("flow", "site"))
 	}
 	sessionToken, err := h.createSiteSession(accountID)
 	if err != nil {
@@ -255,7 +262,7 @@ func (h *handlers) siteAccountData(c *fiber.Ctx) error {
 	if err != nil || accountID == "" {
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "not signed in"})
 	}
-	key, err := ensureAccountAPIKey(accountID, "", "")
+	key, _, err := ensureAccountAPIKey(accountID, "", "")
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load API key"})
 	}
@@ -382,12 +389,18 @@ func (h *handlers) completeOAuthProviderCallback(c *fiber.Ctx, provider, provide
 	if err != nil {
 		return c.Status(http.StatusBadRequest).SendString(err.Error())
 	}
-	accountID, err := upsertOAuthAccount(profile)
+	accountID, created, err := upsertOAuthAccount(profile)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).SendString("failed to create account")
 	}
-	if _, err := ensureAccountAPIKey(accountID, profile.Name, profile.Email); err != nil {
+	key, keyCreated, err := ensureAccountAPIKey(accountID, profile.Name, profile.Email)
+	if err != nil {
 		return c.Status(http.StatusInternalServerError).SendString("failed to create account key")
+	}
+	h.captureAuth(c, accountID, created, profile, "mcp")
+	if keyCreated {
+		h.Analytics.Capture(accountID, "api_key_issued", analytics.Props().
+			Set("plan", key.Plan).Set("flow", "mcp"))
 	}
 	code, err := randomOAuthToken("bt_code_")
 	if err != nil {
@@ -664,17 +677,17 @@ func getProviderJSON(endpoint, token string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func upsertOAuthAccount(profile oauthProfile) (string, error) {
+func upsertOAuthAccount(profile oauthProfile) (string, bool, error) {
 	var accountID string
 	err := database.DB.QueryRow(
 		`SELECT account_id FROM account_identities WHERE provider = ?1 AND provider_user_id = ?2`,
 		profile.Provider, profile.ProviderUserID,
 	).Scan(&accountID)
 	if err == nil {
-		return accountID, nil
+		return accountID, false, nil
 	}
 	if err != sql.ErrNoRows {
-		return "", err
+		return "", false, err
 	}
 	accountID = uuid.NewString()
 	name := strings.TrimSpace(profile.Name)
@@ -683,7 +696,7 @@ func upsertOAuthAccount(profile oauthProfile) (string, error) {
 	}
 	tx, err := database.DB.Begin()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer func() {
 		if err != nil {
@@ -695,7 +708,7 @@ func upsertOAuthAccount(profile oauthProfile) (string, error) {
 		accountID, name, profile.Email,
 	)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	_, err = tx.Exec(
 		`INSERT INTO account_identities (account_id, provider, provider_user_id, email, name)
@@ -703,12 +716,12 @@ func upsertOAuthAccount(profile oauthProfile) (string, error) {
 		accountID, profile.Provider, profile.ProviderUserID, profile.Email, name,
 	)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err = tx.Commit(); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return accountID, nil
+	return accountID, true, nil
 }
 
 func loadOAuthAuthRequest(id string) (oauthAuthRequest, error) {
@@ -868,4 +881,33 @@ func hashToken(token string) string {
 func pkceS256(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// captureAuth records signup/sign-in analytics with the visitor's real IP so
+// PostHog GeoIP works behind Cloudflare, and links person properties to the
+// account distinct_id used everywhere else.
+func (h *handlers) captureAuth(c *fiber.Ctx, accountID string, created bool, profile oauthProfile, flow string) {
+	event := "account_signed_in"
+	if created {
+		event = "account_signed_up"
+	}
+	h.Analytics.Identify(accountID, analytics.Props().
+		Set("email", profile.Email).
+		Set("name", profile.Name).
+		Set("auth_provider", profile.Provider))
+	h.Analytics.Capture(accountID, event, analytics.Props().
+		Set("provider", profile.Provider).
+		Set("flow", flow).
+		Set("$ip", clientIP(c)))
+}
+
+// clientIP resolves the real visitor IP behind the Cloudflare + Railway edge.
+func clientIP(c *fiber.Ctx) string {
+	if ip := strings.TrimSpace(c.Get("CF-Connecting-IP")); ip != "" {
+		return ip
+	}
+	if xff := c.Get(fiber.HeaderXForwardedFor); xff != "" {
+		return strings.TrimSpace(strings.Split(xff, ",")[0])
+	}
+	return c.IP()
 }
