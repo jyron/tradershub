@@ -21,16 +21,18 @@ import (
 // API process. Cross-process safety would need row-version checks; out of
 // scope for MVP.
 type ScenarioEngine struct {
-	appDB  *sql.DB
-	bars   *ScenarioBarCache
-	locks  sync.Map // map[string]*sync.Mutex, key = run_id
-	writes chan struct{}
+	appDB   *sql.DB
+	bars    *ScenarioBarCache
+	locksMu sync.Mutex // guards locks; plain map because Go 1.25.0's sync.Map (HashTrieMap) panicked in prod ("ran out of hash bits")
+	locks   map[string]*sync.Mutex
+	writes  chan struct{}
 }
 
 func NewScenarioEngine(appDB, marketDB *sql.DB) *ScenarioEngine {
 	return &ScenarioEngine{
 		appDB:  appDB,
 		bars:   NewScenarioBarCache(marketDB),
+		locks:  make(map[string]*sync.Mutex),
 		writes: make(chan struct{}, 8),
 	}
 }
@@ -45,8 +47,13 @@ func (e *ScenarioEngine) Bars() *ScenarioBarCache { return e.bars }
 
 // Locks acquires the per-run mutex. Returned func releases it.
 func (e *ScenarioEngine) lockRun(runID string) func() {
-	v, _ := e.locks.LoadOrStore(runID, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
+	e.locksMu.Lock()
+	mu, ok := e.locks[runID]
+	if !ok {
+		mu = &sync.Mutex{}
+		e.locks[runID] = mu
+	}
+	e.locksMu.Unlock()
 	mu.Lock()
 	return func() { mu.Unlock() }
 }

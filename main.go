@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 func main() {
@@ -63,6 +64,7 @@ func main() {
 	scheduler.Start()
 
 	app := fiber.New(fiber.Config{AppName: "BotTrade Benchmark"})
+	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New())
 
@@ -78,7 +80,7 @@ func main() {
 	app.Get("/docs", func(c *fiber.Ctx) error { return c.SendFile("./static/docs.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
 	app.Get("/pricing", func(c *fiber.Ctx) error { return c.SendFile("./static/pricing.html") })
-	app.Get("/run/:id", func(c *fiber.Ctx) error { return c.SendFile("./static/run.html") })
+	apiv1.MountRunPages(app, cfg.AppBaseURL)
 	app.Static("/", "./static")
 
 	log.Printf("Listening on :%s", cfg.Port)
