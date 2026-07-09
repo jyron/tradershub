@@ -76,6 +76,8 @@ func main() {
 	// so they win the route match. The .html paths still work via app.Static
 	// for backwards compatibility with anything that linked to them.
 	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
+	app.Get("/challenge", func(c *fiber.Ctx) error { return c.SendFile("./static/challenge.html") })
+	app.Get("/demo", func(c *fiber.Ctx) error { return c.SendFile("./static/demo.html") })
 	app.Get("/scenarios", func(c *fiber.Ctx) error { return c.SendFile("./static/scenarios.html") })
 	app.Get("/docs", func(c *fiber.Ctx) error { return c.SendFile("./static/docs.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })

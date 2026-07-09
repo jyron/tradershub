@@ -79,7 +79,37 @@ func (h *handlers) getPublicRun(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	resp["trades"] = trades
+
+	curve, err := loadEquityCurve(runID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	resp["equity_curve"] = curve
 	return c.JSON(resp)
+}
+
+type equityPoint struct {
+	SimTime string  `json:"sim_time"`
+	Equity  float64 `json:"equity"`
+}
+
+func loadEquityCurve(runID string) ([]equityPoint, error) {
+	rows, err := database.DB.Query(
+		`SELECT sim_time, equity FROM run_equity WHERE run_id = ?1 ORDER BY sim_time ASC`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	curve := []equityPoint{}
+	for rows.Next() {
+		var p equityPoint
+		if err := rows.Scan(&p.SimTime, &p.Equity); err != nil {
+			return nil, err
+		}
+		curve = append(curve, p)
+	}
+	return curve, rows.Err()
 }
 
 func loadRunTrades(runID string) ([]models.RunTrade, error) {
