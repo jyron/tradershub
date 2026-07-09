@@ -157,7 +157,7 @@ idempotently on boot.
 ## Where to look first
 
 - "Leaderboard surface." → `handlers/apiv1/leaderboard.go`, `static/leaderboard.html`
-- "How a trade fills." → `services/scenario_engine.go::executeOrdersTx`
+- "How a trade fills." → `services/scenario_engine.go::AdvanceStep` (in-memory fill loop)
 - "Add a new `/api/v1` endpoint." → `handlers/apiv1/*.go`, `handlers/apiv1/mount.go`
 - "Pull more historical data." → `cmd/backfill_bars/main.go`, `services/market_history.go`
 - "Provision a new scenario." → `scenarios/*.json`, `cmd/provision_scenario/main.go`

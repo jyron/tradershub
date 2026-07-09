@@ -348,9 +348,10 @@ type StepResult struct {
 //  4. If equity < maintenance: queue close-all orders, set status=liquidated, stop
 //  5. After all advancing, write ONE run_equity sample, advance sim_time
 //
-// Per-bar behavior is wrapped in a single DB transaction PER BAR. If the
-// fill or position upsert fails midway the bar is rolled back; sim_time
-// doesn't move and the agent can retry.
+// All bars are simulated in memory against the bar cache; the DB sees one
+// short transaction at the end (trades + touched positions + run row +
+// one equity sample). If that flush fails nothing moves and the agent
+// can retry.
 func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, error) {
 	release := e.lockRun(runID)
 	defer release()
@@ -382,7 +383,201 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 		Fills: []models.RunTrade{},
 	}
 
+	// Load pending orders and positions ONCE, in memory. The per-run mutex
+	// serializes every mutation of this run, so nothing else can change them
+	// while we simulate. Keeping the write transaction O(fills) instead of
+	// O(bars) is what keeps Turso's single writer free for other runs —
+	// per-bar SELECTs against a remote DB made long steps hold the write
+	// lock for minutes and starved every other run (2026-07 incident).
+	pendingOrders, err := e.loadOrders(runID)
+	if err != nil {
+		return nil, err
+	}
+	posList, err := e.loadPositions(runID)
+	if err != nil {
+		return nil, err
+	}
+	positions := make(map[string]models.RunPosition, len(posList))
+	for _, p := range posList {
+		positions[p.Symbol] = p
+	}
+
 	cur := run.Cash
+	startIdx := idx
+	var filledOrderIDs []string
+	touched := map[string]bool{}
+
+	markToMarket := func(at time.Time) (posValue, notional float64) {
+		for _, p := range positions {
+			if p.Quantity == 0 {
+				continue
+			}
+			bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, at)
+			if !ok {
+				bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, at)
+			}
+			if !ok {
+				continue
+			}
+			posValue += p.Quantity * bar.Close
+			notional += math.Abs(p.Quantity * bar.Close)
+		}
+		return posValue, notional
+	}
+
+	for step := 0; step < count; step++ {
+		nextIdx := idx + 1
+		if nextIdx >= len(timeline) {
+			result.Done = true
+			break
+		}
+		nextTs := timeline[nextIdx]
+
+		// 1. Fill pending orders at nextTs's open ± slippage. Orders whose
+		// symbol has no bar at exactly nextTs are deferred to the next bar.
+		var deferred []models.RunOrder
+		for _, o := range pendingOrders {
+			bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, o.Symbol, nextTs)
+			if !ok {
+				deferred = append(deferred, o)
+				continue
+			}
+			slippage := bar.SlippageBps
+			var fillPrice float64
+			switch o.Side {
+			case "buy", "cover":
+				fillPrice = bar.Open * (1.0 + float64(slippage)/10000.0)
+			case "sell", "short":
+				fillPrice = bar.Open * (1.0 - float64(slippage)/10000.0)
+			}
+			totalValue := fillPrice * o.Quantity
+
+			pos := positions[o.Symbol]
+			pos.RunID, pos.Symbol = runID, o.Symbol
+			realized := 0.0
+			switch o.Side {
+			case "buy":
+				pos = applyAdd(pos, o.Quantity, fillPrice)
+				cur -= totalValue
+			case "short":
+				pos = applyAdd(pos, -o.Quantity, fillPrice)
+				cur += totalValue
+			case "sell":
+				realized = (fillPrice - pos.AvgCost) * o.Quantity
+				pos = applyReduce(pos, o.Quantity)
+				cur += totalValue
+			case "cover":
+				realized = (pos.AvgCost - fillPrice) * o.Quantity
+				pos = applyReduce(pos, o.Quantity)
+				cur -= totalValue
+			}
+			positions[o.Symbol] = pos
+			touched[o.Symbol] = true
+			filledOrderIDs = append(filledOrderIDs, o.ID)
+			result.Fills = append(result.Fills, models.RunTrade{
+				ID:            uuid.NewString(),
+				RunID:         runID,
+				Symbol:        o.Symbol,
+				Side:          o.Side,
+				Quantity:      o.Quantity,
+				FillPrice:     fillPrice,
+				SlippageBps:   slippage,
+				SimTimeFilled: nextTs,
+				TotalValue:    totalValue,
+				RealizedPnL:   realized,
+				Reasoning:     o.Reasoning,
+			})
+		}
+		pendingOrders = deferred
+
+		// 2. Mark-to-market at nextTs's close.
+		positionsValue, notional := markToMarket(nextTs)
+		equity := cur + positionsValue
+
+		// 3. Liquidation check (only meaningful when leverage > 1).
+		if scen.LeverageCap > 1.0 && notional > 0 {
+			initialMargin := notional / scen.LeverageCap
+			maintenanceMargin := initialMargin / 2.0
+			if equity < maintenanceMargin {
+				// Force-close every position at nextTs's close ± slippage
+				// (documented MVP simplification: close, not next open).
+				for sym, p := range positions {
+					if p.Quantity == 0 {
+						continue
+					}
+					bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, sym, nextTs)
+					if !ok {
+						bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, sym, nextTs)
+					}
+					if !ok {
+						continue
+					}
+					slippage := bar.SlippageBps
+					var fillPrice float64
+					var side string
+					var qty float64
+					if p.Quantity > 0 {
+						side = "sell"
+						fillPrice = bar.Close * (1.0 - float64(slippage)/10000.0)
+						qty = p.Quantity
+					} else {
+						side = "cover"
+						fillPrice = bar.Close * (1.0 + float64(slippage)/10000.0)
+						qty = -p.Quantity
+					}
+					totalValue := fillPrice * qty
+					realized := 0.0
+					if side == "sell" {
+						realized = (fillPrice - p.AvgCost) * qty
+						cur += totalValue
+					} else {
+						realized = (p.AvgCost - fillPrice) * qty
+						cur -= totalValue
+					}
+					positions[sym] = models.RunPosition{RunID: runID, Symbol: sym}
+					touched[sym] = true
+					result.Fills = append(result.Fills, models.RunTrade{
+						ID:            uuid.NewString(),
+						RunID:         runID,
+						Symbol:        sym,
+						Side:          side,
+						Quantity:      qty,
+						FillPrice:     fillPrice,
+						SlippageBps:   slippage,
+						SimTimeFilled: nextTs,
+						TotalValue:    totalValue,
+						RealizedPnL:   realized,
+						Reasoning:     "forced liquidation",
+					})
+				}
+				result.Liquidated = true
+				liqTs := nextTs
+				result.LiquidationAtTs = &liqTs
+				pendingOrders = nil
+				idx = nextIdx
+				break
+			}
+		}
+
+		idx = nextIdx
+	}
+
+	newSimTime := timeline[idx]
+	finalPositionsValue, _ := markToMarket(newSimTime)
+	finalEquity := cur + finalPositionsValue
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	newStatus := "active"
+	completedAt := sql.NullString{}
+	if result.Liquidated {
+		newStatus = "liquidated"
+		completedAt = sql.NullString{String: now, Valid: true}
+	} else if result.Done {
+		newStatus = "completed"
+		completedAt = sql.NullString{String: now, Valid: true}
+	}
+
+	// Flush everything in one short transaction: O(fills + touched positions).
 	if err := e.withWriteRetry(func() error {
 		tx, err := e.appDB.Begin()
 		if err != nil {
@@ -390,85 +585,35 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 		}
 		defer tx.Rollback()
 
-		for step := 0; step < count; step++ {
-			nextIdx := idx + 1
-			if nextIdx >= len(timeline) {
-				result.Done = true
-				break
+		for _, t := range result.Fills {
+			if _, err := tx.Exec(`
+				INSERT INTO run_trades
+					(id, run_id, symbol, side, quantity, fill_price, slippage_bps,
+					 sim_time_filled, total_value, realized_pnl, reasoning)
+				VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+			`, t.ID, t.RunID, t.Symbol, t.Side, t.Quantity, t.FillPrice, t.SlippageBps,
+				t.SimTimeFilled.UTC().Format(time.RFC3339), t.TotalValue, t.RealizedPnL, t.Reasoning); err != nil {
+				return fmt.Errorf("insert trade: %w", err)
 			}
-			nextTs := timeline[nextIdx]
-
-			// 1. Fill queued orders at nextTs's open.
-			orders, err := e.loadOrdersTx(tx, runID)
-			if err != nil {
-				return err
-			}
-			fills, newCash, err := e.executeOrdersTx(tx, runID, scen, orders, nextTs, cur)
-			if err != nil {
-				return fmt.Errorf("execute orders at %s: %w", nextTs, err)
-			}
-			result.Fills = append(result.Fills, fills...)
-			cur = newCash
-
-			// 2. Mark-to-market at nextTs's close.
-			positions, err := e.loadPositionsTx(tx, runID)
-			if err != nil {
-				return err
-			}
-			positionsValue := 0.0
-			notional := 0.0
-			for _, p := range positions {
-				bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
-				if !ok {
-					bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, nextTs)
-				}
-				if !ok {
-					continue
-				}
-				positionsValue += p.Quantity * bar.Close
-				notional += math.Abs(p.Quantity * bar.Close)
-			}
-			equity := cur + positionsValue
-
-			// 3. Liquidation check (only meaningful when leverage > 1).
-			if scen.LeverageCap > 1.0 && notional > 0 {
-				initialMargin := notional / scen.LeverageCap
-				maintenanceMargin := initialMargin / 2.0
-				if equity < maintenanceMargin {
-					// Force-close every position at nextTs's open + slippage.
-					// We're already at nextTs after fills above; close-all
-					// runs "at this same bar" effectively at the close price
-					// for simplicity (in real life this would be the next
-					// bar's open; for MVP we accept the simplification).
-					closingFills, postLiqCash, err := e.liquidatePositionsTx(tx, runID, scen, positions, nextTs, cur)
-					if err != nil {
-						return fmt.Errorf("liquidate at %s: %w", nextTs, err)
-					}
-					result.Fills = append(result.Fills, closingFills...)
-					cur = postLiqCash
-					result.Liquidated = true
-					liqTs := nextTs
-					result.LiquidationAtTs = &liqTs
-					idx = nextIdx
-					break
-				}
-			}
-
-			idx = nextIdx
 		}
 
-		newSimTime := timeline[idx]
-
-		// Update run, write equity sample.
-		now := time.Now().UTC().Format(time.RFC3339)
-		newStatus := "active"
-		completedAt := sql.NullString{}
 		if result.Liquidated {
-			newStatus = "liquidated"
-			completedAt = sql.NullString{String: now, Valid: true}
-		} else if result.Done {
-			newStatus = "completed"
-			completedAt = sql.NullString{String: now, Valid: true}
+			// Post-liquidation, every queued order is meaningless.
+			if _, err := tx.Exec(`DELETE FROM run_orders WHERE run_id = ?1`, runID); err != nil {
+				return fmt.Errorf("drop orders: %w", err)
+			}
+		} else {
+			for _, id := range filledOrderIDs {
+				if _, err := tx.Exec(`DELETE FROM run_orders WHERE id = ?1`, id); err != nil {
+					return fmt.Errorf("delete order: %w", err)
+				}
+			}
+		}
+
+		for sym := range touched {
+			if err := upsertPositionTx(tx, runID, sym, positions[sym]); err != nil {
+				return fmt.Errorf("upsert position %s: %w", sym, err)
+			}
 		}
 
 		if _, err := tx.Exec(`
@@ -478,19 +623,6 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 			return fmt.Errorf("update run: %w", err)
 		}
 
-		// Compute positionsValue at the final sim_time for the sample.
-		positionsValue := 0.0
-		positions, _ := e.loadPositionsTx(tx, runID)
-		for _, p := range positions {
-			bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, newSimTime)
-			if !ok {
-				bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, newSimTime)
-			}
-			if ok {
-				positionsValue += p.Quantity * bar.Close
-			}
-		}
-		equity := cur + positionsValue
 		if _, err := tx.Exec(`
 			INSERT INTO run_equity (run_id, sim_time, cash, positions_value, equity)
 			VALUES (?1, ?2, ?3, ?4, ?5)
@@ -498,177 +630,22 @@ func (e *ScenarioEngine) AdvanceStep(runID string, count int) (*StepResult, erro
 				cash = excluded.cash,
 				positions_value = excluded.positions_value,
 				equity = excluded.equity
-		`, runID, newSimTime.UTC().Format(time.RFC3339), cur, positionsValue, equity); err != nil {
+		`, runID, newSimTime.UTC().Format(time.RFC3339), cur, finalPositionsValue, finalEquity); err != nil {
 			return fmt.Errorf("insert equity sample: %w", err)
 		}
 
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit: %w", err)
-		}
-
-		result.BarsAdvanced = idx - timelineIndex(timeline, run.SimTime)
-		result.NewSimTime = newSimTime
-		result.NewCash = cur
-		result.PositionsValue = positionsValue
-		result.NewEquity = equity
-		return nil
+		return tx.Commit()
 	}); err != nil {
 		return nil, err
 	}
+
+	result.BarsAdvanced = idx - startIdx
+	result.NewSimTime = newSimTime
+	result.NewCash = cur
+	result.PositionsValue = finalPositionsValue
+	result.NewEquity = finalEquity
+
 	return result, nil
-}
-
-func (e *ScenarioEngine) executeOrdersTx(tx *sql.Tx, runID string, scen *models.Scenario, orders []models.RunOrder, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
-	cash := cashIn
-	fills := []models.RunTrade{}
-	for _, o := range orders {
-		bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, o.Symbol, at)
-		if !ok {
-			// No bar at exactly this ts for this symbol. Defer: leave
-			// the order in run_orders, it'll try again next step.
-			continue
-		}
-		slippage := bar.SlippageBps
-		var fillPrice float64
-		switch o.Side {
-		case "buy", "cover":
-			fillPrice = bar.Open * (1.0 + float64(slippage)/10000.0)
-		case "sell", "short":
-			fillPrice = bar.Open * (1.0 - float64(slippage)/10000.0)
-		}
-		totalValue := fillPrice * o.Quantity
-
-		// Apply position delta.
-		pos, err := e.getPositionTx(tx, runID, o.Symbol)
-		if err != nil {
-			return nil, cashIn, err
-		}
-		realized := 0.0
-		switch o.Side {
-		case "buy":
-			pos = applyAdd(pos, o.Quantity, fillPrice)
-			cash -= totalValue
-		case "short":
-			pos = applyAdd(pos, -o.Quantity, fillPrice)
-			cash += totalValue
-		case "sell":
-			realized = (fillPrice - pos.AvgCost) * o.Quantity
-			pos = applyReduce(pos, o.Quantity)
-			cash += totalValue
-		case "cover":
-			realized = (pos.AvgCost - fillPrice) * o.Quantity
-			pos = applyReduce(pos, o.Quantity)
-			cash -= totalValue
-		}
-
-		if err := upsertPositionTx(tx, runID, o.Symbol, pos); err != nil {
-			return nil, cashIn, err
-		}
-
-		// Insert fill record + delete the order.
-		tradeID := uuid.NewString()
-		if _, err := tx.Exec(`
-			INSERT INTO run_trades
-				(id, run_id, symbol, side, quantity, fill_price, slippage_bps,
-				 sim_time_filled, total_value, realized_pnl, reasoning)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-		`, tradeID, runID, o.Symbol, o.Side, o.Quantity, fillPrice, slippage,
-			at.UTC().Format(time.RFC3339), totalValue, realized, o.Reasoning); err != nil {
-			return nil, cashIn, fmt.Errorf("insert trade: %w", err)
-		}
-		if _, err := tx.Exec(`DELETE FROM run_orders WHERE id = ?1`, o.ID); err != nil {
-			return nil, cashIn, fmt.Errorf("delete order: %w", err)
-		}
-		fills = append(fills, models.RunTrade{
-			ID:            tradeID,
-			RunID:         runID,
-			Symbol:        o.Symbol,
-			Side:          o.Side,
-			Quantity:      o.Quantity,
-			FillPrice:     fillPrice,
-			SlippageBps:   slippage,
-			SimTimeFilled: at,
-			TotalValue:    totalValue,
-			RealizedPnL:   realized,
-			Reasoning:     o.Reasoning,
-		})
-	}
-	return fills, cash, nil
-}
-
-func (e *ScenarioEngine) liquidatePositionsTx(tx *sql.Tx, runID string, scen *models.Scenario, positions []models.RunPosition, at time.Time, cashIn float64) ([]models.RunTrade, float64, error) {
-	if len(positions) == 0 {
-		return nil, cashIn, nil
-	}
-	cash := cashIn
-	fills := []models.RunTrade{}
-	for _, p := range positions {
-		bar, ok := e.bars.BarAt(scen.ID, scen.CurrentVersion, p.Symbol, at)
-		if !ok {
-			bar, ok = e.bars.LastBarAtOrBefore(scen.ID, scen.CurrentVersion, p.Symbol, at)
-		}
-		if !ok {
-			continue
-		}
-		slippage := bar.SlippageBps
-		// Use close as the liquidation reference; apply slippage in the
-		// "bad" direction relative to position side.
-		var fillPrice float64
-		var side string
-		var qty float64
-		if p.Quantity > 0 {
-			side = "sell"
-			fillPrice = bar.Close * (1.0 - float64(slippage)/10000.0)
-			qty = p.Quantity
-		} else {
-			side = "cover"
-			fillPrice = bar.Close * (1.0 + float64(slippage)/10000.0)
-			qty = -p.Quantity
-		}
-
-		totalValue := fillPrice * qty
-		realized := 0.0
-		if side == "sell" {
-			realized = (fillPrice - p.AvgCost) * qty
-			cash += totalValue
-		} else {
-			realized = (p.AvgCost - fillPrice) * qty
-			cash -= totalValue
-		}
-
-		if _, err := tx.Exec(`DELETE FROM run_positions WHERE run_id = ?1 AND symbol = ?2`, runID, p.Symbol); err != nil {
-			return nil, cashIn, fmt.Errorf("delete position: %w", err)
-		}
-		tradeID := uuid.NewString()
-		if _, err := tx.Exec(`
-			INSERT INTO run_trades
-				(id, run_id, symbol, side, quantity, fill_price, slippage_bps,
-				 sim_time_filled, total_value, realized_pnl, reasoning)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'forced liquidation')
-		`, tradeID, runID, p.Symbol, side, qty, fillPrice, slippage,
-			at.UTC().Format(time.RFC3339), totalValue, realized); err != nil {
-			return nil, cashIn, fmt.Errorf("insert liq trade: %w", err)
-		}
-		fills = append(fills, models.RunTrade{
-			ID:            tradeID,
-			RunID:         runID,
-			Symbol:        p.Symbol,
-			Side:          side,
-			Quantity:      qty,
-			FillPrice:     fillPrice,
-			SlippageBps:   slippage,
-			SimTimeFilled: at,
-			TotalValue:    totalValue,
-			RealizedPnL:   realized,
-			Reasoning:     "forced liquidation",
-		})
-	}
-
-	// Also drop any remaining queued orders — they're meaningless post-liquidation.
-	if _, err := tx.Exec(`DELETE FROM run_orders WHERE run_id = ?1`, runID); err != nil {
-		return nil, cashIn, fmt.Errorf("drop orders: %w", err)
-	}
-	return fills, cash, nil
 }
 
 // applyAdd adds delta to a position, returning new quantity + avg_cost.
@@ -734,22 +711,6 @@ func upsertPositionTx(tx *sql.Tx, runID, symbol string, pos models.RunPosition) 
 			updated_at = excluded.updated_at
 	`, runID, symbol, pos.Quantity, pos.AvgCost)
 	return err
-}
-
-// getPositionTx loads (and locks under tx) the run_position row. Returns
-// zero-value position if absent.
-func (e *ScenarioEngine) getPositionTx(tx *sql.Tx, runID, symbol string) (models.RunPosition, error) {
-	row := tx.QueryRow(`SELECT quantity, avg_cost FROM run_positions WHERE run_id = ?1 AND symbol = ?2`, runID, symbol)
-	var p models.RunPosition
-	p.RunID = runID
-	p.Symbol = symbol
-	if err := row.Scan(&p.Quantity, &p.AvgCost); err != nil {
-		if err == sql.ErrNoRows {
-			return p, nil
-		}
-		return p, err
-	}
-	return p, nil
 }
 
 // ----------------------------------------------------------------------------
@@ -974,28 +935,6 @@ func (e *ScenarioEngine) loadPositions(runID string) ([]models.RunPosition, erro
 	return out, nil
 }
 
-func (e *ScenarioEngine) loadPositionsTx(tx *sql.Tx, runID string) ([]models.RunPosition, error) {
-	rows, err := tx.Query(`
-		SELECT run_id, symbol, quantity, avg_cost, updated_at
-		  FROM run_positions WHERE run_id = ?1
-	`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []models.RunPosition
-	for rows.Next() {
-		var p models.RunPosition
-		var updated string
-		if err := rows.Scan(&p.RunID, &p.Symbol, &p.Quantity, &p.AvgCost, &updated); err != nil {
-			return nil, err
-		}
-		p.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updated)
-		out = append(out, p)
-	}
-	return out, rows.Err()
-}
-
 func (e *ScenarioEngine) loadOrders(runID string) ([]models.RunOrder, error) {
 	rows, err := e.appDB.Query(`
 		SELECT id, run_id, symbol, side, quantity, COALESCE(reasoning,''),
@@ -1018,30 +957,6 @@ func (e *ScenarioEngine) loadOrders(runID string) ([]models.RunOrder, error) {
 		out = append(out, o)
 	}
 	return out, nil
-}
-
-func (e *ScenarioEngine) loadOrdersTx(tx *sql.Tx, runID string) ([]models.RunOrder, error) {
-	rows, err := tx.Query(`
-		SELECT id, run_id, symbol, side, quantity, COALESCE(reasoning,''),
-		       queued_at, queued_at_sim_time
-		  FROM run_orders WHERE run_id = ?1 ORDER BY queued_at ASC
-	`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []models.RunOrder
-	for rows.Next() {
-		var o models.RunOrder
-		var queuedAt, queuedSim string
-		if err := rows.Scan(&o.ID, &o.RunID, &o.Symbol, &o.Side, &o.Quantity, &o.Reasoning, &queuedAt, &queuedSim); err != nil {
-			return nil, err
-		}
-		o.QueuedAt, _ = time.Parse(time.RFC3339, queuedAt)
-		o.QueuedAtSimTime, _ = time.Parse(time.RFC3339, queuedSim)
-		out = append(out, o)
-	}
-	return out, rows.Err()
 }
 
 func (e *ScenarioEngine) loadLastEquity(runID string) (*models.RunEquity, error) {
