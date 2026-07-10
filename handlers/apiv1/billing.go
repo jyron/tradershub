@@ -6,6 +6,7 @@ import (
 	"bottrade/models"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"regexp"
@@ -34,7 +35,7 @@ func (h *handlers) registerBilling(api huma.API) {
 		OperationID: "billingCheckout",
 		Method:      http.MethodPost,
 		Path:        "/api/v1/billing/checkout",
-		Summary:     "Create a Stripe Checkout session for Pro subscription",
+		Summary:     "Create a Stripe Checkout session for a Pro or Max subscription",
 		Tags:        []string{"Billing"},
 		Security:    []map[string][]string{{"ApiKeyAuth": {}}},
 	}, h.billingCheckout)
@@ -75,7 +76,9 @@ func (h *handlers) registerBilling(api huma.API) {
 	}, h.getBillingSession)
 }
 
-type CheckoutInput struct{}
+type CheckoutInput struct {
+	Plan string `query:"plan" doc:"Plan to subscribe to: pro (default, $19.99/mo, 200 runs) or max ($79.99/mo, 1000 runs)."`
+}
 
 type CheckoutOutput struct {
 	Body struct {
@@ -127,37 +130,64 @@ type SessionOutput struct {
 	}
 }
 
-func (h *handlers) billingCheckout(ctx context.Context, _ *CheckoutInput) (*CheckoutOutput, error) {
+func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*CheckoutOutput, error) {
 	key := apiKeyFrom(ctx)
-	url, alreadyPro, err := h.createCheckoutOrPortalURL(key)
+	plan, err := normalizeCheckoutPlan(in.Plan)
+	if err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
+	}
+	url, alreadySubscribed, err := h.createCheckoutOrPortalURL(key, plan)
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, "stripe checkout create failed: "+err.Error())
 	}
-	if alreadyPro {
-		return nil, huma.Error409Conflict("already subscribed — manage here: " + url)
+	if alreadySubscribed {
+		return nil, huma.Error409Conflict("already subscribed — manage or change your plan here: " + url)
 	}
 
 	h.Analytics.Capture(key.AccountID.String(), "billing_checkout_started", analytics.Props().
-		Set("plan", key.Plan))
+		Set("plan", key.Plan).
+		Set("target_plan", plan))
 
 	out := &CheckoutOutput{}
 	out.Body.URL = url
 	return out, nil
 }
 
+// normalizeCheckoutPlan validates the requested checkout plan. Empty means
+// pro (backward compatible with callers that never sent a plan).
+func normalizeCheckoutPlan(plan string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(plan)) {
+	case "", "pro":
+		return "pro", nil
+	case "max":
+		return "max", nil
+	default:
+		return "", errors.New(`plan must be "pro" or "max"`)
+	}
+}
+
 // createCheckoutOrPortalURL returns a Stripe URL to send the user to:
-//   - if the account is already on Pro with a Stripe subscription, returns a
-//     Customer Portal session URL and alreadyPro=true;
-//   - otherwise returns a Checkout Session URL.
+//   - if the account already has a paid Stripe subscription, returns a
+//     Customer Portal session URL (plan changes happen there) and
+//     alreadySubscribed=true;
+//   - otherwise returns a Checkout Session URL for the requested plan.
 //
 // Callable from both API handlers (which auth via X-API-Key) and site handlers
 // (which auth via bt_session cookie). Always sets stripe.Key from config first.
-func (h *handlers) createCheckoutOrPortalURL(key models.APIKey) (string, bool, error) {
+func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan string) (string, bool, error) {
 	stripe.Key = h.StripeSecretKey
 
-	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && key.Plan == "pro" {
+	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && (key.Plan == "pro" || key.Plan == "max") {
 		url, err := h.createPortalSession(key.StripeCustomerID)
 		return url, true, err
+	}
+
+	priceID := h.StripeProPriceID
+	if plan == "max" {
+		priceID = h.StripeMaxPriceID
+	}
+	if priceID == "" {
+		return "", false, errors.New("no Stripe price configured for plan " + plan)
 	}
 
 	metadata := map[string]string{
@@ -168,7 +198,7 @@ func (h *handlers) createCheckoutOrPortalURL(key models.APIKey) (string, bool, e
 		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				Price:    stripe.String(h.StripeProPriceID),
+				Price:    stripe.String(priceID),
 				Quantity: stripe.Int64(1),
 			},
 		},
@@ -238,8 +268,8 @@ func (h *handlers) getBillingAccount(ctx context.Context, _ *struct{}) (*Account
 
 func (h *handlers) patchBillingAccount(ctx context.Context, in *PatchAccountInput) (*PatchAccountOutput, error) {
 	key := apiKeyFrom(ctx)
-	if key.Plan != "pro" {
-		return nil, huma.Error402PaymentRequired("Pro plan required to set a handle")
+	if key.Plan != "pro" && key.Plan != "max" {
+		return nil, huma.Error402PaymentRequired("Pro or Max plan required to set a handle")
 	}
 
 	handle := strings.TrimSpace(in.Body.Handle)
@@ -395,9 +425,15 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 		email = cs.Customer.Email
 	}
 
-	plan := planFromSubscriptionStatus(subStatus)
+	priceID := ""
+	if cs.Subscription != nil && cs.Subscription.Items != nil && len(cs.Subscription.Items.Data) > 0 &&
+		cs.Subscription.Items.Data[0].Price != nil {
+		priceID = cs.Subscription.Items.Data[0].Price.ID
+	}
+
+	plan := h.planForSubscription(subStatus, priceID)
 	if plan == "free" && cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
-		plan = "pro"
+		plan = h.paidPlanForPrice(priceID)
 	}
 
 	_, err := database.DB.Exec(`
@@ -414,12 +450,12 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 		return err
 	}
 
-	if plan == "pro" {
+	if plan != "free" {
 		h.Analytics.Identify(accountID, analytics.Props().
-			Set("plan", "pro").
+			Set("plan", plan).
 			Set("billing_email", email))
 		h.Analytics.Capture(accountID, "subscription_activated", analytics.Props().
-			Set("plan", "pro").
+			Set("plan", plan).
 			Set("subscription_status", subStatus))
 	}
 	return nil
@@ -432,6 +468,13 @@ func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
 		Customer         string            `json:"customer"`
 		CurrentPeriodEnd float64           `json:"current_period_end"`
 		Metadata         map[string]string `json:"metadata"`
+		Items            struct {
+			Data []struct {
+				Price struct {
+					ID string `json:"id"`
+				} `json:"price"`
+			} `json:"data"`
+		} `json:"items"`
 	}
 	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
 		log.Printf("stripe webhook subscription upsert: unmarshal failed: %v", err)
@@ -465,6 +508,11 @@ func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
 		periodEnd = time.Unix(int64(sub.CurrentPeriodEnd), 0).UTC().Format(time.RFC3339)
 	}
 
+	priceID := ""
+	if len(sub.Items.Data) > 0 {
+		priceID = sub.Items.Data[0].Price.ID
+	}
+
 	_, err := database.DB.Exec(`
 		UPDATE accounts
 		   SET plan = ?1,
@@ -473,7 +521,7 @@ func (h *handlers) handleSubscriptionUpsert(event stripe.Event) {
 		       subscription_status = ?4,
 		       current_period_end = COALESCE(NULLIF(?5, ''), current_period_end)
 		 WHERE id = ?6
-	`, planFromSubscriptionStatus(sub.Status), sub.Customer, sub.ID, sub.Status, periodEnd, accountID)
+	`, h.planForSubscription(sub.Status, priceID), sub.Customer, sub.ID, sub.Status, periodEnd, accountID)
 	if err != nil {
 		log.Printf("stripe webhook subscription upsert: %v", err)
 	}
@@ -505,9 +553,11 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 		log.Printf("stripe webhook invoice.payment_failed: bad payload: %v", err)
 		return
 	}
+	// Keep whatever paid plan the account is on; past_due still counts as paid
+	// until Stripe cancels the subscription.
 	if _, err := database.DB.Exec(
 		`UPDATE accounts
-		    SET plan = 'pro', subscription_status = 'past_due'
+		    SET subscription_status = 'past_due'
 		  WHERE stripe_customer_id = ?1`,
 		inv.Customer,
 	); err != nil {
@@ -515,13 +565,24 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 	}
 }
 
-func planFromSubscriptionStatus(status string) string {
+// planForSubscription maps a Stripe subscription status + price to a BotTrade
+// plan. Unpaid/canceled statuses are free regardless of price.
+func (h *handlers) planForSubscription(status, priceID string) string {
 	switch status {
 	case "active", "trialing", "past_due":
-		return "pro"
+		return h.paidPlanForPrice(priceID)
 	default:
 		return "free"
 	}
+}
+
+// paidPlanForPrice maps a Stripe price ID to its paid plan name. Unknown or
+// empty price IDs default to pro — the only paid plan that existed before Max.
+func (h *handlers) paidPlanForPrice(priceID string) string {
+	if priceID != "" && priceID == h.StripeMaxPriceID {
+		return "max"
+	}
+	return "pro"
 }
 
 func billingIsDuplicate(err error) bool {

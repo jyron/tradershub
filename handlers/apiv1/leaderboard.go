@@ -142,7 +142,7 @@ func getLeaderboard(c *fiber.Ctx) error {
 		e.MaxDrawdown = maxDD.Float64
 		e.Liquidated = liquidated != 0
 
-		hasProHandle := plan.String == "pro" && handle.Valid && handle.String != ""
+		hasProHandle := (plan.String == "pro" || plan.String == "max") && handle.Valid && handle.String != ""
 		if hasProHandle {
 			e.BotName = handle.String + " — " + rawBotName
 		} else {

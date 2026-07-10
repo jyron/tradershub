@@ -23,6 +23,13 @@ type Config struct {
 	StripeSecretKey     string
 	StripeWebhookSecret string
 	StripeProPriceID    string
+	StripeMaxPriceID    string
+
+	// Transactional email (Resend). Empty API key disables sending — safe for
+	// local dev and tests.
+	ResendAPIKey string
+	MailFrom     string
+	MailReplyTo  string
 
 	// Base URL the app is served from. Used to build Stripe success/cancel/return
 	// URLs. Set to http://localhost:3000 for local dev, https://bot-trade.org in prod.
@@ -61,6 +68,10 @@ func Load() *Config {
 		StripeSecretKey:         os.Getenv("STRIPE_SECRET_KEY"),
 		StripeWebhookSecret:     os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeProPriceID:        os.Getenv("STRIPE_PRO_PRICE_ID"),
+		StripeMaxPriceID:        os.Getenv("STRIPE_MAX_PRICE_ID"),
+		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),
+		MailFrom:                getEnv("MAIL_FROM", "BotTrade <hello@mail.bot-trade.org>"),
+		MailReplyTo:             getEnv("MAIL_REPLY_TO", "jyron.dev@gmail.com"),
 		AppBaseURL:              getEnv("APP_BASE_URL", "https://bot-trade.org"),
 		AppEncryptionKey:        os.Getenv("APP_ENCRYPTION_KEY"),
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),

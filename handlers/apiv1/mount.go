@@ -122,11 +122,13 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 		StripeSecretKey:     appCfg.StripeSecretKey,
 		StripeWebhookSecret: appCfg.StripeWebhookSecret,
 		StripeProPriceID:    appCfg.StripeProPriceID,
+		StripeMaxPriceID:    appCfg.StripeMaxPriceID,
 		AppBaseURL:          appCfg.AppBaseURL,
 		GoogleClientID:      appCfg.GoogleOAuthClientID,
 		GoogleClientSecret:  appCfg.GoogleOAuthClientSecret,
 		GitHubClientID:      appCfg.GitHubOAuthClientID,
 		GitHubClientSecret:  appCfg.GitHubOAuthClientSecret,
+		Mailer:              services.NewMailer(appCfg.ResendAPIKey, appCfg.MailFrom, appCfg.MailReplyTo),
 	}
 
 	// Public, no-auth fiber routes mounted BEFORE huma so they win the
@@ -162,9 +164,11 @@ type handlers struct {
 	StripeSecretKey     string
 	StripeWebhookSecret string
 	StripeProPriceID    string
+	StripeMaxPriceID    string
 	AppBaseURL          string
 	GoogleClientID      string
 	GoogleClientSecret  string
 	GitHubClientID      string
 	GitHubClientSecret  string
+	Mailer              *services.Mailer
 }

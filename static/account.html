@@ -98,16 +98,18 @@
         <p>200 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
         <div class="ctas">
           <button class="btn primary" id="upgrade-btn" type="button">Upgrade to Pro · $19.99/mo <span class="arrow">→</span></button>
+          <button class="btn ghost-light" id="upgrade-max-btn" type="button">Go Max · 1000 runs · $79.99/mo</button>
           <a href="/pricing" class="btn ghost-light">See pricing</a>
         </div>
         <p id="upgrade-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
       </div>
       <div id="manage-content" style="display:none;">
-        <span class="kicker">Pro plan active</span>
-        <h2>Pro <span class="accent">subscription.</span></h2>
+        <span class="kicker" id="manage-kicker">Pro plan active</span>
+        <h2 id="manage-title">Pro <span class="accent">subscription.</span></h2>
         <p>Manage your payment method, view invoices, or cancel any time through the Stripe customer portal.</p>
         <div class="ctas">
           <button class="btn primary" id="manage-btn" type="button">Manage subscription <span class="arrow">→</span></button>
+          <button class="btn ghost-light" id="max-upsell-btn" type="button" style="display:none;">Upgrade to Max · 1000 runs/mo →</button>
         </div>
         <p id="manage-error" style="display:none; margin-top: 12px; color: #ff9b66; font-size: 13px;"></p>
       </div>
@@ -245,12 +247,14 @@
   }
 
   function render(data) {
-    var plan = (data.plan || 'free').toLowerCase() === 'pro' ? 'Pro' : 'Free tier';
-    var isPro = plan === 'Pro';
+    var planRaw = (data.plan || 'free').toLowerCase();
+    var isMax = planRaw === 'max';
+    var isPro = planRaw === 'pro' || isMax;
+    var plan = isMax ? 'Max' : (isPro ? 'Pro' : 'Free tier');
     var now = new Date();
     var nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
     var runsUsed = Number(data.runs_used || 0);
-    var runsLimit = Number(data.runs_limit || (isPro ? 200 : 25));
+    var runsLimit = Number(data.runs_limit || (isMax ? 1000 : (isPro ? 200 : 25)));
     var runsRemaining = Math.max(0, runsLimit - runsUsed);
     var usagePercent = runsLimit > 0 ? Math.floor((runsUsed * 100) / runsLimit) : 0;
     if (usagePercent < 6 && runsUsed > 0) usagePercent = 6;
@@ -262,7 +266,7 @@
     $('joined').textContent = 'joined ' + formatDate(data.joined_at);
     $('plan-label').textContent = plan;
     $('plan-pip').style.background = isPro ? '#ff6a00' : '#a8a8a6';
-    $('handle').textContent = data.handle ? '@' + data.handle : '— unset (Pro)';
+    $('handle').textContent = data.handle ? '@' + data.handle : '— unset (Pro or Max)';
     $('handle').classList.toggle('muted', !data.handle);
     $('account-id').textContent = data.account_id || '';
     if (window.posthog && data.account_id) {
@@ -283,6 +287,9 @@
     $('upgrade-content').style.display = isPro ? 'none' : '';
     $('manage-content').style.display = isPro ? '' : 'none';
     $('perks-section').style.display = isPro ? 'none' : '';
+    $('manage-kicker').textContent = isMax ? 'Max plan active' : 'Pro plan active';
+    $('manage-title').innerHTML = (isMax ? 'Max' : 'Pro') + ' <span class="accent">subscription.</span>';
+    $('max-upsell-btn').style.display = (isPro && !isMax) ? '' : 'none';
 
     setRevealed(false);
     setCode('curl');
@@ -339,6 +346,14 @@
 
   $('upgrade-btn').addEventListener('click', function () {
     billingPost('/billing/checkout', 'upgrade-btn', 'upgrade-error');
+  });
+
+  $('upgrade-max-btn').addEventListener('click', function () {
+    billingPost('/billing/checkout?plan=max', 'upgrade-max-btn', 'upgrade-error');
+  });
+
+  $('max-upsell-btn').addEventListener('click', function () {
+    billingPost('/billing/checkout?plan=max', 'max-upsell-btn', 'manage-error');
   });
 
   $('manage-btn').addEventListener('click', function () {

@@ -309,10 +309,7 @@ func (h *handlers) siteAccountData(c *fiber.Ctx) error {
 		  WHERE account_id = ?1`,
 		accountID,
 	).Scan(&lastUsed)
-	runsLimit := 25
-	if strings.EqualFold(strings.TrimSpace(plan), "pro") {
-		runsLimit = 200
-	}
+	runsLimit := planRunLimit(strings.ToLower(strings.TrimSpace(plan)))
 	return c.JSON(fiber.Map{
 		"account_id":         accountID,
 		"name":               displayAccountName(name, email),
@@ -915,6 +912,7 @@ func (h *handlers) captureAuth(c *fiber.Ctx, accountID string, created bool, pro
 	event := "account_signed_in"
 	if created {
 		event = "account_signed_up"
+		h.sendWelcomeEmail(accountID, profile.Email, profile.Name)
 	}
 	h.Analytics.Identify(accountID, analytics.Props().
 		Set("email", profile.Email).

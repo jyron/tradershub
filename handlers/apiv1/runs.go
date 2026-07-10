@@ -6,41 +6,56 @@ import (
 	"bottrade/models"
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// quotaFreeLimitError is returned (as HTTP 402) when a free-tier account has
-// exhausted its 25-run monthly allowance. Its JSON shape matches the spec:
+// quotaUpgradeError is returned (as HTTP 402 Payment Required) when a free or
+// pro account has exhausted its monthly allowance and a bigger plan exists.
+// Its JSON shape:
 //
-//	{ "error": "...", "runs_used": N, "runs_limit": 25,
+//	{ "error": "...", "runs_used": N, "runs_limit": N, "resets_at": "...",
 //	  "checkout_url": "...", "upgrade_hint": "..." }
-type quotaFreeLimitError struct {
+type quotaUpgradeError struct {
 	Err         string `json:"error"`
 	RunsUsed    int    `json:"runs_used"`
 	RunsLimit   int    `json:"runs_limit"`
+	ResetsAt    string `json:"resets_at"`
 	CheckoutURL string `json:"checkout_url"`
 	UpgradeHint string `json:"upgrade_hint"`
 }
 
-func (e *quotaFreeLimitError) Error() string  { return e.Err }
-func (e *quotaFreeLimitError) GetStatus() int { return http.StatusPaymentRequired }
+func (e *quotaUpgradeError) Error() string  { return e.Err }
+func (e *quotaUpgradeError) GetStatus() int { return http.StatusPaymentRequired }
 
-// quotaProLimitError is returned (as HTTP 429) when a pro-tier account has
-// exhausted its 200-run monthly allowance. Its JSON shape matches the spec:
+// quotaTopLimitError is returned (as HTTP 429) when a max-tier account has
+// exhausted its 1000-run monthly allowance — there is no bigger plan.
 //
-//	{ "error": "...", "runs_used": N, "runs_limit": 200, "resets_at": "..." }
-type quotaProLimitError struct {
+//	{ "error": "...", "runs_used": N, "runs_limit": 1000, "resets_at": "..." }
+type quotaTopLimitError struct {
 	Err       string `json:"error"`
 	RunsUsed  int    `json:"runs_used"`
 	RunsLimit int    `json:"runs_limit"`
 	ResetsAt  string `json:"resets_at"`
 }
 
-func (e *quotaProLimitError) Error() string  { return e.Err }
-func (e *quotaProLimitError) GetStatus() int { return http.StatusTooManyRequests }
+func (e *quotaTopLimitError) Error() string  { return e.Err }
+func (e *quotaTopLimitError) GetStatus() int { return http.StatusTooManyRequests }
+
+// planRunLimit is the monthly run allowance per plan.
+func planRunLimit(plan string) int {
+	switch plan {
+	case "max":
+		return 1000
+	case "pro":
+		return 200
+	default:
+		return 25
+	}
+}
 
 // RunCreateInput accepts EITHER a scenario_id (UUID) or a scenario_slug.
 // Exactly one must be provided; if both are set, scenario_id wins.
@@ -151,40 +166,45 @@ func (h *handlers) enforceRunQuota(key models.APIKey) error {
 		return nil
 	}
 
-	if key.Plan == "pro" {
-		const limit = 200
-		if runsUsed >= limit {
-			now := time.Now().UTC()
-			nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-			h.Analytics.Capture(key.AccountID.String(), "run_quota_exceeded", analytics.Props().
-				Set("plan", "pro").
-				Set("runs_used", runsUsed).
-				Set("runs_limit", limit))
-			return &quotaProLimitError{
-				Err:       "Monthly run limit reached",
-				RunsUsed:  runsUsed,
-				RunsLimit: limit,
-				ResetsAt:  nextMonth.Format(time.RFC3339),
-			}
-		}
-	} else {
-		const limit = 25
-		if runsUsed >= limit {
-			h.Analytics.Capture(key.AccountID.String(), "run_quota_exceeded", analytics.Props().
-				Set("plan", "free").
-				Set("runs_used", runsUsed).
-				Set("runs_limit", limit))
-			return &quotaFreeLimitError{
-				Err:         "Free tier limit reached",
-				RunsUsed:    runsUsed,
-				RunsLimit:   limit,
-				CheckoutURL: "<call POST /api/v1/billing/checkout to get one>",
-				UpgradeHint: "POST /api/v1/billing/checkout",
-			}
+	plan := key.Plan
+	if plan != "pro" && plan != "max" {
+		plan = "free"
+	}
+	limit := planRunLimit(plan)
+	if runsUsed < limit {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	h.Analytics.Capture(key.AccountID.String(), "run_quota_exceeded", analytics.Props().
+		Set("plan", plan).
+		Set("runs_used", runsUsed).
+		Set("runs_limit", limit))
+
+	if plan == "max" {
+		return &quotaTopLimitError{
+			Err:       "Monthly run limit reached",
+			RunsUsed:  runsUsed,
+			RunsLimit: limit,
+			ResetsAt:  nextMonth.Format(time.RFC3339),
 		}
 	}
 
-	return nil
+	// A bigger plan exists: 402 Payment Required with the upgrade path.
+	next, nextRuns, nextPrice := "pro", 200, "$19.99/mo"
+	if plan == "pro" {
+		next, nextRuns, nextPrice = "max", 1000, "$79.99/mo"
+	}
+	h.sendQuotaUpgradeEmail(key, runsUsed, limit, nextMonth)
+	return &quotaUpgradeError{
+		Err:         "Monthly run limit reached",
+		RunsUsed:    runsUsed,
+		RunsLimit:   limit,
+		ResetsAt:    nextMonth.Format(time.RFC3339),
+		CheckoutURL: h.AppBaseURL + "/pricing",
+		UpgradeHint: fmt.Sprintf("POST /api/v1/billing/checkout?plan=%s — %s: %d runs/month for %s", next, next, nextRuns, nextPrice),
+	}
 }
 
 func (h *handlers) getRun(ctx context.Context, in *RunGetInput) (*RunGetOutput, error) {
