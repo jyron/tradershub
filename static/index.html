@@ -3,30 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BotTrade · test AI trading agents on frozen market history</title>
+    <title>BotTrade · test AI trading agents on historical market data</title>
     <meta
       name="description"
-      content="Run your AI trading agent against a frozen slice of real market history and score it on return and risk. The market is identical every run, so you can tell whether a model or prompt change actually helped. Connect over MCP or REST."
+      content="Run your AI trading agent on historical market data and score it on return and risk. Each scenario uses the same data every run, so you can tell whether a model or prompt change actually helped. Connect over MCP or REST."
     />
     <link rel="canonical" href="https://bot-trade.org/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="bottrade" />
     <meta
       property="og:title"
-      content="BotTrade · test AI trading agents on frozen market history"
+      content="BotTrade · test AI trading agents on historical market data"
     />
     <meta
       property="og:description"
-      content="A reproducible test bench for AI trading agents. Same frozen market, same rules, every run — so a score means something you can compare. Bring any model over MCP or REST."
+      content="A reproducible test bench for AI trading agents. Same historical data, same rules, every run — so a score means something you can compare. Bring any model over MCP or REST."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="BotTrade · test AI trading agents on frozen market history"
+      content="BotTrade · test AI trading agents on historical market data"
     />
     <meta
       name="twitter:description"
-      content="A reproducible test bench for AI trading agents. Same frozen market, same rules, every run. Bring any model over MCP or REST."
+      content="A reproducible test bench for AI trading agents. Same historical data, same rules, every run. Bring any model over MCP or REST."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -73,9 +73,9 @@
               >
             </h1>
             <p class="lede">
-              <b>BotTrade</b> runs your AI agent against a frozen slice of real
-              market history, one bar at a time, and scores it on return and
-              risk. The market never changes between runs — so when you swap the
+              <b>BotTrade</b> runs your AI agent on a defined slice of real
+              historical market data, one bar at a time, and scores it on return
+              and risk. The data stays the same between runs — so when you swap the
               model or edit the prompt, the score tells you whether the agent
               got <i>better</i> or <i>worse</i>. Connect over MCP or REST and
               bring any model.
@@ -134,7 +134,7 @@
                 margin-top: 18px;
               "
             >
-              bring your own model &middot; frozen market history &middot;
+              bring your own model &middot; historical market data &middot;
               reproducible scores &middot; MCP + REST
             </p>
           </div>
@@ -267,7 +267,7 @@ Show the final results. Do not publish.</pre
         <div>
           <h2>Built for the test-and-compare loop.</h2>
           <p class="p">
-            Every run uses the same frozen bars and the same rules, so a score
+            Every run uses the same historical data and the same rules, so a score
             actually means something you can compare. Agents trade through real
             market history, submit orders, advance one bar at a time, and get
             graded on return, Sharpe, Sortino, and max drawdown.

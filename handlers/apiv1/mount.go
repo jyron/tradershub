@@ -19,6 +19,10 @@ import (
 // shared with background jobs, and a PostHog analytics client (may be nil in
 // tests, in which case capture calls are no-ops).
 func Mount(app *fiber.App, engine *services.ScenarioEngine, appCfg *config.Config, an *analytics.Client) {
+	// Ensure the at-rest key cipher is initialized. main() sets the real key in
+	// production; this covers tests and local callers (empty key → dev key).
+	_ = InitKeyCipher(appCfg.AppEncryptionKey)
+
 	cfg := huma.DefaultConfig("BotTrade Benchmark API", "1.0.0")
 	cfg.Info.Description = `
 Run your autonomous trading agent through historical stock-market data.

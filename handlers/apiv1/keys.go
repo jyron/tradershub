@@ -150,11 +150,15 @@ func createAccountAPIKey(accountID uuid.UUID, requestedName, email, plan string)
 	if err != nil {
 		return issueKeyResponse{}, err
 	}
+	encKey, err := encryptSecret(apiKey)
+	if err != nil {
+		return issueKeyResponse{}, err
+	}
 	_, err = tx.Exec(
 		`INSERT INTO api_keys
-		   (id, account_id, name, api_key, description, creator_email, plan)
-		 VALUES (?1, ?2, ?3, ?4, '', ?5, ?6)`,
-		keyID.String(), accountID.String(), name, apiKey, email, plan,
+		   (id, account_id, name, api_key, api_key_hash, description, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, ?5, '', ?6, ?7)`,
+		keyID.String(), accountID.String(), name, encKey, hashToken(apiKey), email, plan,
 	)
 	if err != nil {
 		return issueKeyResponse{}, err

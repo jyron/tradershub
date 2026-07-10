@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Scenario is a frozen historical market window an external agent trades
+// Scenario is a fixed historical market window an external agent trades
 // against. Universe / slippage are stored as JSON blobs so they survive
 // without a join; the values aren't large.
 type Scenario struct {

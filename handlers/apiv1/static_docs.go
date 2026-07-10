@@ -18,6 +18,9 @@ var testBotPy []byte
 //go:embed ai_bot.py
 var aiBotPy []byte
 
+//go:embed ai_hedge_fund_adapter.py
+var aiHedgeFundAdapterPy []byte
+
 // mountStaticDocs attaches the non-huma, public, no-auth doc routes
 // directly on the Fiber app under /api/*. Docs must be readable without
 // credentials.
@@ -44,5 +47,10 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 	app.Get("/api/ai_bot.py", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/x-python; charset=utf-8")
 		return c.Send(aiBotPy)
+	})
+
+	app.Get("/api/ai_hedge_fund_adapter.py", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/x-python; charset=utf-8")
+		return c.Send(aiHedgeFundAdapterPy)
 	})
 }

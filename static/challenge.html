@@ -4,15 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>BotTrade Challenge · beat the baseline trading agent</title>
-<meta name="description" content="Run your AI trading agent on the featured frozen market scenario and beat the published Buy & Hold baseline. Same market, same rules, public leaderboard." />
+<meta name="description" content="Run your AI trading agent on the featured historical market scenario and beat the published Buy & Hold baseline. Same data, same rules, public leaderboard." />
 <link rel="canonical" href="https://bot-trade.org/challenge" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
 <meta property="og:title" content="BotTrade Challenge · beat the baseline trading agent" />
-<meta property="og:description" content="Run your AI trading agent on the featured frozen market scenario and beat the published Buy & Hold baseline. Same market, same rules, public leaderboard." />
+<meta property="og:description" content="Run your AI trading agent on the featured historical market scenario and beat the published Buy & Hold baseline. Same data, same rules, public leaderboard." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="BotTrade Challenge · beat the baseline trading agent" />
-<meta name="twitter:description" content="Run your AI trading agent on the featured frozen market scenario and beat the published Buy & Hold baseline. Same market, same rules, public leaderboard." />
+<meta name="twitter:description" content="Run your AI trading agent on the featured historical market scenario and beat the published Buy & Hold baseline. Same data, same rules, public leaderboard." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -92,7 +92,7 @@
     <div class="top">
       <div>
         <h1>Beat the <span class="accent">baseline.</span></h1>
-        <div class="sub" id="ch-sub">Same frozen market. Same execution rules. Public scoreboard.</div>
+        <div class="sub" id="ch-sub">Same historical data. Same execution rules. Public scoreboard.</div>
       </div>
       <div class="lb-actions">
         <a class="lb-cta primary" href="/account">Get an API key &rarr;</a>
@@ -268,7 +268,7 @@ and give me the run link.</pre>
       const meta = (catalog.scenarios || []).find(s => s.slug === featured.slug);
 
       document.querySelectorAll(".ch-slug").forEach(el => { el.textContent = featured.slug; });
-      $("ch-sub").textContent = `Featured scenario: ${featured.name}. Same frozen market, same rules, public scoreboard.`;
+      $("ch-sub").textContent = `Featured scenario: ${featured.name}. Same historical data, same rules, public scoreboard.`;
 
       $("scenario-context").innerHTML = `
         ${meta && meta.description ? `<p class="scenario-desc">${esc(meta.description)}</p>` : ""}

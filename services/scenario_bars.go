@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ScenarioBar is one frozen bar lookup result. It carries the slippage_bps
+// ScenarioBar is one immutable bar lookup result. It carries the slippage_bps
 // the scenario was provisioned with so fills bake in slippage without a
 // second lookup.
 type ScenarioBar struct {
@@ -21,7 +21,7 @@ type ScenarioBar struct {
 	Ts          time.Time
 }
 
-// ScenarioBarCache is an in-process cache of frozen scenario bars. Bars are
+// ScenarioBarCache is an in-process cache of immutable scenario bars. Bars are
 // immutable per (scenario_id, version), so we never need to invalidate; the
 // first agent request that touches a scenario loads its bars and they stay
 // resident for the life of the process.

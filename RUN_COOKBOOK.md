@@ -378,13 +378,13 @@ Filename must match the slug. Use one of the existing files as a template — ma
 
 Leverage cap must be one of `1`, `2`, `4`, `10`. Universe symbols must have bars in the date range.
 
-#### Step 3: Provision (creates the scenario row + freezes bars into `scenario_bars`)
+#### Step 3: Provision (creates the scenario row + copies bars into `scenario_bars`)
 
 ```bash
 go run ./cmd/provision_scenario --config scenarios/tariff-shock-feb-2025.json
 ```
 
-Successful output ends with `frozen N bars into scenario_bars`. If the command fails partway, delete the orphan row before retrying:
+Successful output ends with `stored N bars in scenario_bars`. If the command fails partway, delete the orphan row before retrying:
 
 ```bash
 turso db shell tradershub-v2 "DELETE FROM scenarios WHERE slug = 'tariff-shock-feb-2025'"

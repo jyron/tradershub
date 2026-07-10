@@ -183,9 +183,9 @@ func (env *stripeTestEnv) issueTestKey(name, email string) (string, string) {
 		env.t.Fatalf("insert account: %v", err)
 	}
 	if _, err := env.appDB.Exec(
-		`INSERT INTO api_keys (id, account_id, name, api_key, creator_email, plan)
-		 VALUES (?1, ?2, ?3, ?4, ?5, 'free')`,
-		keyID, accountID, name, apiKey, email,
+		`INSERT INTO api_keys (id, account_id, name, api_key, api_key_hash, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'free')`,
+		keyID, accountID, name, apiKey, testAPIKeyHash(apiKey), email,
 	); err != nil {
 		env.t.Fatalf("insert api key: %v", err)
 	}

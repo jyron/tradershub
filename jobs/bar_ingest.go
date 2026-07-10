@@ -26,7 +26,7 @@ func (j *BarIngestJob) Name() string {
 }
 
 func (j *BarIngestJob) Interval() time.Duration {
-	// Hourly: scenario_bars are frozen ahead of time anyway. This job's
+	// Hourly: scenario_bars are provisioned ahead of time anyway. This job's
 	// only purpose is keeping the rolling working set fresh in case
 	// future scenarios want to extend their window.
 	return 1 * time.Hour

@@ -77,7 +77,7 @@ func runPageWithMeta(c *fiber.Ctx, baseURL string) error {
 	if m.MaxDD.Valid {
 		desc += fmt.Sprintf(" · Max drawdown %.1f%%", m.MaxDD.Float64*100)
 	}
-	desc += fmt.Sprintf(" · %d trades on frozen market history. Reproducible AI trading benchmark.", m.TradeCount)
+	desc += fmt.Sprintf(" · %d trades on historical market data. Reproducible AI trading benchmark.", m.TradeCount)
 
 	esc := func(s string) string {
 		r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")

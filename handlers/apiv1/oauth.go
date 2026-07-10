@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/google/uuid"
 )
 
@@ -52,8 +53,23 @@ type oauthProfile struct {
 }
 
 func (h *handlers) mountOAuth(app *fiber.App) {
+	// Dynamic client registration is unauthenticated by spec; rate-limit it per
+	// IP so it can't be spammed to bloat the oauth_clients table.
+	registerLimiter := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: time.Hour,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "too many client registrations from this IP",
+			})
+		},
+	})
+
 	app.Get("/.well-known/oauth-authorization-server", h.oauthMetadata)
-	app.Post("/oauth/register", h.oauthRegister)
+	app.Post("/oauth/register", registerLimiter, h.oauthRegister)
 	app.Get("/oauth/authorize", h.oauthAuthorize)
 	app.Get("/oauth/login/:provider", h.oauthLogin)
 	app.Get("/oauth/callback/:provider", h.oauthCallback)
@@ -148,7 +164,9 @@ func (h *handlers) oauthAuthorize(c *fiber.Ctx) error {
 	); err != nil {
 		return c.Status(http.StatusInternalServerError).SendString("failed to start authorization")
 	}
-	return c.Type("html").SendString(h.renderOAuthLogin(req.ID))
+	var clientName string
+	_ = database.DB.QueryRow(`SELECT name FROM oauth_clients WHERE id = ?1`, req.ClientID).Scan(&clientName)
+	return c.Type("html").SendString(h.renderOAuthLogin(req.ID, clientName, req.RedirectURI))
 }
 
 func (h *handlers) oauthLogin(c *fiber.Ctx) error {
@@ -779,15 +797,22 @@ func validateRedirectURI(raw string) error {
 	return nil
 }
 
-func (h *handlers) renderOAuthLogin(requestID string) string {
+func (h *handlers) renderOAuthLogin(requestID, clientName, redirectURI string) string {
 	google := "/oauth/login/google?request_id=" + url.QueryEscape(requestID)
 	github := "/oauth/login/github?request_id=" + url.QueryEscape(requestID)
-	return renderAuthPage(
-		"Connect BotTrade",
-		"Sign in once to let your agent run market-simulator scenarios with your BotTrade account.",
-		google,
-		github,
-	)
+	app := strings.TrimSpace(clientName)
+	if app == "" {
+		app = "An application"
+	}
+	host := redirectURI
+	if u, err := url.Parse(redirectURI); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	// Name the requesting client + where it sends you, so a user can refuse an
+	// app they didn't intend to connect (defeats OAuth-consent phishing).
+	copy := app + " (redirects to " + host + ") is requesting access to your BotTrade " +
+		"account to run market-simulator scenarios. Only continue if you started this connection."
+	return renderAuthPage("Connect BotTrade", copy, google, github)
 }
 
 func (h *handlers) renderSiteLogin() string {

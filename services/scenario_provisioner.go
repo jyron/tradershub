@@ -14,7 +14,7 @@ import (
 
 // ScenarioProvisioner creates and freezes scenarios. "Freezing" copies the
 // relevant slice of `market.bars` into `market.scenario_bars` with the
-// per-symbol slippage_bps baked in. Once frozen, runs against this
+// per-symbol slippage_bps baked in. Once provisioned, runs against this
 // (scenario_id, version) read only from scenario_bars and are reproducible
 // forever — the source `bars` table can be wiped without affecting them.
 type ScenarioProvisioner struct {
@@ -244,7 +244,7 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 			log.Printf("  ⚠️  %s: no bars in [%s, %s) — symbol will be unavailable in this scenario",
 				symbol, startStr, endStr)
 		} else {
-			log.Printf("  %-6s: %d bars frozen", symbol, count)
+			log.Printf("  %-6s: %d historic bars stored", symbol, count)
 		}
 		totalBars += count
 	}

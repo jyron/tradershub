@@ -296,11 +296,17 @@ func TestAPIAcceptsOAuthBearerToken(t *testing.T) {
 		t.Fatalf("insert oauth token: %v", err)
 	}
 
-	status, account := env.requestWithBearer(http.MethodGet, "/api/v1/billing/account", token, nil)
-	requireStatus(t, status, http.StatusOK, account)
-	if got := requireString(t, account, "account_id"); got != accountID {
-		t.Fatalf("account_id = %q, want %q", got, accountID)
-	}
+	// A bottrade:trade OAuth token authenticates on trading endpoints.
+	status, runBody := env.requestWithBearer(http.MethodPost, "/api/v1/runs", token, map[string]any{
+		"scenario_slug": env.scenarioSlug,
+		"bot_name":      "oauth-bot",
+	})
+	requireStatus(t, status, http.StatusCreated, runBody)
+
+	// ...but is scoped out of account/billing management (phished/over-broad
+	// tokens can never touch billing).
+	status, denied := env.requestWithBearer(http.MethodGet, "/api/v1/billing/account", token, nil)
+	requireStatus(t, status, http.StatusForbidden, denied)
 }
 
 func newAPITestEnv(t *testing.T, bars [][]apiTestBar, startingCash, leverageCap float64, shortEnabled bool) *apiTestEnv {

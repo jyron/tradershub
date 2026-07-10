@@ -1,10 +1,10 @@
--- Immutable frozen-per-scenario-version copy of bars used by the simulator.
+-- Immutable per-scenario-version copy of bars used by the simulator.
 -- A scenario is provisioned once by copying the relevant slice of `bars`
 -- into here, then the scenario can be replayed against forever without
 -- worrying about the raw bars table being mutated or re-pulled.
 --
 -- Composite PK ensures one row per (scenario, version, symbol, bar).
--- slippage_bps is frozen INTO the bar so a future change to the scenario
+-- slippage_bps is stored with the bar so a future change to the scenario
 -- definition can't retroactively alter old runs' fill prices.
 CREATE TABLE IF NOT EXISTS scenario_bars (
     scenario_id      TEXT NOT NULL,

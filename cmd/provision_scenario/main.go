@@ -124,11 +124,11 @@ func main() {
 	}
 	log.Printf("created scenario %s (slug=%s, id=%s)", scen.Name, scen.Slug, scen.ID)
 
-	log.Printf("freezing bars for %d symbols over [%s, %s)…", len(scen.Universe), cfg.StartTs, cfg.EndTs)
+	log.Printf("copying historical bars for %d symbols over [%s, %s)…", len(scen.Universe), cfg.StartTs, cfg.EndTs)
 	n, err := prov.FreezeScenario(scen.ID)
 	if err != nil {
 		log.Fatalf("freeze: %v", err)
 	}
-	log.Printf("frozen %d bars into scenario_bars (scenario_id=%s, version=%d). Status: ready.",
+	log.Printf("stored %d bars in scenario_bars (scenario_id=%s, version=%d). Status: ready.",
 		n, scen.ID, scen.CurrentVersion)
 }

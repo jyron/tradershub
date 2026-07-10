@@ -11,7 +11,7 @@ import "strings"
 // "did the bot ride megacap tech".
 //
 // Editing this list expands what future scenarios can reference. Symbols
-// removed here stay in scenario_bars for any already-frozen scenario;
+// removed here stay in scenario_bars for any already-provisioned scenario;
 // the ingester just stops pulling new bars for them.
 var BenchmarkUniverse = []string{
 	// Tech megacaps (10)

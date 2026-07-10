@@ -59,6 +59,16 @@ func (h *handlers) authMiddleware(api huma.API) func(huma.Context, func(huma.Con
 			return
 		}
 
+		// OAuth connections are granted only the bottrade:trade scope. Account
+		// and billing management must use the account's own API key, so a
+		// phished or over-broad OAuth token can never touch billing.
+		if key.OAuthClientID != "" && isBillingPath(ctx.URL().Path) {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+				"This connection is scoped to trading. Manage billing at "+
+					"https://bot-trade.org/account with your account API key.")
+			return
+		}
+
 		recordUsageEvent(key, "rest", ctx.URL().Path, ctx.Method())
 		h.aliasCredential(apiKey, key.AccountID.String())
 		ctx = huma.WithValue(ctx, apiKeyContextKey{}, key)
@@ -78,39 +88,39 @@ func apiKeySecretFromHeaders(xAPIKey, authorization string) string {
 	return ""
 }
 
-func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
+// apiKeySelectColumns is the shared projection for loading an API key joined to
+// its account. k.api_key holds AES-256-GCM ciphertext (decrypted into key.Key
+// by scanAPIKey); lookups match on k.api_key_hash, never the plaintext.
+const apiKeySelectColumns = `k.id,
+	        COALESCE(k.account_id, k.id) AS account_id,
+	        k.name,
+	        k.api_key,
+	        k.description,
+	        k.creator_email,
+	        k.created_at,
+	        CASE
+	          WHEN k.is_active = 1 AND COALESCE(a.is_active, 1) = 1 THEN 1
+	          ELSE 0
+	        END AS is_active,
+	        COALESCE(NULLIF(a.disabled_reason, ''), k.disabled_reason),
+	        COALESCE(NULLIF(a.plan, ''), k.plan),
+	        COALESCE(a.stripe_customer_id, k.stripe_customer_id),
+	        COALESCE(a.stripe_subscription_id, k.stripe_subscription_id),
+	        COALESCE(a.subscription_status, k.subscription_status),
+	        COALESCE(a.current_period_end, k.current_period_end),
+	        COALESCE(a.billing_email, k.billing_email),
+	        COALESCE(a.handle, k.handle)`
+
+// scanAPIKey scans one apiKeySelectColumns row and decrypts the stored key.
+func scanAPIKey(scan func(dest ...any) error) (models.APIKey, error) {
 	var key models.APIKey
-	var keyIDStr, accountIDStr, createdAt string
+	var keyIDStr, accountIDStr, createdAt, encKey string
 	var isActive int
 	var description, creatorEmail, disabledReason sql.NullString
 	var stripeCustomerID, stripeSubscriptionID, subStatus sql.NullString
 	var currentPeriodEnd, billingEmail, handle sql.NullString
-	err := database.DB.QueryRow(
-		`SELECT k.id,
-		        COALESCE(k.account_id, k.id) AS account_id,
-		        k.name,
-		        k.api_key,
-		        k.description,
-		        k.creator_email,
-		        k.created_at,
-		        CASE
-		          WHEN k.is_active = 1 AND COALESCE(a.is_active, 1) = 1 THEN 1
-		          ELSE 0
-		        END AS is_active,
-		        COALESCE(NULLIF(a.disabled_reason, ''), k.disabled_reason),
-		        COALESCE(NULLIF(a.plan, ''), k.plan),
-		        COALESCE(a.stripe_customer_id, k.stripe_customer_id),
-		        COALESCE(a.stripe_subscription_id, k.stripe_subscription_id),
-		        COALESCE(a.subscription_status, k.subscription_status),
-		        COALESCE(a.current_period_end, k.current_period_end),
-		        COALESCE(a.billing_email, k.billing_email),
-		        COALESCE(a.handle, k.handle)
-		   FROM api_keys k
-		   LEFT JOIN accounts a ON a.id = k.account_id
-		  WHERE k.api_key = ?1`,
-		secret,
-	).Scan(
-		&keyIDStr, &accountIDStr, &key.Name, &key.Key, &description,
+	err := scan(
+		&keyIDStr, &accountIDStr, &key.Name, &encKey, &description,
 		&creatorEmail, &createdAt, &isActive, &disabledReason, &key.Plan,
 		&stripeCustomerID, &stripeSubscriptionID, &subStatus,
 		&currentPeriodEnd, &billingEmail, &handle,
@@ -122,6 +132,7 @@ func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
 	if err != nil {
 		return key, err
 	}
+	key.Key = decryptSecret(encKey)
 	key.Description = description.String
 	key.CreatorEmail = creatorEmail.String
 	key.DisabledReason = disabledReason.String
@@ -141,19 +152,26 @@ func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
 	return key, nil
 }
 
+func loadAPIKeyBySecret(secret string) (models.APIKey, error) {
+	return scanAPIKey(database.DB.QueryRow(
+		`SELECT `+apiKeySelectColumns+`
+		   FROM api_keys k
+		   LEFT JOIN accounts a ON a.id = k.account_id
+		  WHERE k.api_key_hash = ?1`,
+		hashToken(secret),
+	).Scan)
+}
+
 func loadAPIKeyByAccountID(accountID string) (models.APIKey, error) {
-	var secret string
-	if err := database.DB.QueryRow(
-		`SELECT api_key
-		   FROM api_keys
-		  WHERE account_id = ?1
-		  ORDER BY created_at ASC
+	return scanAPIKey(database.DB.QueryRow(
+		`SELECT `+apiKeySelectColumns+`
+		   FROM api_keys k
+		   LEFT JOIN accounts a ON a.id = k.account_id
+		  WHERE k.account_id = ?1
+		  ORDER BY k.created_at ASC
 		  LIMIT 1`,
 		accountID,
-	).Scan(&secret); err != nil {
-		return models.APIKey{}, err
-	}
-	return loadAPIKeyBySecret(secret)
+	).Scan)
 }
 
 func loadAPIKeyByOAuthAccessToken(token string) (models.APIKey, error) {
@@ -180,11 +198,19 @@ func loadAPIKeyByOAuthAccessToken(token string) (models.APIKey, error) {
 }
 
 func loadAPIKeyByID(id string) (models.APIKey, error) {
-	var secret string
-	if err := database.DB.QueryRow(`SELECT api_key FROM api_keys WHERE id = ?1`, id).Scan(&secret); err != nil {
-		return models.APIKey{}, err
-	}
-	return loadAPIKeyBySecret(secret)
+	return scanAPIKey(database.DB.QueryRow(
+		`SELECT `+apiKeySelectColumns+`
+		   FROM api_keys k
+		   LEFT JOIN accounts a ON a.id = k.account_id
+		  WHERE k.id = ?1`,
+		id,
+	).Scan)
+}
+
+// isBillingPath reports whether a request targets an account/billing-management
+// endpoint that OAuth (bottrade:trade) tokens are not permitted to reach.
+func isBillingPath(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/billing/")
 }
 
 func recordUsageEvent(key models.APIKey, surface, action, method string) {

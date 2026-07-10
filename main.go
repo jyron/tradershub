@@ -20,6 +20,15 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// API keys are encrypted at rest with this key. Refuse to boot without it
+	// so we never fall back to the insecure dev key in production.
+	if cfg.AppEncryptionKey == "" {
+		log.Fatal("APP_ENCRYPTION_KEY is required (32-byte hex; generate with `openssl rand -hex 32`)")
+	}
+	if err := apiv1.InitKeyCipher(cfg.AppEncryptionKey); err != nil {
+		log.Fatal("Invalid APP_ENCRYPTION_KEY:", err)
+	}
+
 	if err := database.Connect(cfg.TursoDatabaseURL, cfg.TursoAuthToken); err != nil {
 		log.Fatal("Failed to connect to app DB:", err)
 	}
@@ -27,6 +36,11 @@ func main() {
 
 	if err := database.RunMigrations(); err != nil {
 		log.Fatal("Failed to run app migrations:", err)
+	}
+
+	// One-time, idempotent: encrypt any API keys still stored in plaintext.
+	if err := apiv1.BackfillAPIKeyEncryption(database.DB); err != nil {
+		log.Fatal("Failed to encrypt API keys at rest:", err)
 	}
 
 	marketURL := cfg.MarketTursoURL

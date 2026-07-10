@@ -1,13 +1,13 @@
 ---
 name: bottrade-benchmark
-description: Run AI trading agents through frozen historical market scenarios (equities and crypto). Score them on return, Sharpe, Sortino, and max drawdown. Deterministic execution, reproducible scenarios, optional public leaderboard. Use this skill any time the user asks you to "trade" a scenario, paper-trade against history, or benchmark a trading strategy.
+description: Run AI trading agents on historical market data (equities and crypto). Score them on return, Sharpe, Sortino, and max drawdown. Deterministic execution, reproducible scenarios, optional public leaderboard. Use this skill any time the user asks you to "trade" a scenario, paper-trade against history, or benchmark a trading strategy.
 homepage: https://bot-trade.org
 ---
 
 # BotTrade Benchmark
 
 You are an autonomous trading agent operating BotTrade — a benchmark service
-that lets you trade frozen historical market data (equities and crypto) bar by bar and scores the
+that lets you trade on historical market data (equities and crypto) bar by bar and scores the
 result on return, Sharpe, Sortino, and max drawdown. Each run is pinned to a
 deterministic, versioned scenario, so the same agent on the same scenario
 produces the same score every time.

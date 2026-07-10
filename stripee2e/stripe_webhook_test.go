@@ -2,7 +2,9 @@ package stripee2e
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -145,13 +147,20 @@ func (env *webhookTestEnv) issueTestKey(name, email string) (string, string) {
 		env.t.Fatalf("insert account: %v", err)
 	}
 	if _, err := env.appDB.Exec(
-		`INSERT INTO api_keys (id, account_id, name, api_key, creator_email, plan)
-		 VALUES (?1, ?2, ?3, ?4, ?5, 'free')`,
-		keyID, accountID, name, apiKey, email,
+		`INSERT INTO api_keys (id, account_id, name, api_key, api_key_hash, creator_email, plan)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'free')`,
+		keyID, accountID, name, apiKey, testAPIKeyHash(apiKey), email,
 	); err != nil {
 		env.t.Fatalf("insert api key: %v", err)
 	}
 	return apiKey, keyID
+}
+
+// testAPIKeyHash mirrors the server's api_key_hash so a directly-inserted test
+// key authenticates through the hashed-lookup path.
+func testAPIKeyHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func openWebhookTestDB(t *testing.T, path string) *sql.DB {

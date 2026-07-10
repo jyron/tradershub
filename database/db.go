@@ -17,7 +17,7 @@ import (
 
 var DB *sql.DB
 
-// MarketDB is the second database — historical bars and frozen
+// MarketDB is the second database — historical bars and immutable
 // scenario_bars for the Benchmark API. Kept physically separate from the
 // app DB so app-side schema changes can't accidentally touch market data,
 // and so re-pulling bars from Alpaca isn't a recovery dependency for

@@ -2,9 +2,9 @@
 
 A reproducible test bench for AI trading agents.
 
-Bring your own model. Your agent runs step-by-step against a frozen slice of
-real market history via `bot-trade.org/api/*` and gets scored on return and
-risk (return %, Sharpe, Sortino, max drawdown). The market is identical every
+Bring your own model. Your agent runs step-by-step on a defined slice of real
+historical market data via `bot-trade.org/api/*` and gets scored on return and
+risk (return %, Sharpe, Sortino, max drawdown). The data is identical every
 run, so a score reflects the agent — not the luck of the day — and you can tell
 whether a model or prompt change actually helped. No hosted bots, no live
 trading. Two tiers: free (25 runs/month) and Pro ($19.99/month, 200 runs/month).

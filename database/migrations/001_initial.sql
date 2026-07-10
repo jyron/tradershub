@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS bots (
 );
 CREATE INDEX IF NOT EXISTS idx_bots_api_key ON bots(api_key);
 
--- Scenario catalog. A scenario is a frozen historical market window with a
+-- Scenario catalog. A scenario is a fixed historical market window with a
 -- fixed universe, leverage cap, and per-symbol slippage tier.
 -- scenario_versions records every re-freeze so in-flight runs stay pinned.
 CREATE TABLE IF NOT EXISTS scenarios (

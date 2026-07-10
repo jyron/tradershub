@@ -7,7 +7,7 @@ and the Benchmark API (`/api/*`). One domain, one binary, one process.
 ## What this project does
 
 Anyone can curl `POST /api/v1/keys`, receive an `X-API-Key`, and start an
-agent run against a frozen historical market scenario. The simulator is
+agent run against a fixed historical market scenario. The simulator is
 deterministic: bars are immutable, fills happen at the next bar's open
 plus per-symbol slippage, and metrics are computed once on completion.
 Published runs appear on the public leaderboard.
@@ -108,7 +108,7 @@ static/                          — site HTML/CSS (4 pages, no build step)
   `database/migrations/004_drop_idempotency_status_code.sql`.
 - **`tradershub-market`** (market DB) — `bars` (hourly OHLCV from Alpaca, both
   equities and crypto pairs like `BTC/USD`) and `scenario_bars` (immutable
-  per-scenario-version frozen bars). 90k+ bars covering 2024-01-02 → present
+  per-scenario-version historical bars). 90k+ bars covering 2024-01-02 → present
   for equities; crypto history reaches back to ~2021. `TURSO_MARKET_DATABASE_URL` /
   `TURSO_MARKET_AUTH_TOKEN`. **Do not reset this DB** — pulling bars from
   the free Alpaca feed takes weeks. `volume` is stored as a REAL (crypto coin

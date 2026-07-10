@@ -11,7 +11,7 @@ type Config struct {
 	TursoDatabaseURL string
 	TursoAuthToken   string
 
-	// Market DB — historical bars + frozen scenario_bars. Separate Turso DB.
+	// Market DB — historical bars + immutable scenario_bars. Separate Turso DB.
 	MarketTursoURL   string
 	MarketTursoToken string
 
@@ -27,6 +27,11 @@ type Config struct {
 	// Base URL the app is served from. Used to build Stripe success/cancel/return
 	// URLs. Set to http://localhost:3000 for local dev, https://bot-trade.org in prod.
 	AppBaseURL string
+
+	// AppEncryptionKey (APP_ENCRYPTION_KEY) is a 32-byte hex secret used to
+	// encrypt API keys at rest (AES-256-GCM). Held in the environment, never in
+	// the DB. Required in production; never rotate without re-encrypting.
+	AppEncryptionKey string
 
 	// OAuth login providers for hosted MCP connectors.
 	GoogleOAuthClientID     string
@@ -57,6 +62,7 @@ func Load() *Config {
 		StripeWebhookSecret:     os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeProPriceID:        os.Getenv("STRIPE_PRO_PRICE_ID"),
 		AppBaseURL:              getEnv("APP_BASE_URL", "https://bot-trade.org"),
+		AppEncryptionKey:        os.Getenv("APP_ENCRYPTION_KEY"),
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		GitHubOAuthClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),

@@ -13,7 +13,7 @@ import (
 )
 
 // ScenarioEngine is the deterministic simulator: it owns run lifecycle,
-// fills queued orders against frozen bars at next-bar open + slippage,
+// fills queued orders against historic bars at next-bar open + slippage,
 // mark-to-markets equity, and force-liquidates on margin violation.
 //
 // Concurrency: per-run sync.Mutex via the `locks` sync.Map. All writes for
