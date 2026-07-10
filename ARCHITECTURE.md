@@ -77,7 +77,7 @@ handlers/apiv1/                  — /api/* surface, huma-typed where auth'd
 services/
   scenario_engine.go             — StartRun, QueueTrade, AdvanceStep, ComputeResults
   scenario_bars.go               — in-process bar cache (reads MarketDB)
-  scenario_provisioner.go        — FreezeScenario (bars → scenario_bars)
+  scenario_provisioner.go        — SnapshotScenario (bars → scenario_bars)
   scenario_universe.go           — equity catalog (BenchmarkUniverse) + crypto
                                    pairs (CryptoUniverse) + IsCryptoSymbol +
                                    default slippage tiers

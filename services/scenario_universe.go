@@ -58,7 +58,7 @@ func IsCryptoSymbol(symbol string) bool {
 }
 
 // DefaultSlippageBps returns the per-symbol slippage tier baked into a
-// scenario at freeze time. Tiers:
+// scenario at snapshot time. Tiers:
 //   - tight (3 bps): broad ETFs and SPY-grade liquidity
 //   - medium (8 bps): megacap single names and sector ETFs
 //   - wide (20 bps): high-variance / lower-liquidity / themed names

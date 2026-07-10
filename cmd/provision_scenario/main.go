@@ -1,5 +1,5 @@
 // provision_scenario creates a benchmark scenario from a JSON config file,
-// freezes its bars from market.bars into market.scenario_bars, and marks
+// snapshots its bars from market.bars into market.scenario_bars, and marks
 // it ready. Bars must already be in `bars` (run cmd/backfill_bars first).
 //
 // Usage:
@@ -125,9 +125,9 @@ func main() {
 	log.Printf("created scenario %s (slug=%s, id=%s)", scen.Name, scen.Slug, scen.ID)
 
 	log.Printf("copying historical bars for %d symbols over [%s, %s)…", len(scen.Universe), cfg.StartTs, cfg.EndTs)
-	n, err := prov.FreezeScenario(scen.ID)
+	n, err := prov.SnapshotScenario(scen.ID)
 	if err != nil {
-		log.Fatalf("freeze: %v", err)
+		log.Fatalf("snapshot: %v", err)
 	}
 	log.Printf("stored %d bars in scenario_bars (scenario_id=%s, version=%d). Status: ready.",
 		n, scen.ID, scen.CurrentVersion)

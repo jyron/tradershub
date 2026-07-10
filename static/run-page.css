@@ -195,6 +195,38 @@
   font-family: "IBM Plex Mono","JetBrains Mono",ui-monospace,monospace;
   font-size: 12px;
 }
+.trade-item {
+  border-bottom: 1px solid var(--rule-2);
+}
+.trade-item:last-child {
+  border-bottom: none;
+}
+.trade-item .trade-row {
+  border-bottom: none;
+}
+/* The agent's own words + realized P&L, shown under each fill it explained. */
+.trade-reason {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 0 14px 12px 14px;
+}
+.trade-reason .why {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 80ch;
+}
+.trade-reason .pnl {
+  margin-left: auto;
+  flex: none;
+  font-family: "IBM Plex Mono","JetBrains Mono",ui-monospace,monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .trade-row:last-child {
   border-bottom: none;
 }

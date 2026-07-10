@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// ScenarioProvisioner creates and freezes scenarios. "Freezing" copies the
+// ScenarioProvisioner creates and snapshots scenarios. "Snapshotting" copies the
 // relevant slice of `market.bars` into `market.scenario_bars` with the
 // per-symbol slippage_bps baked in. Once provisioned, runs against this
 // (scenario_id, version) read only from scenario_bars and are reproducible
@@ -27,7 +27,7 @@ func NewScenarioProvisioner(appDB, marketDB *sql.DB) *ScenarioProvisioner {
 }
 
 // CreateScenarioInput captures the fields a caller (CLI / admin handler)
-// supplies. Status starts as 'draft'; FreezeScenario flips it to 'ready'.
+// supplies. Status starts as 'draft'; SnapshotScenario flips it to 'ready'.
 type CreateScenarioInput struct {
 	Slug            string
 	Name            string
@@ -44,7 +44,7 @@ type CreateScenarioInput struct {
 }
 
 // CreateScenario inserts a draft scenario row. Bars are not yet copied.
-// Call FreezeScenario(id) afterward to produce scenario_bars and mark ready.
+// Call SnapshotScenario(id) afterward to produce scenario_bars and mark ready.
 func (p *ScenarioProvisioner) CreateScenario(in CreateScenarioInput) (*models.Scenario, error) {
 	if in.Slug == "" || in.Name == "" {
 		return nil, fmt.Errorf("slug and name are required")
@@ -135,23 +135,23 @@ func (p *ScenarioProvisioner) LoadScenario(id string) (*models.Scenario, error) 
 	return &s, nil
 }
 
-// FreezeScenario copies bars from market.bars into market.scenario_bars
+// SnapshotScenario copies bars from market.bars into market.scenario_bars
 // for (scenario_id, current_version), baking in the per-symbol slippage_bps.
 // Idempotent against the (scenario_id, version) key — re-running for the
 // same version is a no-op for existing rows.
 //
-// Bumps the scenario to status='ready' and records the freeze in
+// Bumps the scenario to status='ready' and records the snapshot in
 // scenario_versions.
-func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
+func (p *ScenarioProvisioner) SnapshotScenario(scenarioID string) (int, error) {
 	s, err := p.LoadScenario(scenarioID)
 	if err != nil {
 		return 0, fmt.Errorf("load scenario: %w", err)
 	}
 	if s.Status == "ready" {
-		log.Printf("scenario %s already ready (version %d) — re-freeze will upsert", s.ID, s.CurrentVersion)
+		log.Printf("scenario %s already ready (version %d) — re-snapshot will upsert", s.ID, s.CurrentVersion)
 	}
 
-	// Mark provisioning so a concurrent freeze can be detected (cheap;
+	// Mark provisioning so a concurrent snapshot can be detected (cheap;
 	// no proper locking — admin tool, one caller).
 	if _, err := p.appDB.Exec(`UPDATE scenarios SET status='provisioning' WHERE id = ?1`, scenarioID); err != nil {
 		return 0, fmt.Errorf("mark provisioning: %w", err)
@@ -167,11 +167,11 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 	endStr := s.EndTs.UTC().Format(time.RFC3339)
 	totalBars := 0
 
-	// freezeBatchSize keeps a single multi-VALUES INSERT well under SQLite's
+	// snapshotBatchSize keeps a single multi-VALUES INSERT well under SQLite's
 	// SQLITE_MAX_VARIABLE_NUMBER (10 cols × 50 = 500, under the 999 default).
 	// Without batching this loop was one network round-trip per row to remote
 	// Turso — ~3s of throughput per minute. Batched it's ~50x faster.
-	const freezeBatchSize = 50
+	const snapshotBatchSize = 50
 
 	type barRow struct {
 		ts         string
@@ -191,7 +191,7 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 			return 0, fmt.Errorf("query bars %s: %w", symbol, err)
 		}
 
-		batch := make([]barRow, 0, freezeBatchSize)
+		batch := make([]barRow, 0, snapshotBatchSize)
 		flush := func() error {
 			if len(batch) == 0 {
 				return nil
@@ -228,7 +228,7 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 			}
 			batch = append(batch, b)
 			count++
-			if len(batch) >= freezeBatchSize {
+			if len(batch) >= snapshotBatchSize {
 				if err := flush(); err != nil {
 					rows.Close()
 					return 0, err
@@ -258,16 +258,16 @@ func (p *ScenarioProvisioner) FreezeScenario(scenarioID string) (int, error) {
 		return 0, fmt.Errorf("commit market tx: %w", err)
 	}
 
-	// Record the freeze on the app side. Two writes; we accept a brief
+	// Record the bar snapshot on the app side. Two writes; we accept a brief
 	// inconsistency window (scenario_bars exists but app rows haven't
 	// updated yet). Idempotent: ON CONFLICT updates the existing row.
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := p.appDB.Exec(`
-		INSERT INTO scenario_versions (scenario_id, version, bars_frozen_at, bar_count)
+		INSERT INTO scenario_versions (scenario_id, version, bars_captured_at, bar_count)
 		VALUES (?1, ?2, ?3, ?4)
 		ON CONFLICT (scenario_id, version) DO UPDATE SET
-			bars_frozen_at = excluded.bars_frozen_at,
-			bar_count      = excluded.bar_count
+			bars_captured_at = excluded.bars_captured_at,
+			bar_count        = excluded.bar_count
 	`, scenarioID, s.CurrentVersion, now, totalBars); err != nil {
 		return 0, fmt.Errorf("insert scenario_versions: %w", err)
 	}

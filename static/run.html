@@ -79,7 +79,7 @@
 
   <section class="run-card trades-card">
     <div class="card-head">
-      <span class="eyebrow">Filled trades</span>
+      <span class="eyebrow">Trade decisions</span>
       <span id="trade-count" class="muted"></span>
     </div>
     <div class="trades-table" id="trades-table">
@@ -186,9 +186,16 @@
     `;
   }
 
+  const fmtSignedMoney = n => {
+    const v = Number(n || 0);
+    return (v >= 0 ? "+" : "-") + "$" + Math.round(Math.abs(v)).toLocaleString("en-US");
+  };
+
   function renderTrades(data) {
     const trades = data.trades || [];
-    $("trade-count").textContent = `${trades.length} fill${trades.length === 1 ? "" : "s"}`;
+    const withReason = trades.filter(t => (t.reasoning || "").trim()).length;
+    $("trade-count").textContent = `${trades.length} fill${trades.length === 1 ? "" : "s"}`
+      + (withReason ? ` · ${withReason} explained` : "");
     if (trades.length === 0) {
       $("trades-table").innerHTML = `<div class="empty">No filled trades recorded for this run.</div>`;
       return;
@@ -197,17 +204,28 @@
       <div class="trade-row head">
         <div>Time</div><div>Symbol</div><div>Side</div><div>Qty</div><div>Fill</div><div>Slippage</div><div>Value</div>
       </div>
-      ${trades.map(t => `
-        <div class="trade-row">
-          <div>${fmtDateTime(t.sim_time_filled)}</div>
-          <div class="sym">${esc(t.symbol)}</div>
-          <div><span class="side ${esc(t.side)}">${esc(t.side)}</span></div>
-          <div>${Number(t.quantity || 0).toLocaleString("en-US")}</div>
-          <div>${fmtMoney(t.fill_price)}</div>
-          <div>${Number(t.slippage_bps || 0)} bps</div>
-          <div>${fmtMoney(t.total_value)}</div>
-        </div>
-      `).join("")}
+      ${trades.map(t => {
+        const reason = (t.reasoning || "").trim();
+        const pnl = Number(t.realized_pnl || 0);
+        const hasPnl = Math.abs(pnl) >= 0.5;
+        const parts = [];
+        if (reason) parts.push(`<span class="why">${esc(reason)}</span>`);
+        if (hasPnl) parts.push(`<span class="pnl ${pnl >= 0 ? "up" : "dn"}">${fmtSignedMoney(pnl)} realized</span>`);
+        const detail = parts.length ? `<div class="trade-reason">${parts.join("")}</div>` : "";
+        return `
+        <div class="trade-item">
+          <div class="trade-row">
+            <div>${fmtDateTime(t.sim_time_filled)}</div>
+            <div class="sym">${esc(t.symbol)}</div>
+            <div><span class="side ${esc(t.side)}">${esc(t.side)}</span></div>
+            <div>${Number(t.quantity || 0).toLocaleString("en-US")}</div>
+            <div>${fmtMoney(t.fill_price)}</div>
+            <div>${Number(t.slippage_bps || 0)} bps</div>
+            <div>${fmtMoney(t.total_value)}</div>
+          </div>
+          ${detail}
+        </div>`;
+      }).join("")}
     `;
   }
 

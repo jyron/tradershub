@@ -419,7 +419,7 @@ func (env *apiTestEnv) insertScenario(t *testing.T, bars [][]apiTestBar, startin
 		t.Fatalf("insert scenario: %v", err)
 	}
 	if _, err := env.appDB.Exec(`
-		INSERT INTO scenario_versions (scenario_id, version, bars_frozen_at, bar_count)
+		INSERT INTO scenario_versions (scenario_id, version, bars_captured_at, bar_count)
 		VALUES (?1, 1, ?2, ?3)
 	`, env.scenarioID, time.Now().UTC().Format(time.RFC3339), len(bars)); err != nil {
 		t.Fatalf("insert scenario version: %v", err)
