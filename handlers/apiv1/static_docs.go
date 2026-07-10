@@ -46,6 +46,15 @@ func (h *handlers) mountStaticDocs(app *fiber.App) {
 		return c.JSON(fiber.Map{"ok": true})
 	})
 
+	// Domain-verification file for the official MCP Registry (HTTP auth).
+	// Pairs with the Ed25519 signing key held outside the repo; the registry
+	// fetches this to prove we control bot-trade.org for the org.bot-trade
+	// namespace. Do not change without re-publishing the registry entry.
+	app.Get("/.well-known/mcp-registry-auth", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		return c.SendString("v=MCPv1; k=ed25519; p=sAlKM/EdO/oTvppIGYH38WOyvYpzUVNJlk5t0DUfq0g=")
+	})
+
 	app.Get("/api/agent-skills.md", func(c *fiber.Ctx) error {
 		h.captureDocView(c, "agent_skills_viewed")
 		c.Set("Content-Type", "text/markdown; charset=utf-8")
