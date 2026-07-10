@@ -245,6 +245,9 @@ func (h *handlers) createPortalSession(stripeCustomerID string) (string, error) 
 		Customer:  stripe.String(stripeCustomerID),
 		ReturnURL: stripe.String(h.AppBaseURL + "/account"),
 	}
+	if h.StripePortalConfigID != "" {
+		params.Configuration = stripe.String(h.StripePortalConfigID)
+	}
 	ps, err := stripebillingportalsession.New(params)
 	if err != nil {
 		return "", huma.NewError(http.StatusInternalServerError, "failed to create portal session: "+err.Error())

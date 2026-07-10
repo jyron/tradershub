@@ -24,6 +24,9 @@ type Config struct {
 	StripeWebhookSecret string
 	StripeProPriceID    string
 	StripeMaxPriceID    string
+	// Optional billing-portal configuration that enables Pro <-> Max plan
+	// switching. Empty falls back to the Stripe dashboard's default portal.
+	StripePortalConfigID string
 
 	// Transactional email (Resend). Empty API key disables sending — safe for
 	// local dev and tests.
@@ -69,6 +72,7 @@ func Load() *Config {
 		StripeWebhookSecret:     os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeProPriceID:        os.Getenv("STRIPE_PRO_PRICE_ID"),
 		StripeMaxPriceID:        os.Getenv("STRIPE_MAX_PRICE_ID"),
+		StripePortalConfigID:    os.Getenv("STRIPE_PORTAL_CONFIG_ID"),
 		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),
 		MailFrom:                getEnv("MAIL_FROM", "BotTrade <hello@mail.bot-trade.org>"),
 		MailReplyTo:             getEnv("MAIL_REPLY_TO", "jyron.dev@gmail.com"),
