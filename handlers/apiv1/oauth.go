@@ -833,6 +833,7 @@ func renderAuthPage(title, copy, googleHref, githubHref string) string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/posthog-init.js?v=2"></script>
 <style>
 :root{--bg:#fff;--bg-2:#f5f5f5;--ink:#0a0a0a;--ink-2:#2a2a2a;--ink-3:#6a6a6a;--rule:#0a0a0a;--rule-2:#d8d8d8;--accent:#ff6a00;--accent-soft:#fff1e6}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}

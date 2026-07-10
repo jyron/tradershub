@@ -546,6 +546,21 @@ func (h *handlers) handleSubscriptionDeleted(event stripe.Event) {
 	); err != nil {
 		log.Printf("stripe webhook subscription deleted: %v", err)
 	}
+	if accountID := h.accountIDForStripeCustomer(sub.Customer); accountID != "" {
+		h.Analytics.Identify(accountID, analytics.Props().Set("plan", "free"))
+		h.Analytics.Capture(accountID, "subscription_cancelled", nil)
+	}
+}
+
+// accountIDForStripeCustomer resolves a Stripe customer id to the account id
+// used as the PostHog distinct_id everywhere else. Empty string when unknown.
+func (h *handlers) accountIDForStripeCustomer(customerID string) string {
+	var accountID string
+	_ = database.DB.QueryRow(
+		`SELECT id FROM accounts WHERE stripe_customer_id = ?1`,
+		customerID,
+	).Scan(&accountID)
+	return accountID
 }
 
 func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
@@ -565,6 +580,9 @@ func (h *handlers) handleInvoicePaymentFailed(event stripe.Event) {
 		inv.Customer,
 	); err != nil {
 		log.Printf("stripe webhook invoice.payment_failed: %v", err)
+	}
+	if accountID := h.accountIDForStripeCustomer(inv.Customer); accountID != "" {
+		h.Analytics.Capture(accountID, "payment_failed", nil)
 	}
 }
 

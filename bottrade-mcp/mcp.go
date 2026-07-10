@@ -623,10 +623,19 @@ func summarizeResults(results *RunResults) string {
 
 // baseProps returns the property bag every MCP event carries: transport plus
 // the caller's real IP ($ip) so PostHog GeoIP resolves agent operators too.
+//
+// Sessions without an API key get $process_person_profile:false — their
+// distinct_id is a per-connection session id (clients reconnect every 30-min
+// TTL), so letting each one create a person profile floods analytics with
+// single-event persons that never join the key_* identity. Personless events
+// still count in trends; real agent identity starts at the API key.
 func (s *MCPServer) baseProps() posthog.Properties {
 	props := phProps().Set("transport", s.transport)
 	if s.clientIP != "" {
 		props = props.Set("$ip", s.clientIP)
+	}
+	if s.client == nil || strings.TrimSpace(s.client.apiKey) == "" {
+		props = props.Set("$process_person_profile", false)
 	}
 	return props
 }
