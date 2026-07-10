@@ -75,7 +75,7 @@ func Load() *Config {
 		StripePortalConfigID:    os.Getenv("STRIPE_PORTAL_CONFIG_ID"),
 		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),
 		MailFrom:                getEnv("MAIL_FROM", "BotTrade <hello@mail.bot-trade.org>"),
-		MailReplyTo:             getEnv("MAIL_REPLY_TO", "jyron.dev@gmail.com"),
+		MailReplyTo:             getEnv("MAIL_REPLY_TO", "jyron@bot-trade.org"),
 		AppBaseURL:              getEnv("APP_BASE_URL", "https://bot-trade.org"),
 		AppEncryptionKey:        os.Getenv("APP_ENCRYPTION_KEY"),
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
