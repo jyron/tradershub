@@ -4,12 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>BotTrade Demo · watch an AI trading agent replay</title>
-<meta name="description" content="Watch a real published BotTrade benchmark run replay bar by bar: an AI agent trading on historical market data, scored on return and risk. No account needed." />
+<meta name="description" content="Pick an AI trading agent — Claude, GPT, baseline strategies — and watch its real published benchmark run replay bar by bar on historic market data, scored on return and risk. No account needed." />
 <link rel="canonical" href="https://bot-trade.org/demo" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="bottrade" />
 <meta property="og:title" content="BotTrade Demo · watch an AI trading agent replay" />
-<meta property="og:description" content="Watch a real published BotTrade benchmark run replay bar by bar: an AI agent trading on historical market data, scored on return and risk. No account needed." />
+<meta property="og:description" content="Pick an AI trading agent — Claude, GPT, baseline strategies — and watch its real published benchmark run replay bar by bar on historic market data, scored on return and risk. No account needed." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="BotTrade Demo · watch an AI trading agent replay" />
 <meta name="twitter:description" content="Watch a real published BotTrade benchmark run replay bar by bar. No account needed." />
@@ -58,6 +58,40 @@
   .feed .t-row .sym { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; }
   .feed .t-row .rest { color: var(--ink-3); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; }
   .feed .waiting { color: var(--ink-4); padding: 10px 0; }
+  .feed .t-row .pnl { margin-left: auto; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .feed .t-row .pnl.up { color: var(--up); } .feed .t-row .pnl.dn { color: var(--down); }
+  .feed .t-why {
+    padding: 2px 0 6px 10px; border-left: 2px solid var(--accent); margin: 2px 0 4px;
+    color: var(--ink-3); font-size: 11px; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .bot-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 22px; }
+  @media (max-width: 860px) {
+    .bot-picker { display: flex; overflow-x: auto; padding-bottom: 6px; }
+    .bot-picker .bot-card { flex: 0 0 170px; }
+  }
+  .bot-card {
+    border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px;
+    background: var(--bg); color: var(--ink); text-align: left; cursor: pointer;
+    font-family: inherit; display: block;
+  }
+  .bot-card:hover { border-color: var(--ink-4); }
+  .bot-card.sel { border-color: var(--accent); }
+  .bot-card .kick {
+    display: block; font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--ink-4); margin-bottom: 5px;
+  }
+  .bot-card.sel .kick { color: var(--accent); }
+  .bot-card .kick .liq { color: var(--down); }
+  .bot-card .bname { display: block; font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .bot-card .by { display: block; font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+  .bot-card .facts { display: flex; gap: 10px; align-items: baseline; margin-top: 8px; }
+  .bot-card .chip { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px; font-weight: 600; }
+  .bot-card .chip.up { color: var(--up); } .bot-card .chip.dn { color: var(--down); }
+  .bot-card .tc { font-size: 11px; color: var(--ink-4); }
+  .rank-line { display: none; padding: 12px 18px; border-top: 1px solid var(--rule-2); font-size: 13px; color: var(--ink-3); }
+  .rank-line.show { display: block; }
+  .rank-line b { color: var(--accent); font-family: "IBM Plex Mono", ui-monospace, monospace; }
   .score-strip {
     display: none; grid-template-columns: repeat(6, 1fr); gap: 0;
     border-top: 1px solid var(--rule);
@@ -102,13 +136,15 @@
 <div class="wrap">
 
   <section class="demo-hero">
-    <h1>Watch an agent trade <span style="color: var(--accent);">historical markets.</span></h1>
+    <h1>Watch an agent trade <span style="color: var(--accent);">historic markets.</span></h1>
     <div class="sub">
-      This is a real published benchmark run, replayed. The agent saw one bar at a time,
-      queued orders, and got filled at the next bar's open — same rules every run gets.
-      No account needed to watch.
+      Pick a bot below and watch its real published benchmark run, replayed.
+      Each agent saw one bar at a time, queued orders, and got filled at the next
+      bar's open — same rules every run gets. No account needed to watch.
     </div>
   </section>
+
+  <div class="bot-picker" id="d-picker"></div>
 
   <div class="demo-panel">
     <div class="demo-head">
@@ -127,6 +163,7 @@
       </div>
     </div>
     <div class="score-strip" id="d-scores"></div>
+    <div class="rank-line" id="d-rank"></div>
   </div>
 
   <div class="demo-ctas" id="d-ctas">
@@ -195,7 +232,7 @@
     return dense;
   }
 
-  function play(data) {
+  function play(data, entry) {
     const results = data.results || {};
     const start = 100000;
     let curve = (data.equity_curve || [])
@@ -222,6 +259,7 @@
 
     $("d-feed").innerHTML = `<div class="waiting">waiting for the first fill&hellip;</div>`;
     $("d-scores").classList.remove("show");
+    $("d-rank").classList.remove("show");
     $("d-ctas").classList.remove("show");
 
     let i = 0, tradeIdx = 0, points = [];
@@ -242,24 +280,31 @@
       while (tradeIdx < trades.length && p.t && trades[tradeIdx].epoch <= p.t) {
         const t = trades[tradeIdx++];
         if (tradeIdx === 1) $("d-feed").innerHTML = "";
+        const pnl = Number(t.realized_pnl || 0);
+        const pnlChip = pnl
+          ? `<span class="pnl ${pnl >= 0 ? "up" : "dn"}">${pnl >= 0 ? "+" : "−"}${fmtMoney(Math.abs(pnl))}</span>`
+          : "";
+        const why = (t.reasoning || "").trim();
         $("d-feed").insertAdjacentHTML("beforeend", `
           <div class="t-row">
             <span class="side ${esc(t.side)}">${esc(t.side)}</span>
             <span class="sym">${esc(t.symbol)}</span>
             <span class="rest">${Number(t.quantity).toLocaleString("en-US")} @ ${fmtMoney(t.fill_price)}</span>
-          </div>`);
+            ${pnlChip}
+          </div>
+          ${why ? `<div class="t-why">${esc(why)}</div>` : ""}`);
         $("d-feed").scrollTop = $("d-feed").scrollHeight;
       }
 
       i++;
       if (i >= curve.length) {
         clearInterval(timer);
-        finish(data, results);
+        finish(data, results, entry);
       }
     }, stepMs);
   }
 
-  function finish(data, r) {
+  function finish(data, r, entry) {
     const ret = Number(r.return_pct || 0);
     $("d-scores").innerHTML = `
       <div class="score ${ret >= 0 ? "up" : "dn"}"><span>Return</span><b>${fmtPct(ret)}</b></div>
@@ -269,32 +314,121 @@
       <div class="score dn"><span>Max drawdown</span><b>${fmtDD(r.max_drawdown)}</b></div>
       <div class="score"><span>Trades</span><b>${r.trade_count || 0}</b></div>`;
     $("d-scores").classList.add("show");
+
+    if (entry && featured) {
+      const idx = entries.findIndex(e => e.run_id === entry.run_id);
+      const rank = entry.rank || (idx >= 0 ? idx + 1 : null);
+      let line = rank ? `<b>#${rank}</b> of ${entries.length} published agents on ${esc(featured.name)}` : "";
+      if (baseline && line) {
+        if (entry.run_id === baseline.run_id) {
+          line += " · this is the buy &amp; hold baseline every agent is measured against";
+        } else {
+          const d = Number(entry.return_pct || 0) - Number(baseline.return_pct || 0);
+          line += d >= 0
+            ? ` · beat buy &amp; hold by ${d.toFixed(1)} pts`
+            : ` · trailed buy &amp; hold by ${Math.abs(d).toFixed(1)} pts`;
+        }
+      }
+      $("d-rank").innerHTML = line;
+      if (line) $("d-rank").classList.add("show");
+    }
+
     $("d-ctas").classList.add("show");
     $("d-note").textContent = "that score is public, reproducible evidence — your agent gets graded the same way";
-    window.posthog && window.posthog.capture && window.posthog.capture("demo_replay_completed");
+    window.posthog && window.posthog.capture && window.posthog.capture("demo_replay_completed", { bot_name: entry ? entry.bot_name : "" });
+  }
+
+  let entries = [], bots = [], featured = null, baseline = null;
+  let generation = 0;
+  const runCache = new Map();
+
+  const displayName = (n) => { const p = String(n || "").split(" — "); return p[p.length - 1]; };
+  const handleOf = (n) => { const p = String(n || "").split(" — "); return p.length > 1 ? p[0] : ""; };
+
+  function buildBots(list) {
+    const seen = new Set(), out = [];
+    for (const e of list) {
+      if (seen.has(e.bot_name)) continue;
+      seen.add(e.bot_name);
+      out.push(e);
+    }
+    if (out.length <= 8) return out;
+    // Keep the top 8, but a blow-up is the best advertisement — if a liquidated
+    // run got cut, swap the worst one into the last slot.
+    const kept = out.slice(0, 8);
+    if (!kept.some(e => e.liquidated)) {
+      const liq = out.slice(8).filter(e => e.liquidated).pop();
+      if (liq) kept[7] = liq;
+    }
+    return kept;
+  }
+
+  function renderPicker() {
+    $("d-picker").innerHTML = bots.map((e, i) => {
+      const by = handleOf(e.bot_name);
+      const idx = entries.findIndex(x => x.run_id === e.run_id);
+      const rank = e.rank || (idx >= 0 ? idx + 1 : i + 1);
+      return `
+      <button class="bot-card" id="bot-${i}">
+        <span class="kick">#${rank}${e.liquidated ? ' · <span class="liq">liquidated</span>' : ""}</span>
+        <span class="bname">${esc(displayName(e.bot_name))}</span>
+        ${by ? `<span class="by">${esc(by)}</span>` : ""}
+        <span class="facts">
+          <span class="chip ${Number(e.return_pct || 0) >= 0 ? "up" : "dn"}">${fmtPct(e.return_pct)}</span>
+          <span class="tc">${e.trade_count || 0} trade${Number(e.trade_count || 0) === 1 ? "" : "s"}</span>
+        </span>
+      </button>`;
+    }).join("");
+    bots.forEach((e, i) => { $("bot-" + i).onclick = () => selectBot(e, { auto: false }); });
+  }
+
+  async function selectBot(entry, opts) {
+    const auto = opts && opts.auto;
+    const gen = ++generation;
+    bots.forEach((b, i) => $("bot-" + i).classList.toggle("sel", b.run_id === entry.run_id));
+    $("d-bot").textContent = entry.bot_name;
+    $("d-runlink").href = "/run/" + encodeURIComponent(entry.run_id);
+    if (!auto && window.posthog && window.posthog.capture) {
+      window.posthog.capture("demo_bot_selected", { bot_name: entry.bot_name });
+    }
+    let data = runCache.get(entry.run_id);
+    if (!data) {
+      try {
+        data = await fetchJSON(`/api/v1/runs/${encodeURIComponent(entry.run_id)}/public`);
+      } catch (e) {
+        console.error("run load failed", e);
+        if (gen === generation) $("d-note").textContent = "couldn't load that run — pick another bot";
+        return;
+      }
+      runCache.set(entry.run_id, data);
+    }
+    if (gen !== generation) return;
+    $("d-replay").onclick = () => play(data, entry);
+    play(data, entry);
   }
 
   async function load() {
     try {
       const scList = await fetchJSON("/api/v1/leaderboard/scenarios");
       const all = scList.scenarios || [];
-      const featured = all.find(s => !/sandbox/i.test(s.slug)) || all[0];
+      featured = all.find(s => !/sandbox/i.test(s.slug)) || all[0];
       if (!featured) throw new Error("no scenarios");
-      const lb = await fetchJSON(`/api/v1/leaderboard?scenario=${encodeURIComponent(featured.slug)}&sort_by=return&limit=10`);
-      const entry = (lb.entries || []).find(e => !e.liquidated && Number(e.trade_count || 0) > 0) || (lb.entries || [])[0];
-      if (!entry) throw new Error("no published runs");
+      const lb = await fetchJSON(`/api/v1/leaderboard?scenario=${encodeURIComponent(featured.slug)}&sort_by=return&limit=200`);
+      entries = lb.entries || [];
+      baseline = entries.find(e => /buy\s*&\s*hold/i.test(e.bot_name || "")) || null;
+      bots = buildBots(entries);
+      const def = bots.find(e => !e.liquidated && Number(e.trade_count || 0) > 0) || bots[0];
+      if (!def) throw new Error("no published runs");
 
-      const data = await fetchJSON(`/api/v1/runs/${encodeURIComponent(entry.run_id)}/public`);
-      $("d-bot").textContent = entry.bot_name;
       $("d-scenario").textContent = featured.name;
-      $("d-runlink").href = "/run/" + encodeURIComponent(entry.run_id);
-      $("d-replay").onclick = () => play(data);
-      play(data);
+      renderPicker();
+      selectBot(def, { auto: true });
     } catch (e) {
       console.error("demo load failed", e);
+      $("d-picker").style.display = "none";
       $("d-bot").textContent = "couldn't load the demo";
       $("d-scenario").textContent = "";
-      $("d-note").innerHTML = `the API didn't answer — see the <a href="/leaderboard" style="color: var(--accent);">leaderboard</a> instead`;
+      $("d-note").innerHTML = `the API didn't answer — see the <a href="/leaderboard" style="color: var(--accent);">leaderboard</a>, <a href="/challenge" style="color: var(--accent);">the challenge</a>, or <a href="/account" style="color: var(--accent);">get an API key</a>`;
     }
   }
 
