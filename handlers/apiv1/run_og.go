@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/png"
@@ -19,12 +20,13 @@ var staticOGTag = regexp.MustCompile(`(?m)^\s*<meta (?:property="og:|name="twitt
 
 // MountRunPages serves the public run page with per-run Open Graph meta tags
 // injected server-side (crawlers don't execute JS), plus a generated
-// /run/:id/og.png share card with the equity curve and score. Unpublished or
-// unknown runs get the untouched static page and a 404 image, so nothing
-// about them leaks.
+// /run/:id/og.png share card and /run/:id/badge.svg evidence badge.
+// Unpublished or unknown runs get the untouched static page and 404 images,
+// so nothing about them leaks.
 func MountRunPages(app *fiber.App, baseURL string) {
 	app.Get("/run/:id", func(c *fiber.Ctx) error { return runPageWithMeta(c, baseURL) })
 	app.Get("/run/:id/og.png", runOGImage)
+	app.Get("/run/:id/badge.svg", runBadgeSVG)
 }
 
 type ogRunMeta struct {
@@ -109,13 +111,13 @@ func runPageWithMeta(c *fiber.Ctx, baseURL string) error {
 // --- share-card image --------------------------------------------------------
 
 var (
-	ogBG     = color.RGBA{13, 17, 23, 255}
-	ogText   = color.RGBA{230, 237, 243, 255}
-	ogDim    = color.RGBA{139, 148, 158, 255}
-	ogGrid   = color.RGBA{33, 40, 51, 255}
-	ogGreen  = color.RGBA{63, 185, 80, 255}
-	ogRed    = color.RGBA{248, 81, 73, 255}
-	ogAmber  = color.RGBA{210, 153, 34, 255}
+	ogBG    = color.RGBA{13, 17, 23, 255}
+	ogText  = color.RGBA{230, 237, 243, 255}
+	ogDim   = color.RGBA{139, 148, 158, 255}
+	ogGrid  = color.RGBA{33, 40, 51, 255}
+	ogGreen = color.RGBA{63, 185, 80, 255}
+	ogRed   = color.RGBA{248, 81, 73, 255}
+	ogAmber = color.RGBA{210, 153, 34, 255}
 )
 
 func runOGImage(c *fiber.Ctx) error {
@@ -182,6 +184,54 @@ func runOGImage(c *fiber.Ctx) error {
 	c.Set(fiber.HeaderContentType, "image/png")
 	c.Set(fiber.HeaderCacheControl, "public, max-age=86400")
 	return c.Send(buf.Bytes())
+}
+
+// runBadgeSVG returns a compact, repository-embeddable proof for one
+// published run. Color communicates only the sign of the return; the public
+// run page remains the evidence for scenario, risk, and trade details.
+func runBadgeSVG(c *fiber.Ctx) error {
+	m, ok := loadOGRunMeta(c.Params("id"))
+	if !ok {
+		return c.SendStatus(fiber.StatusNotFound)
+	}
+
+	message := fmt.Sprintf("%+.2f%% return", m.ReturnPct)
+	color := "#64748b"
+	if m.ReturnPct > 0 {
+		color = "#2e7d32"
+	} else if m.ReturnPct < 0 {
+		color = "#b3261e"
+	}
+	label := "tested on BotTrade"
+	accessible := html.EscapeString(label + ": " + message)
+
+	const labelWidth = 116
+	const messageWidth = 94
+	const totalWidth = labelWidth + messageWidth
+	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="20" role="img" aria-label="%s">
+  <title>%s</title>
+  <linearGradient id="s" x2="0" y2="100%%">
+    <stop offset="0" stop-color="#fff" stop-opacity=".16"/>
+    <stop offset="1" stop-opacity=".08"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="%d" height="20" rx="3"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="%d" height="20" fill="#1f2937"/>
+    <rect x="%d" width="%d" height="20" fill="%s"/>
+    <rect width="%d" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+    <text x="58" y="15" fill="#010101" fill-opacity=".3">%s</text>
+    <text x="58" y="14">%s</text>
+    <text x="163" y="15" fill="#010101" fill-opacity=".3">%s</text>
+    <text x="163" y="14">%s</text>
+  </g>
+</svg>`, totalWidth, accessible, accessible, totalWidth, labelWidth, labelWidth,
+		messageWidth, color, totalWidth, label, label, message, message)
+
+	c.Set(fiber.HeaderContentType, "image/svg+xml; charset=utf-8")
+	c.Set(fiber.HeaderCacheControl, "public, max-age=300")
+	return c.SendString(svg)
 }
 
 func clipText(s string, max int) string {
