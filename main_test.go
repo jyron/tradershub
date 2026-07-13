@@ -153,20 +153,35 @@ func TestStaticNavigationIsFocused(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", page, err)
 		}
-		navStart := strings.Index(string(body), "<nav>")
+		navStart := strings.Index(string(body), "<nav")
 		navEnd := strings.Index(string(body), "</nav>")
 		if navStart < 0 || navEnd < navStart {
 			t.Errorf("%s is missing primary navigation", page)
 			continue
 		}
 		nav := string(body)[navStart:navEnd]
-		for _, href := range []string{`href="/articles"`, `href="/leaderboard"`, `href="/docs"`, `href="/account"`} {
+		for _, href := range []string{
+			`href="/articles"`,
+			`href="/ai-trading-agent-index"`,
+			`href="/leaderboard"`,
+			`href="/challenge"`,
+			`href="/scenarios"`,
+			`href="/demo"`,
+			`href="/articles/ai-trading-bot-backtesting"`,
+			`href="/pricing"`,
+			`href="/contact"`,
+			`href="/docs"`,
+			`href="/account"`,
+		} {
 			if !strings.Contains(nav, href) {
 				t.Errorf("%s navigation is missing %s", page, href)
 			}
 		}
-		if links := strings.Count(nav, "<a "); links != 4 {
-			t.Errorf("%s navigation has %d links, want 4", page, links)
+		if details := strings.Count(nav, `<details class="nav-explore">`); details != 1 {
+			t.Errorf("%s navigation has %d Explore menus, want 1", page, details)
+		}
+		if summaries := strings.Count(nav, "<summary"); summaries != 1 {
+			t.Errorf("%s navigation has %d visible Explore controls, want 1", page, summaries)
 		}
 	}
 }

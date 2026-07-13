@@ -31,7 +31,7 @@
 .related-ranks b { display: block; font-size: 18px; }
 .related-ranks span { display: block; margin-top: 8px; color: var(--ink-3); line-height: 1.5; }
 @media (max-width: 760px) {
-  .topbar .crumbs, .topbar nav { display: none; }
+  .topbar .crumbs { display: none; }
   .wrap { padding-left: 20px; padding-right: 20px; }
   .rank-hero { padding-top: 48px; }
   .rank-card { grid-template-columns: 46px 1fr; gap: 14px; }

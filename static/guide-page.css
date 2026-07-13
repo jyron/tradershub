@@ -39,7 +39,7 @@
 .closing .primary { margin-top: 24px; }
 @media (max-width: 760px) {
   .topbar { padding: 14px 18px; gap: 12px; }
-  .topbar .crumbs, .topbar nav { display: none; }
+  .topbar .crumbs { display: none; }
   .wrap { padding-left: 20px; padding-right: 20px; }
   .guide-hero { padding: 48px 0 40px; }
   .intro { font-size: 18px; }
