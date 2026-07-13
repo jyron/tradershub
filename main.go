@@ -7,6 +7,7 @@ import (
 	apiv1 "bottrade/handlers/apiv1"
 	"bottrade/jobs"
 	"bottrade/services"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -83,6 +84,7 @@ func main() {
 	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New())
+	app.Use(defaultSocialMeta(cfg.AppBaseURL))
 
 	apiv1.Mount(app, engine, cfg, analyticsClient)
 	mountGrowthConfig(app, cfg.StripeFoundingCouponID != "")
@@ -104,6 +106,57 @@ func main() {
 	log.Printf("Listening on :%s", cfg.Port)
 	if err := app.Listen(":" + cfg.Port); err != nil {
 		log.Fatal("Failed to start server:", err)
+	}
+}
+
+// defaultSocialMeta gives every HTML page a real large-image social card.
+// Individual pages (notably public run pages) can still provide a more
+// specific image; this middleware only fills metadata that is missing.
+func defaultSocialMeta(baseURL string) fiber.Handler {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		baseURL = "https://bot-trade.org"
+	}
+	imageURL := baseURL + "/social-card.png?v=20260713-2"
+
+	return func(c *fiber.Ctx) error {
+		if err := c.Next(); err != nil {
+			return err
+		}
+		if !strings.Contains(strings.ToLower(c.GetRespHeader(fiber.HeaderContentType)), "text/html") {
+			return nil
+		}
+
+		page := string(c.Response().Body())
+		if !strings.Contains(page, "</head>") {
+			return nil
+		}
+
+		var tags strings.Builder
+		if !strings.Contains(page, `property="og:image"`) {
+			fmt.Fprintf(&tags, `<meta property="og:image" content="%s" />
+<meta property="og:image:secure_url" content="%s" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="BotTrade AI-agent benchmark with comparative profit curves" />
+`, imageURL, imageURL)
+		}
+		if !strings.Contains(page, `name="twitter:card"`) {
+			tags.WriteString("<meta name=\"twitter:card\" content=\"summary_large_image\" />\n")
+		}
+		if !strings.Contains(page, `name="twitter:image"`) {
+			fmt.Fprintf(&tags, `<meta name="twitter:image" content="%s" />
+<meta name="twitter:image:alt" content="BotTrade AI-agent benchmark with comparative profit curves" />
+`, imageURL)
+		}
+		if tags.Len() == 0 {
+			return nil
+		}
+
+		page = strings.Replace(page, "</head>", tags.String()+"</head>", 1)
+		c.Response().SetBodyString(page)
+		return nil
 	}
 }
 
