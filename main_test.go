@@ -48,6 +48,27 @@ func TestContactPageAlias(t *testing.T) {
 	}
 }
 
+func TestGrowthConfigDoesNotExposeCouponConfiguration(t *testing.T) {
+	app := fiber.New()
+	mountGrowthConfig(app, true)
+
+	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/site/offers", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || string(body) != `{"founding_pro":true}` {
+		t.Fatalf("unexpected growth config response: status=%d body=%s", response.StatusCode, body)
+	}
+	if strings.Contains(string(body), "coupon") {
+		t.Fatal("growth config must not expose billing configuration")
+	}
+}
+
 func TestEditorialPagesUseArticlesDirectory(t *testing.T) {
 	app := fiber.New()
 	mountStaticPageAliases(app)
@@ -136,6 +157,7 @@ func TestStaticNavigationIsFocused(t *testing.T) {
 		"ai-trading-agent-evaluation.html",
 		"ai-trading-bot-backtesting.html",
 		"backtest-ai-trading-agents.html",
+		"builders.html",
 		"challenge.html",
 		"contact.html",
 		"demo.html",

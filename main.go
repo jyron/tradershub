@@ -85,6 +85,7 @@ func main() {
 	app.Use(cors.New())
 
 	apiv1.Mount(app, engine, cfg, analyticsClient)
+	mountGrowthConfig(app, cfg.StripeFoundingCouponID != "")
 
 	mountPostHogProxy(app)
 
@@ -110,6 +111,7 @@ func main() {
 // Keep these routes before app.Static so the clean paths win route matching.
 func mountStaticPageAliases(app *fiber.App) {
 	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
+	app.Get("/builders", func(c *fiber.Ctx) error { return c.SendFile("./static/builders.html") })
 	app.Get("/challenge", func(c *fiber.Ctx) error { return c.SendFile("./static/challenge.html") })
 	app.Get("/demo", func(c *fiber.Ctx) error { return c.SendFile("./static/demo.html") })
 	app.Get("/scenarios", func(c *fiber.Ctx) error { return c.SendFile("./static/scenarios.html") })
@@ -136,6 +138,15 @@ func mountStaticPageAliases(app *fiber.App) {
 			return c.Redirect("/articles/"+slug, fiber.StatusMovedPermanently)
 		})
 	}
+}
+
+// mountGrowthConfig exposes only whether a public offer is usable. Coupon IDs
+// and other billing configuration remain server-side.
+func mountGrowthConfig(app *fiber.App, foundingProEnabled bool) {
+	app.Get("/site/offers", func(c *fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "no-store")
+		return c.JSON(fiber.Map{"founding_pro": foundingProEnabled})
+	})
 }
 
 // mountCrawlDiscoveryAssets gives search and answer engines stable entry

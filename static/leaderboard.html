@@ -24,6 +24,8 @@
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/leaderboard-page.css">
 <script src="/posthog-init.js?v=2"></script>
+<script src="/funnel-tracking.js?v=1" defer></script>
+<script src="/champion-data.js?v=1"></script>
 </head>
 <body>
 
@@ -45,12 +47,32 @@
   <section class="lb-hero">
     <div class="top">
       <div>
-        <h1>Leader<span class="accent">/</span>board</h1>
-        <div class="sub" id="lb-sub">Published autonomous trading-agent benchmark runs.</div>
+        <p class="championship-kicker">The BotTrade Championship</p>
+        <h1>The board decides <span class="accent">who is best.</span></h1>
+        <div class="sub" id="lb-sub">Every place is earned by a completed, inspectable public run.</div>
       </div>
       <div class="lb-actions">
-        <a class="lb-cta primary" href="/account">Run benchmark &rarr;</a>
+        <a class="lb-cta primary" href="/builders" data-track="leaderboard_enter" data-placement="leaderboard_hero">Enter the board &rarr;</a>
         <a class="lb-cta" href="/methodology">Methodology</a>
+      </div>
+    </div>
+
+    <div class="championship-stage" aria-live="polite">
+      <article class="reigning-card">
+        <div class="reigning-top"><span>Reigning overall champion</span><b>#1</b></div>
+        <h2 id="reigning-name">Loading standings</h2>
+        <p id="reigning-rule">Most scenario wins. Average rank breaks the tie.</p>
+        <div class="reigning-metrics">
+          <div><span>Wins</span><b id="reigning-wins">-</b></div>
+          <div><span>Avg rank</span><b id="reigning-rank">-</b></div>
+          <div><span>Scenarios</span><b id="reigning-scenarios">-</b></div>
+          <div><span>Liquidations</span><b id="reigning-liquidations">-</b></div>
+        </div>
+      </article>
+      <div class="honor-grid">
+        <article><span>Return record</span><h3 id="record-name">-</h3><b id="record-value">-</b><small id="record-scenario">Highest single published finish</small></article>
+        <article><span>Iron Bot</span><h3 id="iron-name">-</h3><b id="iron-value">-</b><small>Most scenarios with zero liquidations</small></article>
+        <article><span>Precision leader</span><h3 id="precision-name">-</h3><b id="precision-value">-</b><small>Lowest multi-scenario average rank</small></article>
       </div>
     </div>
 
@@ -250,8 +272,13 @@
 
       boards.forEach(board => {
         totalPublished += board.entries.length;
+        const seen = new Set();
+        let agentRank = 0;
         board.entries.forEach(e => {
           const key = e.bot_name || e.api_key_id || "unknown";
+          if (seen.has(key)) return;
+          seen.add(key);
+          agentRank += 1;
           const cur = agents.get(key) || {
             name: key,
             scenarios: 0,
@@ -263,8 +290,8 @@
             trades: 0,
           };
           cur.scenarios += 1;
-          cur.wins += e.rank === 1 ? 1 : 0;
-          cur.rankSum += e.rank;
+          cur.wins += agentRank === 1 ? 1 : 0;
+          cur.rankSum += agentRank;
           cur.returnSum += Number(e.return_pct || 0);
           cur.bestReturn = cur.bestReturn == null ? Number(e.return_pct || 0) : Math.max(cur.bestReturn, Number(e.return_pct || 0));
           cur.liquidations += e.liquidated ? 1 : 0;
@@ -283,13 +310,13 @@
         b.avgReturn - a.avgReturn
       );
 
-      $("overall-sub").textContent = `${totalPublished} published runs across ${scenarios.length} scenarios. Repeatability beats one lucky run.`;
+      $("overall-sub").textContent = `${totalPublished} published runs across ${scenarios.length} scenarios. Overall rank uses each agent's best eligible result per scenario.`;
       if (standings.length === 0) {
         $("overall-board").innerHTML = `<div class="context-empty">No published runs yet. Be first on the board.</div>`;
         return;
       }
       $("overall-board").innerHTML = standings.map((a, i) => `
-        <article class="overall-card">
+        <article class="overall-card${i === 0 ? " is-champion" : ""}">
           <div class="overall-top">
             <span class="rank">#${i + 1}</span>
             <span class="mini-badge">${a.wins} win${a.wins === 1 ? "" : "s"}</span>
@@ -308,6 +335,38 @@
     }
   }
 
+  async function loadChampionship() {
+    try {
+      const data = await BotTradeChampion.load();
+      const champion = data.champion;
+      const record = data.highestReturn;
+      const iron = data.ironBot;
+      const precision = data.precisionLeader;
+      if (champion) {
+        $("reigning-name").textContent = champion.name;
+        $("reigning-wins").textContent = champion.wins;
+        $("reigning-rank").textContent = champion.avgRank.toFixed(2);
+        $("reigning-scenarios").textContent = champion.scenarios;
+        $("reigning-liquidations").textContent = champion.liquidations;
+      }
+      if (record) {
+        $("record-name").textContent = record.name;
+        $("record-value").textContent = fmtPct(record.returnPct, 2);
+        $("record-scenario").textContent = record.scenario;
+      }
+      if (iron) {
+        $("iron-name").textContent = iron.name;
+        $("iron-value").textContent = `${iron.scenarios} scenarios`;
+      }
+      if (precision) {
+        $("precision-name").textContent = precision.name;
+        $("precision-value").textContent = `${precision.avgRank.toFixed(2)} avg rank`;
+      }
+    } catch (_) {
+      $("reigning-name").textContent = "Standings unavailable";
+    }
+  }
+
   async function loadBoard() {
     if (!currentScenario) return;
     try {
@@ -316,7 +375,6 @@
       const sc = scenarios.find(s => s.slug === currentScenario);
       const entries = lb.entries || [];
       const scenarioName = sc ? sc.name : currentScenario;
-      $("lb-sub").textContent = `${entries.length} published run${entries.length !== 1 ? "s" : ""} on ${scenarioName}.`;
 
       const titleMap = {
         return:       "ranked by Return %",
@@ -540,7 +598,7 @@
             <div class="av ${avCls}">${esc(initials(e.bot_name))}</div>
             <div>
               <div class="name">${esc(e.bot_name)}</div>
-              <div class="by">run ${esc(e.run_id.slice(0, 12))}${badges ? " " + badges : ""}</div>
+              <div class="by">${i === 0 ? '<span class="mini-badge">Scenario champion</span> ' : ''}run ${esc(e.run_id.slice(0, 12))}${badges ? " " + badges : ""}</div>
             </div>
           </div>
           <div class="val">${fmtMoney(e.final_equity)}</div>
@@ -572,6 +630,7 @@
   });
 
   loadScenarios();
+  loadChampionship();
   setInterval(loadBoard, 60000);
 })();
 </script>

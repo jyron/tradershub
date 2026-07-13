@@ -37,6 +37,7 @@ only public support contact address.
 | `STRIPE_WEBHOOK_SECRET` | Signature secret for the billing webhook endpoint. |
 | `STRIPE_PRO_PRICE_ID` | Active Stripe Price selected for new Pro checkouts. |
 | `STRIPE_MAX_PRICE_ID` | Active Stripe Price selected for new Max checkouts. |
+| `STRIPE_FOUNDING_COUPON_ID` | Optional repeating Stripe coupon applied by the founding-builder Pro checkout. |
 | `STRIPE_LEGACY_MAX_PRICE_IDS` | Previous Max Price IDs that still need webhook-to-plan mapping. |
 | `STRIPE_PORTAL_CONFIG_ID` | Optional portal configuration for plan switching. |
 

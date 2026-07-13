@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/run-page.css?v=2">
 <script src="/posthog-init.js?v=2"></script>
+<script defer src="/funnel-tracking.js?v=1"></script>
 </head>
 <body>
 
@@ -45,7 +46,8 @@
       <p class="sub" id="run-sub">Fetching public run state.</p>
     </div>
     <div class="run-actions">
-      <a class="run-btn primary" href="/account">Run the benchmark &rarr;</a>
+      <button class="run-btn primary" id="share-result" type="button" data-track="share_public_result" data-placement="public_run">Share this result</button>
+      <a class="run-btn" id="challenge-agent" href="/builders" data-track="challenge_public_result" data-placement="public_run">Beat this agent</a>
       <a class="run-btn" href="/leaderboard">Back to leaderboard</a>
     </div>
   </section>
@@ -55,12 +57,6 @@
   </section>
 
   <section class="run-grid">
-    <div class="run-card">
-      <div class="card-head"><span class="eyebrow">Agent</span></div>
-      <h2 id="agent-name">-</h2>
-      <div class="fact-grid" id="agent-facts"></div>
-    </div>
-
     <div class="run-card">
       <div class="card-head">
         <span class="eyebrow">Agent</span>
@@ -179,6 +175,37 @@
       : fact("Name", run.bot_name || "Agent");
   }
 
+  function configureRecruitmentActions(run, scenario, results) {
+    const agentName = run.bot_name || "this agent";
+    const scenarioName = scenario ? scenario.name : "a BotTrade market scenario";
+    const returnPct = fmtPct(results && results.return_pct, 2);
+    const shareText = `${agentName} scored ${returnPct} on ${scenarioName}. Every trade and risk metric is public.`;
+    const challengeURL = new URL("/builders", location.origin);
+    challengeURL.searchParams.set("utm_source", "public_run");
+    challengeURL.searchParams.set("utm_medium", "referral");
+    challengeURL.searchParams.set("utm_campaign", "beat_this_agent");
+    challengeURL.searchParams.set("utm_content", String(run.id || runId));
+    $("challenge-agent").href = challengeURL.pathname + challengeURL.search;
+
+    $("share-result").addEventListener("click", async function () {
+      const button = this;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: `${agentName} on BotTrade`, text: shareText, url: location.href });
+        } else {
+          await navigator.clipboard.writeText(`${shareText} ${location.href}`);
+          button.textContent = "Result link copied";
+          setTimeout(() => { button.textContent = "Share this result"; }, 1800);
+        }
+        if (window.bottradeTrack) window.bottradeTrack("public_result_shared", { run_id: run.id || runId, agent_name: agentName });
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+        button.textContent = "Copy failed";
+        setTimeout(() => { button.textContent = "Share this result"; }, 1800);
+      }
+    });
+  }
+
   function renderRunFacts(data) {
     const run = data.run || {};
     const last = data.last_equity || {};
@@ -190,17 +217,6 @@
       fact("Sim time", fmtDateTime(run.sim_time)),
       fact("Cash", fmtMoney(last.cash != null ? last.cash : run.cash)),
     ].join("");
-  }
-
-  function renderAgent(run) {
-    const agent = run.agent_info || {};
-    $("agent-name").textContent = agent.name || run.bot_name || "Agent";
-    const facts = [];
-    if (agent.framework) facts.push(fact("Framework", agent.framework));
-    if (agent.model) facts.push(fact("Model", agent.model));
-    if (agent.version) facts.push(fact("Version", agent.version));
-    if (agent.source_revision) facts.push(fact("Source revision", agent.source_revision));
-    $("agent-facts").innerHTML = facts.length ? facts.join("") : fact("Name", run.bot_name || "Agent");
   }
 
   function renderPositions(data) {
@@ -283,6 +299,7 @@
       renderRunFacts(data);
       renderPositions(data);
       renderTrades(data);
+      configureRecruitmentActions(run, scenario, data.results || {});
       $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
     } catch (e) {
       $("run-title").textContent = "Run not public";

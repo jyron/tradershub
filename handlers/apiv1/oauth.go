@@ -197,7 +197,14 @@ func (h *handlers) oauthLogin(c *fiber.Ctx) error {
 }
 
 func (h *handlers) siteLogin(c *fiber.Ctx) error {
+	offer := normalizeSiteOffer(c.Query("offer"))
+	if offer != "" {
+		h.setSiteOfferCookie(c, offer, 10*time.Minute)
+	}
 	if accountID, _ := h.siteSessionAccountID(c); accountID != "" {
+		if offer != "" {
+			return c.Redirect("/account?offer="+url.QueryEscape(offer), http.StatusFound)
+		}
 		return c.Redirect("/account", http.StatusFound)
 	}
 	return c.Type("html").SendString(h.renderSiteLogin())
@@ -264,7 +271,31 @@ func (h *handlers) siteProviderCallback(c *fiber.Ctx) error {
 		SameSite: "Lax",
 		MaxAge:   int(siteSessionTTL.Seconds()),
 	})
+	offer := normalizeSiteOffer(c.Cookies("bt_site_offer"))
+	h.setSiteOfferCookie(c, "", -time.Hour)
+	if offer != "" {
+		return c.Redirect("/account?offer="+url.QueryEscape(offer), http.StatusFound)
+	}
 	return c.Redirect("/account", http.StatusFound)
+}
+
+func normalizeSiteOffer(offer string) string {
+	if strings.EqualFold(strings.TrimSpace(offer), "founding") {
+		return "founding"
+	}
+	return ""
+}
+
+func (h *handlers) setSiteOfferCookie(c *fiber.Ctx, value string, ttl time.Duration) {
+	c.Cookie(&fiber.Cookie{
+		Name:     "bt_site_offer",
+		Value:    value,
+		Path:     "/",
+		HTTPOnly: true,
+		Secure:   strings.HasPrefix(h.AppBaseURL, "https://"),
+		SameSite: "Lax",
+		MaxAge:   int(ttl.Seconds()),
+	})
 }
 
 func (h *handlers) siteAccount(c *fiber.Ctx) error {
@@ -834,6 +865,7 @@ func renderAuthPage(title, copy, googleHref, githubHref string) string {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="/posthog-init.js?v=2"></script>
+<script src="/funnel-tracking.js?v=1" defer></script>
 <style>
 :root{--bg:#fff;--bg-2:#f5f5f5;--ink:#0a0a0a;--ink-2:#2a2a2a;--ink-3:#6a6a6a;--rule:#0a0a0a;--rule-2:#d8d8d8;--accent:#ff6a00;--accent-soft:#fff1e6}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
@@ -867,8 +899,8 @@ h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0
       <div class="panel">
         <h2>Continue</h2>
         <p>Choose a provider to access your BotTrade account.</p>
-        <a class="auth-btn" href="` + html.EscapeString(googleHref) + `">Continue with Google</a>
-        <a class="auth-btn github" href="` + html.EscapeString(githubHref) + `">Continue with GitHub</a>
+        <a class="auth-btn" href="` + html.EscapeString(googleHref) + `" data-track="auth_provider_google" data-placement="login">Continue with Google</a>
+        <a class="auth-btn github" href="` + html.EscapeString(githubHref) + `" data-track="auth_provider_github" data-placement="login">Continue with GitHub</a>
         <div class="fine">MCP clients connect through mcp.bot-trade.org. This page is for human sign-in. <a href="/contact">Contact</a>.</div>
       </div>
     </section>

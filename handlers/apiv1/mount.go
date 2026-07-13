@@ -123,6 +123,7 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 		StripeWebhookSecret:     appCfg.StripeWebhookSecret,
 		StripeProPriceID:        appCfg.StripeProPriceID,
 		StripeMaxPriceID:        appCfg.StripeMaxPriceID,
+		StripeFoundingCouponID:  appCfg.StripeFoundingCouponID,
 		StripeLegacyMaxPriceIDs: appCfg.StripeLegacyMaxPriceIDs,
 		StripePortalConfigID:    appCfg.StripePortalConfigID,
 		AppBaseURL:              appCfg.AppBaseURL,
@@ -167,6 +168,7 @@ type handlers struct {
 	StripeWebhookSecret     string
 	StripeProPriceID        string
 	StripeMaxPriceID        string
+	StripeFoundingCouponID  string
 	StripeLegacyMaxPriceIDs []string
 	// Optional API-created billing-portal configuration (enables plan switch).
 	StripePortalConfigID string

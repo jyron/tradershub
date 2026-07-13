@@ -41,6 +41,8 @@
   text-decoration:none;
   font-weight: 600;
   font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
 }
 .run-btn.primary {
   background: var(--accent);

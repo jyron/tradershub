@@ -25,6 +25,9 @@ type Config struct {
 	StripeWebhookSecret string
 	StripeProPriceID    string
 	StripeMaxPriceID    string
+	// Optional repeating coupon used by the limited founding-builder checkout.
+	// The coupon duration and amount are owned by Stripe.
+	StripeFoundingCouponID string
 	// Previous Max price IDs remain valid for existing subscriptions after a
 	// pricing change. Configure as a comma-separated list.
 	StripeLegacyMaxPriceIDs []string
@@ -76,6 +79,7 @@ func Load() *Config {
 		StripeWebhookSecret:     os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeProPriceID:        os.Getenv("STRIPE_PRO_PRICE_ID"),
 		StripeMaxPriceID:        os.Getenv("STRIPE_MAX_PRICE_ID"),
+		StripeFoundingCouponID:  os.Getenv("STRIPE_FOUNDING_COUPON_ID"),
 		StripeLegacyMaxPriceIDs: splitCSV(os.Getenv("STRIPE_LEGACY_MAX_PRICE_IDS")),
 		StripePortalConfigID:    os.Getenv("STRIPE_PORTAL_CONFIG_ID"),
 		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),

@@ -77,7 +77,8 @@ func (h *handlers) registerBilling(api huma.API) {
 }
 
 type CheckoutInput struct {
-	Plan string `query:"plan" doc:"Plan to subscribe to: pro (default) or max. See /pricing for current prices and allowances."`
+	Plan  string `query:"plan" doc:"Plan to subscribe to: pro (default) or max. See /pricing for current prices and allowances."`
+	Offer string `query:"offer" doc:"Optional checkout offer. founding applies the configured founding-builder coupon to Pro."`
 }
 
 type CheckoutOutput struct {
@@ -136,7 +137,11 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	url, alreadySubscribed, err := h.createCheckoutOrPortalURL(key, plan)
+	offer, err := normalizeCheckoutOffer(in.Offer, plan)
+	if err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
+	}
+	url, alreadySubscribed, err := h.createCheckoutOrPortalURL(key, plan, offer)
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, "stripe checkout create failed: "+err.Error())
 	}
@@ -146,7 +151,8 @@ func (h *handlers) billingCheckout(ctx context.Context, in *CheckoutInput) (*Che
 
 	h.Analytics.Capture(key.AccountID.String(), "billing_checkout_started", analytics.Props().
 		Set("plan", key.Plan).
-		Set("target_plan", plan))
+		Set("target_plan", plan).
+		Set("offer", offer))
 
 	out := &CheckoutOutput{}
 	out.Body.URL = url
@@ -166,6 +172,20 @@ func normalizeCheckoutPlan(plan string) (string, error) {
 	}
 }
 
+func normalizeCheckoutOffer(offer, plan string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(offer)) {
+	case "":
+		return "", nil
+	case "founding":
+		if plan != "pro" {
+			return "", errors.New(`offer "founding" is only available for Pro`)
+		}
+		return "founding", nil
+	default:
+		return "", errors.New(`offer must be empty or "founding"`)
+	}
+}
+
 // createCheckoutOrPortalURL returns a Stripe URL to send the user to:
 //   - if the account already has a paid Stripe subscription, returns a
 //     Customer Portal session URL (plan changes happen there) and
@@ -174,7 +194,7 @@ func normalizeCheckoutPlan(plan string) (string, error) {
 //
 // Callable from both API handlers (which auth via X-API-Key) and site handlers
 // (which auth via bt_session cookie). Always sets stripe.Key from config first.
-func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan string) (string, bool, error) {
+func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan, offer string) (string, bool, error) {
 	stripe.Key = h.StripeSecretKey
 
 	if key.StripeCustomerID != "" && key.StripeSubscriptionID != "" && (key.Plan == "pro" || key.Plan == "max") {
@@ -194,6 +214,10 @@ func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan string) (st
 		"account_id": key.AccountID.String(),
 		"api_key_id": key.ID.String(),
 	}
+	if offer != "" {
+		metadata["offer"] = offer
+	}
+	cancelURL := h.AppBaseURL + "/pricing"
 	csParams := &stripe.CheckoutSessionParams{
 		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
@@ -203,11 +227,20 @@ func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan string) (st
 			},
 		},
 		SuccessURL: stripe.String(h.AppBaseURL + "/billing/success?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL:  stripe.String(h.AppBaseURL + "/pricing"),
+		CancelURL:  stripe.String(cancelURL),
 		Metadata:   metadata,
 		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
 			Metadata: metadata,
 		},
+	}
+	if offer == "founding" {
+		if h.StripeFoundingCouponID == "" {
+			return "", false, errors.New("founding offer is not configured")
+		}
+		csParams.Discounts = []*stripe.CheckoutSessionDiscountParams{
+			{Coupon: stripe.String(h.StripeFoundingCouponID)},
+		}
+		csParams.CancelURL = stripe.String(h.AppBaseURL + "/builders")
 	}
 	if key.StripeCustomerID != "" {
 		csParams.Customer = stripe.String(key.StripeCustomerID)

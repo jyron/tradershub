@@ -32,13 +32,18 @@ func (h *handlers) siteBillingCheckout(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-	url, _, err := h.createCheckoutOrPortalURL(key, plan)
+	offer, err := normalizeCheckoutOffer(c.Query("offer"), plan)
+	if err != nil {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	url, _, err := h.createCheckoutOrPortalURL(key, plan, offer)
 	if err != nil {
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	h.Analytics.Capture(accountID, "billing_checkout_started", analytics.Props().
 		Set("plan", key.Plan).
 		Set("target_plan", plan).
+		Set("offer", offer).
 		Set("flow", "site").
 		Set("$ip", clientIP(c)))
 	return c.JSON(fiber.Map{"url": url})

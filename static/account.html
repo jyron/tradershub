@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/account-page.css">
 <script src="/posthog-init.js?v=2"></script>
+<script src="/funnel-tracking.js?v=1" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -90,11 +91,11 @@
 
     <section class="upgrade" id="upgrade-card">
       <div id="upgrade-content">
-        <span class="kicker">Upgrade available</span>
-        <h2>Move this account to <span class="accent">Pro.</span></h2>
-        <p>200 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
+        <span class="kicker" id="upgrade-kicker">Upgrade available</span>
+        <h2 id="upgrade-title">Move this account to <span class="accent">Pro.</span></h2>
+        <p id="upgrade-copy">200 benchmark runs per UTC month and a named handle on the public leaderboard. Billing is handled through Stripe.</p>
         <div class="ctas">
-          <button class="btn primary" id="upgrade-btn" type="button">Upgrade to Pro · $29.99/mo <span class="arrow">→</span></button>
+          <button class="btn primary" id="upgrade-btn" type="button" data-track="account_pro_checkout" data-placement="account_upgrade">Upgrade to Pro · $29.99/mo <span class="arrow">→</span></button>
           <button class="btn ghost-light" id="upgrade-max-btn" type="button">Go Max · 1000 runs · $69.99/mo</button>
           <a href="/pricing" class="btn ghost-light">See pricing</a>
         </div>
@@ -185,6 +186,7 @@
     realKey: '',
     revealed: false
   };
+  var foundingOffer = new URLSearchParams(window.location.search).get('offer') === 'founding';
 
   function $(id) { return document.getElementById(id); }
 
@@ -288,6 +290,22 @@
     $('manage-title').innerHTML = (isMax ? 'Max' : 'Pro') + ' <span class="accent">subscription.</span>';
     $('max-upsell-btn').style.display = (isPro && !isMax) ? '' : 'none';
 
+    if (foundingOffer && !isPro) {
+      $('upgrade-kicker').textContent = 'Founding Builder rate';
+      $('upgrade-title').innerHTML = 'Claim <span class="accent">Founding Pro.</span>';
+      $('upgrade-copy').textContent = '200 benchmark runs per month and a named leaderboard handle for $9 per month during the first three months.';
+      $('upgrade-btn').innerHTML = 'Claim Founding Pro · $9/mo <span class="arrow">→</span>';
+      $('upgrade-btn').setAttribute('data-track', 'account_founding_checkout');
+    }
+
+    if (window.bottradeTrack) {
+      var activationKey = 'bottrade_account_ready_' + (data.account_id || 'unknown');
+      if (!window.sessionStorage.getItem(activationKey)) {
+        bottradeTrack('account_ready', { plan: planRaw, runs_used: runsUsed, offer: foundingOffer ? 'founding' : '' });
+        window.sessionStorage.setItem(activationKey, '1');
+      }
+    }
+
     setRevealed(false);
     setCode('curl');
     $('loading').style.display = 'none';
@@ -306,6 +324,7 @@
 
   $('copyBtn').addEventListener('click', function () {
     navigator.clipboard && navigator.clipboard.writeText(state.realKey);
+    if (window.bottradeTrack) bottradeTrack('api_key_copied', { placement: 'account' });
     $('copyBtn').classList.add('copied');
     $('copyBtn').textContent = 'copied ✓';
     setTimeout(function () {
@@ -319,6 +338,7 @@
     var err = $(errId);
     btn.disabled = true;
     err.style.display = 'none';
+    if (window.bottradeTrack) bottradeTrack('checkout_requested', { destination: path, placement: 'account' });
     fetch(path, { method: 'POST', credentials: 'same-origin' })
       .then(function (res) {
         return res.json().then(function (d) { return { ok: res.ok, status: res.status, data: d }; });
@@ -342,7 +362,7 @@
   }
 
   $('upgrade-btn').addEventListener('click', function () {
-    billingPost('/billing/checkout', 'upgrade-btn', 'upgrade-error');
+    billingPost(foundingOffer ? '/billing/checkout?offer=founding' : '/billing/checkout', 'upgrade-btn', 'upgrade-error');
   });
 
   $('upgrade-max-btn').addEventListener('click', function () {

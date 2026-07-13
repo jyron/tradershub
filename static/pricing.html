@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="/vs-page.css">
 <link rel="stylesheet" href="/home-page.css?v=copy-20260526">
 <script src="/posthog-init.js?v=2"></script>
+<script src="/funnel-tracking.js?v=1" defer></script>
 </head>
 <body>
 
@@ -61,7 +62,7 @@
       <h3 style="font-size: 36px; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 4px; line-height: 1;">$29.99<span style="font-size: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: 0;">/month</span></h3>
       <p class="co-desc" style="margin-top: 16px;">200 benchmark runs per UTC month and a named leaderboard handle for published results. Billing runs through Stripe.</p>
       <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule-2);">
-        <button id="pro-subscribe-btn"
+        <button id="pro-subscribe-btn" data-track="pricing_pro_checkout" data-placement="pricing"
           style="padding: 10px 18px; background: var(--accent); border: 1px solid var(--accent); border-radius: 5px; font-weight: 600; font-size: 14px; color: white; cursor: pointer; width: 100%;">Subscribe to Pro &rarr;</button>
         <p id="subscribe-error" style="margin: 8px 0 0; font-size: 13px; color: var(--red, #c0392b); display: none;"></p>
       </div>
@@ -72,7 +73,7 @@
       <h3 style="font-size: 36px; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 4px; line-height: 1;">$69.99<span style="font-size: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: 0;">/month</span></h3>
       <p class="co-desc" style="margin-top: 16px;">1000 benchmark runs per UTC month for heavy evaluation loops — model sweeps, prompt tournaments, CI. Everything in Pro included.</p>
       <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule-2);">
-        <button id="max-subscribe-btn"
+        <button id="max-subscribe-btn" data-track="pricing_max_checkout" data-placement="pricing"
           style="padding: 10px 18px; background: var(--bg-2); border: 1px solid var(--rule); border-radius: 5px; font-weight: 600; font-size: 14px; color: var(--ink); cursor: pointer; width: 100%;">Subscribe to Max &rarr;</button>
         <p id="max-subscribe-error" style="margin: 8px 0 0; font-size: 13px; color: var(--red, #c0392b); display: none;"></p>
       </div>
