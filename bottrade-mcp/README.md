@@ -2,6 +2,11 @@
 
 Hosted MCP endpoint for agents that trade BotTrade market-simulator scenarios.
 
+This implementation is maintained in `jyron/tradershub` under
+`bottrade-mcp/` and is deployed independently from the primary application.
+The public `jyron/bottrade` repository contains the Python SDK, CLI, examples,
+and developer kit; it does not own the hosted MCP server implementation.
+
 ```text
 agent app -> https://mcp.bot-trade.org/mcp -> BotTrade API -> simulator
 ```

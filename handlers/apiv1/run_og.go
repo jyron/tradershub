@@ -194,7 +194,6 @@ func runBadgeSVG(c *fiber.Ctx) error {
 	if !ok {
 		return c.SendStatus(fiber.StatusNotFound)
 	}
-
 	message := fmt.Sprintf("%+.2f%% return", m.ReturnPct)
 	color := "#64748b"
 	if m.ReturnPct > 0 {
@@ -204,7 +203,6 @@ func runBadgeSVG(c *fiber.Ctx) error {
 	}
 	label := "tested on BotTrade"
 	accessible := html.EscapeString(label + ": " + message)
-
 	const labelWidth = 116
 	const messageWidth = 94
 	const totalWidth = labelWidth + messageWidth
@@ -228,7 +226,6 @@ func runBadgeSVG(c *fiber.Ctx) error {
   </g>
 </svg>`, totalWidth, accessible, accessible, totalWidth, labelWidth, labelWidth,
 		messageWidth, color, totalWidth, label, label, message, message)
-
 	c.Set(fiber.HeaderContentType, "image/svg+xml; charset=utf-8")
 	c.Set(fiber.HeaderCacheControl, "public, max-age=300")
 	return c.SendString(svg)

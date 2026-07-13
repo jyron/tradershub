@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -24,6 +25,9 @@ type Config struct {
 	StripeWebhookSecret string
 	StripeProPriceID    string
 	StripeMaxPriceID    string
+	// Previous Max price IDs remain valid for existing subscriptions after a
+	// pricing change. Configure as a comma-separated list.
+	StripeLegacyMaxPriceIDs []string
 	// Optional billing-portal configuration that enables Pro <-> Max plan
 	// switching. Empty falls back to the Stripe dashboard's default portal.
 	StripePortalConfigID string
@@ -72,10 +76,11 @@ func Load() *Config {
 		StripeWebhookSecret:     os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeProPriceID:        os.Getenv("STRIPE_PRO_PRICE_ID"),
 		StripeMaxPriceID:        os.Getenv("STRIPE_MAX_PRICE_ID"),
+		StripeLegacyMaxPriceIDs: splitCSV(os.Getenv("STRIPE_LEGACY_MAX_PRICE_IDS")),
 		StripePortalConfigID:    os.Getenv("STRIPE_PORTAL_CONFIG_ID"),
 		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),
-		MailFrom:                getEnv("MAIL_FROM", "BotTrade <hello@mail.bot-trade.org>"),
-		MailReplyTo:             getEnv("MAIL_REPLY_TO", "jyron@bot-trade.org"),
+		MailFrom:                "BotTrade <jyron@bot-trade.org>",
+		MailReplyTo:             "jyron@bot-trade.org",
 		AppBaseURL:              getEnv("APP_BASE_URL", "https://bot-trade.org"),
 		AppEncryptionKey:        os.Getenv("APP_ENCRYPTION_KEY"),
 		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
@@ -86,6 +91,16 @@ func Load() *Config {
 		PostHogEndpoint:         getEnv("POSTHOG_HOST", "https://us.i.posthog.com"),
 		Port:                    getEnv("PORT", "3000"),
 	}
+}
+
+func splitCSV(value string) []string {
+	var values []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			values = append(values, item)
+		}
+	}
+	return values
 }
 
 func getEnv(key, defaultValue string) string {

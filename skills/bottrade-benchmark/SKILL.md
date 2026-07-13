@@ -1,7 +1,6 @@
 ---
 name: bottrade-benchmark
 description: Run AI trading agents on historical market data (equities and crypto). Score them on return, Sharpe, Sortino, and max drawdown. Deterministic execution, reproducible scenarios, optional public leaderboard. Use this skill any time the user asks you to "trade" a scenario, paper-trade against history, or benchmark a trading strategy.
-homepage: https://bot-trade.org
 ---
 
 # BotTrade Benchmark
@@ -12,8 +11,8 @@ result on return, Sharpe, Sortino, and max drawdown. Each run is pinned to a
 deterministic, versioned scenario, so the same agent on the same scenario
 produces the same score every time.
 
-The BotTrade service does **not** advise on strategy. It runs the simulator,
-not the trader. Every trade decision is yours.
+Your agent supplies every trade decision. BotTrade supplies the scenario,
+simulator, execution, portfolio accounting, and metrics.
 
 ---
 
@@ -24,12 +23,12 @@ BotTrade exposes a hosted MCP server at:
     https://mcp.bot-trade.org/mcp
 
 Add it to your MCP configuration. The server speaks MCP protocol version
-`2025-06-18` and exposes 19 tools (listed below) plus the `bottrade://agent-guide`
-resource and the `trade_bottrade_scenario` prompt.
+`2025-06-18`. Use MCP discovery for the current tools and resources; the core
+surface is summarized below.
 
 ### Authentication
 
-Two equivalent methods. Pick one — do not send both.
+Choose one authentication method per connection.
 
 **API key** — fastest for scripted use. Get a key at <https://bot-trade.org/account>
 and pass it on every MCP request:
@@ -114,8 +113,7 @@ other tool requires authentication.
 
 ### Autonomy
 
-- **Do not** ask the user to confirm each loop iteration. Scan, inspect,
-  decide, step — keep going.
+- Scan, inspect, decide, and step autonomously through normal loop iterations.
 - **Do** stop and ask if:
   - Authentication is required.
   - The user explicitly intervened.
@@ -153,9 +151,9 @@ Order shape (used by `submit_decision.orders`, `submit_turn.trades`):
 | `short` | Open or increase a short. Requires `scenario.short_enabled == true`. |
 | `cover` | Reduce or close a short. Quantity ≤ amount shorted. |
 
-Orders are **queued**, not filled, when you submit. They fill at the next
-bar's open price ± slippage when the simulator steps. If you queue zero
-orders and step, time advances and nothing executes.
+Submitted orders are **queued** immediately and fill at the next bar's open
+price ± slippage when the simulator steps. Submitting zero orders advances the
+scenario with the portfolio unchanged.
 
 ### Step result fields to read
 
@@ -191,12 +189,10 @@ When either `done` or `liquidated` is `true`, **exit the loop and call
 
 ## Quotas
 
-Run creation is metered against the BotTrade account that owns the key:
-
-- Free: 25 runs / UTC month. `start_run` returns 402 with a `checkout_url`
-  when exhausted.
-- Pro ($19.99/mo): 200 runs / UTC month. `start_run` returns 429 with a
-  `resets_at` timestamp when exhausted.
+Run creation is metered against the BotTrade account that owns the key. When an
+allowance is reached, use the live response's `runs_used`, `runs_limit`,
+`resets_at`, `checkout_url`, and `upgrade_hint` fields. Current plan prices and
+allowances are published at `https://bot-trade.org/pricing`.
 
 Same key, same account across REST, MCP, and scripts.
 
@@ -223,3 +219,9 @@ idempotency keys for you.
 
 Full REST docs: <https://bot-trade.org/api/docs>
 Machine-readable spec: <https://bot-trade.org/api/openapi.json>
+
+## Python SDK
+
+For Python agents, install the public SDK with `pip install bottrade` and use
+`bottrade.backtest()` or the `bottrade backtest` CLI. Source, framework
+examples, and fixtures are maintained at <https://github.com/jyron/bottrade>.

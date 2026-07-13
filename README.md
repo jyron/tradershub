@@ -1,17 +1,22 @@
-# bottrade
+# BotTrade: backtesting and benchmarking for AI trading agents
 
-A reproducible test bench for AI trading agents.
+BotTrade is a reproducible test bench for creating, backtesting, and comparing
+AI trading agents. It is designed for autonomous, tool-using agents—not just
+traditional strategy functions.
 
-Bring your own model. Your agent runs step-by-step on a defined slice of real
-historical market data via `bot-trade.org/api/*` and gets scored on return and
-risk (return %, Sharpe, Sortino, max drawdown). The data is identical every
-run, so a score reflects the agent — not the luck of the day — and you can tell
-whether a model or prompt change actually helped. No hosted bots, no live
-trading. Two tiers: free (25 runs/month) and Pro ($19.99/month, 200 runs/month).
-See `/pricing`.
+Bring your own model. An agent proceeds step by step through a defined market
+scenario by using the Python SDK, hosted MCP, or REST API. BotTrade reports
+return, Sharpe ratio, Sortino ratio, and maximum drawdown under a consistent
+scenario contract. It does not host trading strategies or execute live trades.
+Current prices and allowances are published at
+[bot-trade.org/pricing](https://bot-trade.org/pricing).
+
+For the evaluation model and common backtesting pitfalls, read the
+[AI trading-agent backtesting methodology](https://bot-trade.org/articles/ai-trading-bot-backtesting).
 
 - Marketing site: https://bot-trade.org
 - API root:       https://bot-trade.org/api
+- Python SDK:     https://github.com/jyron/bottrade
 
 Sign in at `https://bot-trade.org/account` to get your BotTrade API key.
 Hosted MCP clients connect through BotTrade OAuth at
@@ -21,30 +26,31 @@ runs, and leaderboard identity. Use the same key from REST clients and scripts.
 Then loop `market → trades → step` until the scenario ends. See the
 integration guide at `https://bot-trade.org/api/agent-skills.md`.
 
+Python integrations can install the public SDK with `pip install bottrade` and
+use `bottrade.backtest()` or the `bottrade backtest` CLI. SDK source, examples,
+fixtures, and release workflows are maintained in `jyron/bottrade`.
+
 ## Repo layout
 
-See `ARCHITECTURE.md`.
+Start with the [documentation index](docs/README.md). The main code map and
+deployment overview are in [docs/architecture/overview.md](docs/architecture/overview.md).
+The relationship between this service repository and the public SDK repository
+is documented in [docs/repository-topology.md](docs/repository-topology.md).
 
 ## Local dev
 
 ```
-go run .
+APP_ENCRYPTION_KEY="$(openssl rand -hex 32)" go run .
 # boots on :3000, serves /static and /api/* from the same binary
 # defaults to local SQLite files when Turso URLs aren't set
 ```
 
-Env vars (all optional in dev):
-
-- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` — app DB (API keys, runs, results).
-- `TURSO_MARKET_DATABASE_URL` / `TURSO_MARKET_AUTH_TOKEN` — market DB (bars, scenario_bars).
-- `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — required for the hourly bar-ingest job.
-- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — Google sign-in for hosted MCP OAuth.
-- `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` — GitHub sign-in for hosted MCP OAuth.
-- `PORT` — defaults `3000`.
+Environment variables are documented in
+[docs/operations/configuration.md](docs/operations/configuration.md).
 
 ## Tests
 
 ```
-go test ./services -run TestEngine                    # simulator unit tests
+go test ./...                                         # Go test suite
 python scripts/smoke_api.py --base http://localhost:3000
 ```

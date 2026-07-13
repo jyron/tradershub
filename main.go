@@ -8,7 +8,9 @@ import (
 	"bottrade/jobs"
 	"bottrade/services"
 	"log"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -89,6 +91,24 @@ func main() {
 	// Clean-URL aliases for the marketing site. Registered BEFORE app.Static
 	// so they win the route match. The .html paths still work via app.Static
 	// for backwards compatibility with anything that linked to them.
+	mountStaticPageAliases(app)
+	apiv1.MountRunPages(app, cfg.AppBaseURL)
+	if err := mountArticlePublishing(app, time.Now); err != nil {
+		log.Fatal("Failed to mount scheduled articles:", err)
+	}
+	mountAgentIndex(app)
+	mountCrawlDiscoveryAssets(app)
+	app.Static("/", "./static")
+
+	log.Printf("Listening on :%s", cfg.Port)
+	if err := app.Listen(":" + cfg.Port); err != nil {
+		log.Fatal("Failed to start server:", err)
+	}
+}
+
+// mountStaticPageAliases provides extension-free URLs for public site pages.
+// Keep these routes before app.Static so the clean paths win route matching.
+func mountStaticPageAliases(app *fiber.App) {
 	app.Get("/leaderboard", func(c *fiber.Ctx) error { return c.SendFile("./static/leaderboard.html") })
 	app.Get("/challenge", func(c *fiber.Ctx) error { return c.SendFile("./static/challenge.html") })
 	app.Get("/demo", func(c *fiber.Ctx) error { return c.SendFile("./static/demo.html") })
@@ -96,13 +116,47 @@ func main() {
 	app.Get("/docs", func(c *fiber.Ctx) error { return c.SendFile("./static/docs.html") })
 	app.Get("/methodology", func(c *fiber.Ctx) error { return c.SendFile("./static/methodology.html") })
 	app.Get("/pricing", func(c *fiber.Ctx) error { return c.SendFile("./static/pricing.html") })
-	apiv1.MountRunPages(app, cfg.AppBaseURL)
-	app.Static("/", "./static")
+	app.Get("/contact", func(c *fiber.Ctx) error { return c.SendFile("./static/contact.html") })
 
-	log.Printf("Listening on :%s", cfg.Port)
-	if err := app.Listen(":" + cfg.Port); err != nil {
-		log.Fatal("Failed to start server:", err)
+	// Editorial resources use one URL namespace. Legacy root-level URLs remain
+	// permanent redirects so existing links retain their search value.
+	articlePages := map[string]string{
+		"ai-trading-bot-backtesting":  "./static/ai-trading-bot-backtesting.html",
+		"backtest-ai-trading-agents":  "./static/backtest-ai-trading-agents.html",
+		"ai-trading-agent-evaluation": "./static/ai-trading-agent-evaluation.html",
+		"mcp-for-trading-agents":      "./static/mcp-for-trading-agents.html",
 	}
+	for slug, file := range articlePages {
+		slug, file := slug, file
+		app.Get("/articles/"+slug, func(c *fiber.Ctx) error { return c.SendFile(file) })
+		app.Get("/"+slug, func(c *fiber.Ctx) error {
+			return c.Redirect("/articles/"+slug, fiber.StatusMovedPermanently)
+		})
+		app.Get("/"+slug+".html", func(c *fiber.Ctx) error {
+			return c.Redirect("/articles/"+slug, fiber.StatusMovedPermanently)
+		})
+	}
+}
+
+// mountCrawlDiscoveryAssets gives search and answer engines stable entry
+// points. Keeping these responses revalidatable prevents a cached old 404 from
+// hiding a newly published crawl policy or sitemap for hours.
+func mountCrawlDiscoveryAssets(app *fiber.App) {
+	serveDiscoveryAsset := func(path, contentType string) fiber.Handler {
+		return func(c *fiber.Ctx) error {
+			body, err := os.ReadFile("./static/" + path)
+			if err != nil {
+				return err
+			}
+			c.Set(fiber.HeaderContentType, contentType)
+			c.Set(fiber.HeaderCacheControl, "no-cache, max-age=0, must-revalidate")
+			return c.Send(body)
+		}
+	}
+
+	app.Get("/robots.txt", serveDiscoveryAsset("robots.txt", "text/plain; charset=utf-8"))
+	app.Get("/sitemap.xml", serveDiscoveryAsset("sitemap.xml", "application/xml; charset=utf-8"))
+	app.Get("/llms.txt", serveDiscoveryAsset("llms.txt", "text/plain; charset=utf-8"))
 }
 
 // mountPostHogProxy reverse-proxies PostHog through this origin so browser

@@ -38,9 +38,10 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 	_ = godotenv.Load("../.env.local", "../.env", ".env.local", ".env")
 
 	secret := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
-	priceID := strings.TrimSpace(os.Getenv("STRIPE_PRO_PRICE_ID"))
-	if secret == "" || priceID == "" {
-		t.Skip("STRIPE_SECRET_KEY and STRIPE_PRO_PRICE_ID are required")
+	proPriceID := strings.TrimSpace(os.Getenv("STRIPE_PRO_PRICE_ID"))
+	maxPriceID := strings.TrimSpace(os.Getenv("STRIPE_MAX_PRICE_ID"))
+	if secret == "" || proPriceID == "" || maxPriceID == "" {
+		t.Skip("STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, and STRIPE_MAX_PRICE_ID are required")
 	}
 	if strings.HasPrefix(secret, "sk_live_") && os.Getenv("BOTTRADE_STRIPE_ALLOW_LIVE") != "1" {
 		t.Fatal("refusing to run Stripe E2E test with a live key; use test mode or set BOTTRADE_STRIPE_ALLOW_LIVE=1")
@@ -50,18 +51,10 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 	}
 
 	stripe.Key = secret
-	proPrice, err := price.Get(priceID, nil)
-	if err != nil {
-		t.Fatalf("retrieve STRIPE_PRO_PRICE_ID: %v", err)
-	}
-	if !proPrice.Active {
-		t.Fatalf("price %s is not active", priceID)
-	}
-	if proPrice.Recurring == nil {
-		t.Fatalf("price %s is not recurring; billing checkout uses subscription mode", priceID)
-	}
+	requireMonthlyUSDPrice(t, "STRIPE_PRO_PRICE_ID", proPriceID, 2999)
+	requireMonthlyUSDPrice(t, "STRIPE_MAX_PRICE_ID", maxPriceID, 6999)
 
-	env := newStripeTestEnv(t, secret, priceID)
+	env := newStripeTestEnv(t, secret, proPriceID, maxPriceID)
 	email := fmt.Sprintf("stripe-e2e-%s@example.test", strings.ToLower(randomSuffix()))
 	cleanupCustomersByEmail(t, email)
 	t.Cleanup(func() { cleanupCustomersByEmail(t, email) })
@@ -105,7 +98,7 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 	var sawProPrice bool
 	for lineItems.Next() {
 		item := lineItems.LineItem()
-		if item.Price != nil && item.Price.ID == priceID {
+		if item.Price != nil && item.Price.ID == proPriceID {
 			sawProPrice = true
 		}
 	}
@@ -113,7 +106,7 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 		t.Fatalf("list line items: %v", err)
 	}
 	if !sawProPrice {
-		t.Fatalf("checkout session %s did not include price %s", sessionID, priceID)
+		t.Fatalf("checkout session %s did not include price %s", sessionID, proPriceID)
 	}
 
 	status, accountBody := env.request(http.MethodGet, "/api/v1/billing/account", apiKey, nil)
@@ -123,13 +116,33 @@ func TestStripeCheckoutCreatesCleanableSubscriptionSession(t *testing.T) {
 	}
 }
 
+func requireMonthlyUSDPrice(t *testing.T, envName, priceID string, wantUnitAmount int64) {
+	t.Helper()
+	p, err := price.Get(priceID, nil)
+	if err != nil {
+		t.Fatalf("retrieve %s: %v", envName, err)
+	}
+	if !p.Active {
+		t.Fatalf("%s price %s is not active", envName, priceID)
+	}
+	if p.Currency != stripe.CurrencyUSD {
+		t.Fatalf("%s currency = %q, want USD", envName, p.Currency)
+	}
+	if p.UnitAmount != wantUnitAmount {
+		t.Fatalf("%s unit amount = %d, want %d", envName, p.UnitAmount, wantUnitAmount)
+	}
+	if p.Recurring == nil || p.Recurring.Interval != stripe.PriceRecurringIntervalMonth || p.Recurring.IntervalCount != 1 {
+		t.Fatalf("%s must recur monthly", envName)
+	}
+}
+
 type stripeTestEnv struct {
 	t     *testing.T
 	app   *fiber.App
 	appDB *sql.DB
 }
 
-func newStripeTestEnv(t *testing.T, stripeSecret, priceID string) *stripeTestEnv {
+func newStripeTestEnv(t *testing.T, stripeSecret, proPriceID, maxPriceID string) *stripeTestEnv {
 	t.Helper()
 
 	tmp := t.TempDir()
@@ -165,7 +178,8 @@ func newStripeTestEnv(t *testing.T, stripeSecret, priceID string) *stripeTestEnv
 	apiv1.Mount(app, services.NewScenarioEngine(appDB, marketDB), &config.Config{
 		AppBaseURL:       "http://stripe-e2e.example.test",
 		StripeSecretKey:  stripeSecret,
-		StripeProPriceID: priceID,
+		StripeProPriceID: proPriceID,
+		StripeMaxPriceID: maxPriceID,
 	}, nil)
 	return &stripeTestEnv{t: t, app: app, appDB: appDB}
 }

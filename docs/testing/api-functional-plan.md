@@ -57,18 +57,22 @@ databases.
 - Republishing the same run is safe.
 - Public `GET /api/v1/runs/{id}/public` works only after publish.
 
-## 5. Pro Upgrade And Billing
+## 5. Plans And Billing
 
-- Free keys are blocked at the 25-run monthly quota with HTTP 402.
-- A successful Stripe checkout/session/webhook activation updates the key to
-  `plan=pro`.
+- Each plan is blocked at the allowance configured by the application, with the
+  documented upgrade or limit response for that tier. Tests should read plan
+  limits from the same application source as the handler instead of copying
+  numeric allowances into fixtures.
+- A successful Stripe checkout/session/webhook activation updates the account
+  to the selected `plan=pro` or `plan=max` tier.
 - `GET /api/v1/billing/account` reflects plan, subscription status, billing
   email, and handle.
-- Pro keys can set a valid handle; invalid or duplicate handles are rejected.
-- A Pro key can start runs beyond the free quota and is limited at 200 runs.
+- Pro and Max accounts can set a valid handle; invalid or duplicate handles are rejected.
+- A paid tier with an available upgrade receives the correct upgrade path; the
+  highest configured tier receives the top-tier limit response.
 - Customer portal requires a Stripe-managed subscription.
-- Subscription cancellation downgrades the key to free; past due remains Pro
-  but records `subscription_status=past_due`.
+- Subscription cancellation downgrades the account to free; past due keeps the
+  current paid plan but records `subscription_status=past_due`.
 
 ## 6. Cleanup Strategy
 

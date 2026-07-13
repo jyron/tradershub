@@ -95,9 +95,10 @@ class BotTradeClient:
                 detail = error_detail(error.read().decode("utf-8", errors="replace"))
                 if error.code not in RETRYABLE_HTTP_STATUSES or attempt == 3:
                     raise APIError(error.code, detail) from error
-            except urllib.error.URLError as error:
+            except (urllib.error.URLError, TimeoutError) as error:
                 if attempt == 3:
-                    raise RuntimeError(f"{method} {path} failed: {error.reason}") from error
+                    reason = getattr(error, "reason", str(error))
+                    raise RuntimeError(f"{method} {path} failed: {reason}") from error
             time.sleep(0.5 * (attempt + 1))
 
         raise AssertionError("unreachable")
@@ -326,6 +327,7 @@ class Signal:
     symbol: str
     direction: str
     confidence: float
+    components: tuple[tuple[str, str, float], ...] = ()
 
     @property
     def score(self) -> float:
@@ -393,7 +395,20 @@ class TechnicalStrategy:
             direction = str(combined.get("signal", "neutral"))
             if direction not in {"bullish", "bearish", "neutral"}:
                 direction = "neutral"
-            signals[symbol] = Signal(symbol, direction, max(0.0, finite_float(combined.get("confidence"))))
+            component_summary = tuple(
+                (
+                    name,
+                    str(component.get("signal", "neutral")),
+                    max(0.0, finite_float(component.get("confidence"))),
+                )
+                for name, component in components.items()
+            )
+            signals[symbol] = Signal(
+                symbol,
+                direction,
+                max(0.0, finite_float(combined.get("confidence"))),
+                component_summary,
+            )
         return signals
 
 
@@ -470,7 +485,7 @@ def orders_for_targets(
         current = positions.get(symbol, 0.0)
         target = targets.get(symbol, 0.0)
         signal = signals.get(symbol, Signal(symbol, "neutral", 0.0))
-        reasoning = f"ai-hedge-fund technical: {signal.direction} ({signal.confidence:.2f})"
+        reasoning = technical_decision_reason(signal, current, target)
         if current > 0 and target < 0:
             orders.append(make_order(symbol, "sell", current, reasoning))
         elif current < 0 and target > 0:
@@ -484,6 +499,18 @@ def orders_for_targets(
         elif current < 0 and target > current:
             orders.append(make_order(symbol, "cover", target - current, reasoning))
     return [order for order in orders if order["quantity"] > 0]
+
+
+def technical_decision_reason(signal: Signal, current: float, target: float) -> str:
+    factors = ", ".join(
+        f"{name}={direction} {confidence:.0%}"
+        for name, direction, confidence in signal.components
+    )
+    reason = (
+        f"ai-hedge-fund decision: {signal.direction} {signal.confidence:.0%}; "
+        f"position {current:g} -> target {target:g}"
+    )
+    return reason + (f"; factors: {factors}" if factors else "")
 
 
 def make_order(symbol: str, side: str, quantity: float, reasoning: str) -> dict[str, Any]:
@@ -513,6 +540,7 @@ class RunConfig:
     gross_exposure: float
     min_confidence: float
     publish: bool
+    run_id: str | None = None
 
 
 def queue_orders(client: Client, run_id: str, orders: list[dict[str, Any]]) -> None:
@@ -537,8 +565,12 @@ def execute_benchmark(
     universe = list(scenario["universe"])
     short_enabled = bool(scenario.get("short_enabled"))
     leverage_cap = finite_float(scenario.get("leverage_cap"), 1.0)
-    run = client.start_run(config.scenario_slug, config.bot_name)
-    run_id = run["id"]
+    if config.run_id:
+        run_id = config.run_id
+        run = (client.snapshot(run_id).get("run") or {"id": run_id})
+    else:
+        run = client.start_run(config.scenario_slug, config.bot_name)
+        run_id = run["id"]
     print(f"Scenario: {scenario['slug']} ({scenario.get('name', '')})")
     print(f"Run: {run_id}")
     print(f"Mode: {config.mode}")
@@ -614,6 +646,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--decide-every", type=int, default=24, help="Make a decision every N bars.")
     parser.add_argument("--max-bars", type=int, default=100_000, help="Safety cap for simulator steps.")
     parser.add_argument("--publish", action="store_true", help="Publish the completed result.")
+    parser.add_argument("--run-id", help="Resume an existing active BotTrade run instead of starting a new one.")
     parser.add_argument("--history-days", type=int, default=180, help="External as-of data history supplied to ai-hedge-fund.")
     parser.add_argument("--model", default="gpt-4.1", help="ai-hedge-fund model name in as-of mode.")
     parser.add_argument("--provider", default="OpenAI", help="ai-hedge-fund model provider in as-of mode.")
@@ -650,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         gross_exposure=args.gross_exposure,
         min_confidence=args.min_confidence,
         publish=args.publish,
+        run_id=args.run_id,
     )
     try:
         as_of = None

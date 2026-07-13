@@ -77,7 +77,7 @@ func (h *handlers) registerBilling(api huma.API) {
 }
 
 type CheckoutInput struct {
-	Plan string `query:"plan" doc:"Plan to subscribe to: pro (default, $19.99/mo, 200 runs) or max ($79.99/mo, 1000 runs)."`
+	Plan string `query:"plan" doc:"Plan to subscribe to: pro (default) or max. See /pricing for current prices and allowances."`
 }
 
 type CheckoutOutput struct {
@@ -602,6 +602,11 @@ func (h *handlers) planForSubscription(status, priceID string) string {
 func (h *handlers) paidPlanForPrice(priceID string) string {
 	if priceID != "" && priceID == h.StripeMaxPriceID {
 		return "max"
+	}
+	for _, legacyPriceID := range h.StripeLegacyMaxPriceIDs {
+		if priceID != "" && priceID == legacyPriceID {
+			return "max"
+		}
 	}
 	return "pro"
 }

@@ -29,7 +29,7 @@ func testMailer(t *testing.T) (*services.Mailer, *atomic.Int64, *atomic.Value) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	m := services.NewMailer("test-key", "BotTrade <hello@mail.bot-trade.org>", "reply@example.test")
+	m := services.NewMailer("test-key", "BotTrade <jyron@bot-trade.org>", "jyron@bot-trade.org")
 	m.Endpoint = srv.URL
 	return m, &sends, &lastBody
 }
@@ -57,13 +57,13 @@ func TestMailerSendPayload(t *testing.T) {
 	if err := json.Unmarshal([]byte(lastBody.Load().(string)), &payload); err != nil {
 		t.Fatalf("payload: %v", err)
 	}
-	if payload["from"] != "BotTrade <hello@mail.bot-trade.org>" {
+	if payload["from"] != "BotTrade <jyron@bot-trade.org>" {
 		t.Fatalf("from = %v", payload["from"])
 	}
 	if payload["subject"] != "subject line" {
 		t.Fatalf("subject = %v", payload["subject"])
 	}
-	if payload["reply_to"] != "reply@example.test" {
+	if payload["reply_to"] != "jyron@bot-trade.org" {
 		t.Fatalf("reply_to = %v", payload["reply_to"])
 	}
 }
@@ -93,12 +93,16 @@ func TestSendEmailOnceDedupes(t *testing.T) {
 }
 
 func TestPlanForSubscription(t *testing.T) {
-	h := &handlers{StripeMaxPriceID: "price_max"}
+	h := &handlers{
+		StripeMaxPriceID:        "price_max",
+		StripeLegacyMaxPriceIDs: []string{"price_max_legacy"},
+	}
 	cases := []struct {
 		status, price, want string
 	}{
 		{"active", "price_pro", "pro"},
 		{"active", "price_max", "max"},
+		{"active", "price_max_legacy", "max"},
 		{"trialing", "price_max", "max"},
 		{"past_due", "price_pro", "pro"},
 		{"active", "", "pro"},
@@ -146,9 +150,12 @@ func TestQuotaTiersAndUpgradeEmails(t *testing.T) {
 	if !strings.Contains(upErr.UpgradeHint, "plan=pro") {
 		t.Fatalf("free hint = %q", upErr.UpgradeHint)
 	}
+	if !strings.Contains(upErr.UpgradeHint, "$29.99/mo") {
+		t.Fatalf("free hint missing Pro price: %q", upErr.UpgradeHint)
+	}
 	waitForSends(t, sends, 1)
-	if body := lastBody.Load().(string); !strings.Contains(body, "25 free runs") {
-		t.Fatalf("quota_free email body missing pitch: %s", body)
+	if body := lastBody.Load().(string); !strings.Contains(body, "25 free runs") || !strings.Contains(body, "$29.99") {
+		t.Fatalf("quota_free email body missing pitch or price: %s", body)
 	}
 
 	// Pro at limit → 402 with max upgrade hint + quota_pro email.
@@ -169,8 +176,11 @@ func TestQuotaTiersAndUpgradeEmails(t *testing.T) {
 	if !strings.Contains(upErr.UpgradeHint, "plan=max") {
 		t.Fatalf("pro hint = %q", upErr.UpgradeHint)
 	}
+	if !strings.Contains(upErr.UpgradeHint, "$69.99/mo") {
+		t.Fatalf("pro hint missing Max price: %q", upErr.UpgradeHint)
+	}
 	waitForSends(t, sends, 2)
-	if body := lastBody.Load().(string); !strings.Contains(body, "$79.99") {
+	if body := lastBody.Load().(string); !strings.Contains(body, "$69.99") {
 		t.Fatalf("quota_pro email body missing max pitch: %s", body)
 	}
 

@@ -38,8 +38,15 @@ vendor/
 venv/
 .claude/
 
+# Separate checkout of the public jyron/bottrade SDK repository. It owns its
+# own Git history and must never be staged from this service repository.
+.bottrade-public-work/
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
-GTM_PLAN.md
+
+# Local outreach, campaign drafts, partner lists, and creator operations.
+# Repository documentation belongs in /docs; everything in /outreach stays local.
+/outreach/

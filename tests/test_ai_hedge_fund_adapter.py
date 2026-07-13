@@ -120,7 +120,9 @@ class TechnicalStrategyTests(unittest.TestCase):
 
         self.assertEqual(upstream.frames_seen, 5)
         self.assertEqual(upstream.last_columns, ["open", "high", "low", "close", "volume"])
-        self.assertEqual(signals["AAPL"], adapter.Signal("AAPL", "bullish", 0.7))
+        self.assertEqual(signals["AAPL"].direction, "bullish")
+        self.assertEqual(signals["AAPL"].confidence, 0.7)
+        self.assertEqual(len(signals["AAPL"].components), 5)
 
     def test_targets_follow_the_position_limit_and_reverse_in_two_decisions(self) -> None:
         signals = {
@@ -148,11 +150,27 @@ class TechnicalStrategyTests(unittest.TestCase):
         self.assertEqual(reversal[0]["side"], "sell")
         self.assertEqual(reversal[0]["quantity"], 15.0)
 
+    def test_trade_reason_exposes_target_and_component_decisions(self) -> None:
+        signal = adapter.Signal(
+            "AAPL",
+            "bullish",
+            0.64,
+            (("trend", "bullish", 0.8), ("momentum", "neutral", 0.5)),
+        )
+
+        reason = adapter.technical_decision_reason(signal, 10.0, 25.0)
+
+        self.assertIn("bullish 64%", reason)
+        self.assertIn("position 10 -> target 25", reason)
+        self.assertIn("trend=bullish 80%", reason)
+        self.assertIn("momentum=neutral 50%", reason)
+
 
 class FakeClient:
     def __init__(self) -> None:
         self.orders: list[dict] = []
         self.steps = 0
+        self.starts = 0
         self.was_published = False
 
     def scenario(self, slug: str) -> dict:
@@ -165,6 +183,7 @@ class FakeClient:
         }
 
     def start_run(self, _slug: str, _bot_name: str) -> dict:
+        self.starts += 1
         return {"id": "test-run"}
 
     def snapshot(self, _run_id: str) -> dict:
@@ -225,6 +244,26 @@ class AdapterLifecycleTests(unittest.TestCase):
         self.assertEqual(client.orders[0]["symbol"], "AAPL")
         self.assertEqual(client.orders[0]["side"], "buy")
         self.assertEqual(client.orders[0]["quantity"], 10.0)
+
+    def test_resume_uses_the_existing_run(self) -> None:
+        client = FakeClient()
+        config = adapter.RunConfig(
+            scenario_slug="adapter-test",
+            bot_name="ai-hedge-fund technical",
+            mode="technical",
+            decide_every=2,
+            lookback=180,
+            max_bars=10,
+            max_positions=4,
+            gross_exposure=0.8,
+            min_confidence=0.15,
+            publish=False,
+            run_id="test-run",
+        )
+
+        adapter.execute_benchmark(client, config, technical_strategy=adapter.TechnicalStrategy(FakeTechnicalModule()))
+
+        self.assertEqual(client.starts, 0)
 
 
 if __name__ == "__main__":

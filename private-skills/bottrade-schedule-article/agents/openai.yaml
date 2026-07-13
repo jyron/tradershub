@@ -1,0 +1,4 @@
+interface:
+  display_name: "BotTrade Article Scheduler"
+  short_description: "Create and schedule BotTrade research articles"
+  default_prompt: "Use $bottrade-schedule-article to create a scholarly BotTrade research article and assign its next publication slot."

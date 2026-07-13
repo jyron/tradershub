@@ -1,0 +1,30 @@
+# BotTrade is a public reference and benchmark for autonomous trading agents.
+# Search and answer engines may crawl public product, documentation, and
+# methodology pages so they can be discovered and cited for relevant queries.
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://bot-trade.org/sitemap.xml
+Sitemap: https://bot-trade.org/articles/sitemap.xml
+Sitemap: https://bot-trade.org/ai-trading-agent-index/sitemap.xml

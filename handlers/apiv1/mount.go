@@ -117,19 +117,20 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 	cfg.DocsPath = "/api/docs"
 
 	h := &handlers{
-		Engine:               engine,
-		Analytics:            an,
-		StripeSecretKey:      appCfg.StripeSecretKey,
-		StripeWebhookSecret:  appCfg.StripeWebhookSecret,
-		StripeProPriceID:     appCfg.StripeProPriceID,
-		StripeMaxPriceID:     appCfg.StripeMaxPriceID,
-		StripePortalConfigID: appCfg.StripePortalConfigID,
-		AppBaseURL:           appCfg.AppBaseURL,
-		GoogleClientID:       appCfg.GoogleOAuthClientID,
-		GoogleClientSecret:   appCfg.GoogleOAuthClientSecret,
-		GitHubClientID:       appCfg.GitHubOAuthClientID,
-		GitHubClientSecret:   appCfg.GitHubOAuthClientSecret,
-		Mailer:               services.NewMailer(appCfg.ResendAPIKey, appCfg.MailFrom, appCfg.MailReplyTo),
+		Engine:                  engine,
+		Analytics:               an,
+		StripeSecretKey:         appCfg.StripeSecretKey,
+		StripeWebhookSecret:     appCfg.StripeWebhookSecret,
+		StripeProPriceID:        appCfg.StripeProPriceID,
+		StripeMaxPriceID:        appCfg.StripeMaxPriceID,
+		StripeLegacyMaxPriceIDs: appCfg.StripeLegacyMaxPriceIDs,
+		StripePortalConfigID:    appCfg.StripePortalConfigID,
+		AppBaseURL:              appCfg.AppBaseURL,
+		GoogleClientID:          appCfg.GoogleOAuthClientID,
+		GoogleClientSecret:      appCfg.GoogleOAuthClientSecret,
+		GitHubClientID:          appCfg.GitHubOAuthClientID,
+		GitHubClientSecret:      appCfg.GitHubOAuthClientSecret,
+		Mailer:                  services.NewMailer(appCfg.ResendAPIKey, appCfg.MailFrom, appCfg.MailReplyTo),
 	}
 
 	// Public, no-auth fiber routes mounted BEFORE huma so they win the
@@ -160,12 +161,13 @@ Full walkthrough: [agent-skills.md](https://bot-trade.org/api/agent-skills.md)
 // handlers carries the shared dependencies for every operation in the
 // package. Methods on this type are the operation handlers themselves.
 type handlers struct {
-	Engine              *services.ScenarioEngine
-	Analytics           *analytics.Client
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripeProPriceID    string
-	StripeMaxPriceID    string
+	Engine                  *services.ScenarioEngine
+	Analytics               *analytics.Client
+	StripeSecretKey         string
+	StripeWebhookSecret     string
+	StripeProPriceID        string
+	StripeMaxPriceID        string
+	StripeLegacyMaxPriceIDs []string
 	// Optional API-created billing-portal configuration (enables plan switch).
 	StripePortalConfigID string
 	AppBaseURL           string

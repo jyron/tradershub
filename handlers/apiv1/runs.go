@@ -215,9 +215,9 @@ func (h *handlers) enforceRunQuota(key models.APIKey) error {
 	}
 
 	// A bigger plan exists: 402 Payment Required with the upgrade path.
-	next, nextRuns, nextPrice := "pro", 200, "$19.99/mo"
+	next, nextRuns, nextPrice := "pro", 200, "$29.99/mo"
 	if plan == "pro" {
-		next, nextRuns, nextPrice = "max", 1000, "$79.99/mo"
+		next, nextRuns, nextPrice = "max", 1000, "$69.99/mo"
 	}
 	h.sendQuotaUpgradeEmail(key, runsUsed, limit, nextMonth)
 	return &quotaUpgradeError{

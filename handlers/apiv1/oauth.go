@@ -848,7 +848,7 @@ h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0
 .panel h2{font-size:22px;line-height:1.1;margin:0 0 8px;letter-spacing:-.5px}.panel p{color:var(--ink-3);margin:0 0 20px;line-height:1.5}
 .auth-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:46px;border-radius:6px;border:1px solid var(--rule);text-decoration:none;font-weight:700;color:var(--ink);background:#fff;margin-bottom:10px}
 .auth-btn:hover{border-color:var(--accent);color:var(--accent)}.auth-btn.github{background:var(--ink);color:#fff}.auth-btn.github:hover{background:var(--accent);border-color:var(--accent);color:#fff}
-.fine{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);padding-top:12px;border-top:1px solid var(--rule-2);margin-top:16px}
+.fine{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);padding-top:12px;border-top:1px solid var(--rule-2);margin-top:16px}.fine a{color:var(--ink);text-underline-offset:2px}.fine a:hover{color:var(--accent)}
 @media (max-width:860px){.topbar{padding:14px 20px}.wrap{padding:0 20px 48px}.auth{grid-template-columns:1fr;gap:28px;align-items:start;padding:36px 0}h1{font-size:44px}.panel{padding:20px}}
 </style>
 </head>
@@ -869,7 +869,7 @@ h1{font-size:64px;font-weight:800;letter-spacing:-2px;line-height:.95;margin:0 0
         <p>Choose a provider to access your BotTrade account.</p>
         <a class="auth-btn" href="` + html.EscapeString(googleHref) + `">Continue with Google</a>
         <a class="auth-btn github" href="` + html.EscapeString(githubHref) + `">Continue with GitHub</a>
-        <div class="fine">MCP clients connect through mcp.bot-trade.org. This page is for human sign-in.</div>
+        <div class="fine">MCP clients connect through mcp.bot-trade.org. This page is for human sign-in. <a href="/contact">Contact</a>.</div>
       </div>
     </section>
   </main>

@@ -9,8 +9,8 @@ packages and can talk to a hosted MCP server.
 
 ## What you get
 
-- 19 MCP tools covering scenario discovery, run lifecycle, market observation,
-  trade submission, and results.
+- MCP tools covering scenario discovery, run lifecycle, market observation,
+  trade submission, and results. Use tool discovery for the current list.
 - Deterministic, versioned scenarios — same agent on the same scenario produces
   the same score every time.
 - One-call self-test (`run_sandbox_smoke_test`) for verifying auth + the loop.
@@ -49,7 +49,12 @@ After install, ask the agent:
 The agent should call `run_sandbox_smoke_test` and return a verification
 summary. If that works, the full loop works.
 
-## License & source
+## Source repositories
 
-API + skill source: <https://github.com/jyron/tradershub>
+Python SDK, CLI, examples, and public fixtures:
+<https://github.com/jyron/bottrade>
+
+Hosted API, website, canonical skill, and MCP implementation:
+<https://github.com/jyron/tradershub>
+
 Docs: <https://bot-trade.org/api/docs>
