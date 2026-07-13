@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/posthog/posthog-go"
 	"bufio"
 	"context"
 	"crypto/sha256"
@@ -9,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/posthog/posthog-go"
 	"io"
 	"strings"
 	"time"
@@ -236,13 +236,16 @@ func (s *MCPServer) callTool(ctx context.Context, params json.RawMessage) (any, 
 		return toolOK(fmt.Sprintf("%s: %s (%d symbols)", scenario.Slug, scenario.Name, len(scenario.Universe)), scenario), nil
 	case "start_run":
 		var args struct {
-			ScenarioSlug string `json:"scenario_slug"`
-			BotName      string `json:"bot_name"`
+			ScenarioSlug string     `json:"scenario_slug"`
+			BotName      string     `json:"bot_name"`
+			AgentInfo    *AgentInfo `json:"agent_info"`
 		}
 		if err := parseArgs(p.Arguments, &args); err != nil {
 			return nil, err
 		}
-		run, err := s.client.StartRun(ctx, args.ScenarioSlug, args.BotName)
+		run, err := s.client.StartRunWithAgentInfo(
+			ctx, args.ScenarioSlug, args.BotName, args.AgentInfo,
+		)
 		if err != nil {
 			return toolErr(err), nil
 		}

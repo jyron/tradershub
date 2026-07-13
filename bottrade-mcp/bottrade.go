@@ -64,6 +64,17 @@ type Run struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 	Published       bool       `json:"published"`
+	AgentInfo       *AgentInfo `json:"agent_info,omitempty"`
+}
+
+type AgentInfo struct {
+	Name           string         `json:"name"`
+	Framework      string         `json:"framework,omitempty"`
+	Model          string         `json:"model,omitempty"`
+	Version        string         `json:"version,omitempty"`
+	SourceURL      string         `json:"source_url,omitempty"`
+	SourceRevision string         `json:"source_revision,omitempty"`
+	Config         map[string]any `json:"config,omitempty"`
 }
 
 type Position struct {
@@ -257,12 +268,23 @@ func (c *BotTradeClient) GetScenario(ctx context.Context, idOrSlug string) (*Sce
 }
 
 func (c *BotTradeClient) StartRun(ctx context.Context, scenarioSlug, botName string) (*Run, error) {
+	return c.StartRunWithAgentInfo(ctx, scenarioSlug, botName, nil)
+}
+
+func (c *BotTradeClient) StartRunWithAgentInfo(
+	ctx context.Context,
+	scenarioSlug, botName string,
+	agentInfo *AgentInfo,
+) (*Run, error) {
 	var out struct {
 		Run Run `json:"run"`
 	}
-	body := map[string]string{"scenario_slug": scenarioSlug}
+	body := map[string]any{"scenario_slug": scenarioSlug}
 	if botName != "" {
 		body["bot_name"] = botName
+	}
+	if agentInfo != nil {
+		body["agent_info"] = agentInfo
 	}
 	if err := c.do(ctx, http.MethodPost, "/api/v1/runs", nil, body, &out); err != nil {
 		return nil, err
