@@ -86,6 +86,20 @@
     </div>
   </section>
 
+  <section class="performance-section" aria-labelledby="performance-title">
+    <div class="head-row performance-head">
+      <div>
+        <div class="section-kicker">Profit paths</div>
+        <h2 id="performance-title">How the agents made—or lost—money</h2>
+        <div class="sub" id="performance-sub">Loading portfolio return curves for this scenario.</div>
+      </div>
+      <div class="chart-note"><span></span>Normalized to each run's starting cash</div>
+    </div>
+    <div class="performance-card" id="performance-chart">
+      <div class="chart-empty">loading profit paths&hellip;</div>
+    </div>
+  </section>
+
   <section class="overall-section">
     <div class="head-row">
       <div>
@@ -153,6 +167,9 @@
   let scenarioMeta = {};
   let currentScenario = null;
   let currentSort = "return";
+  let chartRequest = 0;
+  const curveCache = new Map();
+  const chartColors = ["#ff6a00", "#4ade80", "#60a5fa", "#c084fc", "#facc15", "#fb7185"];
 
   async function fetchJSON(path) {
     const res = await fetch(path);
@@ -315,10 +332,176 @@
           : "Rewards consistent risk-adjusted returns over lucky one-shot gains.";
 
       renderTable(entries);
+      loadPerformanceChart(entries, scenarioName);
       $("foot-time").textContent = "last sync: " + new Date().toLocaleTimeString("en-US", { hour12: false });
     } catch (e) {
       $("lb-table").innerHTML = `<div style="padding: 40px; text-align:center; color: var(--down);">couldn't load leaderboard</div>`;
     }
+  }
+
+  async function loadCurve(entry) {
+    if (curveCache.has(entry.run_id)) return curveCache.get(entry.run_id);
+    const promise = fetchJSON(`/api/v1/runs/${encodeURIComponent(entry.run_id)}/public`)
+      .then(data => ({ entry, data }))
+      .catch(() => null);
+    curveCache.set(entry.run_id, promise);
+    return promise;
+  }
+
+  async function loadPerformanceChart(entries, scenarioName) {
+    const request = ++chartRequest;
+    const top = [...entries]
+      .sort((a, b) => Number(b.return_pct || 0) - Number(a.return_pct || 0))
+      .slice(0, 6);
+    if (top.length === 0) {
+      $("performance-chart").innerHTML = `<div class="chart-empty">No published profit paths for this scenario yet.</div>`;
+      $("performance-sub").textContent = "Publish a completed run to draw the first line.";
+      return;
+    }
+
+    $("performance-chart").innerHTML = `<div class="chart-empty">loading ${top.length} public profit path${top.length === 1 ? "" : "s"}&hellip;</div>`;
+    const payloads = (await Promise.all(top.map(loadCurve))).filter(Boolean);
+    if (request !== chartRequest) return;
+
+    const series = payloads.map(({ entry, data }, index) => {
+      const curve = (data.equity_curve || []).map((point, pointIndex) => ({
+        time: Date.parse(point.sim_time),
+        index: pointIndex,
+        equity: Number(point.equity),
+      })).filter(point => Number.isFinite(point.equity));
+      const firstEquity = curve.length ? curve[0].equity : 0;
+      const startingCash = Number(data.run && data.run.starting_cash) || firstEquity;
+      const points = curve.map(point => ({
+        ...point,
+        value: startingCash ? ((point.equity / startingCash) - 1) * 100 : 0,
+      }));
+      return {
+        name: entry.bot_name || "Unnamed agent",
+        runID: entry.run_id,
+        color: chartColors[index % chartColors.length],
+        final: Number(entry.return_pct || 0),
+        points,
+      };
+    }).filter(item => item.points.length > 1);
+
+    if (!series.length) {
+      $("performance-chart").innerHTML = `<div class="chart-empty">Profit-path data is unavailable for these runs.</div>`;
+      return;
+    }
+    renderPerformanceChart(series, scenarioName);
+  }
+
+  function renderPerformanceChart(series, scenarioName) {
+    const width = 1100;
+    const height = 420;
+    const plot = { left: 72, right: 28, top: 28, bottom: 52 };
+    const plotW = width - plot.left - plot.right;
+    const plotH = height - plot.top - plot.bottom;
+    const values = series.flatMap(item => item.points.map(point => point.value));
+    let minValue = Math.min(0, ...values);
+    let maxValue = Math.max(0, ...values);
+    if (minValue === maxValue) { minValue -= 1; maxValue += 1; }
+    const breathingRoom = Math.max((maxValue - minValue) * 0.12, 1);
+    minValue -= breathingRoom;
+    maxValue += breathingRoom;
+
+    const validTimes = series.flatMap(item => item.points.map(point => point.time).filter(Number.isFinite));
+    const minTime = validTimes.length ? Math.min(...validTimes) : 0;
+    const maxTime = validTimes.length ? Math.max(...validTimes) : Math.max(...series.map(item => item.points.length - 1));
+    const timeSpan = Math.max(maxTime - minTime, 1);
+    const y = value => plot.top + (maxValue - value) / (maxValue - minValue) * plotH;
+    const x = point => {
+      const basis = Number.isFinite(point.time) ? point.time : point.index;
+      const lo = validTimes.length ? minTime : 0;
+      return plot.left + (basis - lo) / timeSpan * plotW;
+    };
+    const axisPct = value => `${value > 0 ? "+" : ""}${Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1)}%`;
+    const ticks = Array.from({ length: 5 }, (_, i) => maxValue - (maxValue - minValue) * i / 4);
+    const grid = ticks.map(value => `
+      <line x1="${plot.left}" x2="${width - plot.right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}" class="profit-grid" />
+      <text x="${plot.left - 14}" y="${(y(value) + 4).toFixed(1)}" class="profit-axis" text-anchor="end">${axisPct(value)}</text>
+    `).join("");
+    const zero = minValue < 0 && maxValue > 0
+      ? `<line x1="${plot.left}" x2="${width - plot.right}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" class="profit-zero" />`
+      : "";
+    const paths = series.map((item, index) => {
+      const d = item.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+      const area = index === 0
+        ? `<path d="${d} L${x(item.points[item.points.length - 1]).toFixed(1)},${y(0).toFixed(1)} L${x(item.points[0]).toFixed(1)},${y(0).toFixed(1)} Z" class="profit-area" />`
+        : "";
+      return `${area}<path d="${d}" class="profit-line" style="stroke:${item.color}" data-series="${index}" />`;
+    }).join("");
+    const dateLabel = timestamp => timestamp
+      ? new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+      : "start";
+    const middleTime = minTime + timeSpan / 2;
+    const dateTicks = [
+      [plot.left, dateLabel(minTime), "start"],
+      [plot.left + plotW / 2, dateLabel(middleTime), "middle"],
+      [width - plot.right, dateLabel(maxTime), "end"],
+    ].map(([px, label, anchor]) => `<text x="${px}" y="${height - 18}" class="profit-date" text-anchor="${anchor}">${label}</text>`).join("");
+    const legend = series.map((item, index) => `
+      <a class="profit-legend-item" href="/run/${encodeURIComponent(item.runID)}" title="Inspect ${esc(item.name)}">
+        <span class="profit-swatch" style="background:${item.color}"></span>
+        <span class="profit-agent">${esc(item.name)}</span>
+        <b class="${item.final >= 0 ? "up" : "dn"}">${fmtPct(item.final, 2)}</b>
+      </a>
+    `).join("");
+    const leader = series[0];
+
+    $("performance-sub").textContent = `Top ${series.length} published runs on ${scenarioName}, shown as cumulative portfolio return.`;
+    $("performance-chart").innerHTML = `
+      <div class="profit-summary">
+        <span>Best finish</span>
+        <strong>${esc(leader.name)}</strong>
+        <b class="${leader.final >= 0 ? "up" : "dn"}">${fmtPct(leader.final, 2)}</b>
+      </div>
+      <div class="profit-stage">
+        <svg class="profit-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Cumulative portfolio return lines for ${esc(scenarioName)}">
+          <defs>
+            <linearGradient id="profit-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6a00" stop-opacity=".24"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></linearGradient>
+            <filter id="profit-glow"><feGaussianBlur stdDeviation="2.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          ${grid}${zero}${paths}${dateTicks}
+          <line class="profit-cursor" id="profit-cursor" y1="${plot.top}" y2="${height - plot.bottom}" />
+          <rect class="profit-hit" x="${plot.left}" y="${plot.top}" width="${plotW}" height="${plotH}" />
+        </svg>
+        <div class="profit-tooltip" id="profit-tooltip"></div>
+      </div>
+      <div class="profit-legend">${legend}</div>`;
+
+    const stage = $("performance-chart").querySelector(".profit-stage");
+    const tooltip = $("profit-tooltip");
+    const cursor = $("profit-cursor");
+    stage.addEventListener("mousemove", event => {
+      const rect = stage.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      const targetTime = minTime + ratio * timeSpan;
+      const cursorX = plot.left + ratio * plotW;
+      cursor.setAttribute("x1", cursorX.toFixed(1));
+      cursor.setAttribute("x2", cursorX.toFixed(1));
+      cursor.style.opacity = "1";
+      const rows = series.map(item => {
+        let nearest = item.points[0];
+        if (validTimes.length) {
+          item.points.forEach(point => {
+            if (Math.abs(point.time - targetTime) < Math.abs(nearest.time - targetTime)) nearest = point;
+          });
+        } else {
+          nearest = item.points[Math.min(item.points.length - 1, Math.round(ratio * (item.points.length - 1)))];
+        }
+        return { item, point: nearest };
+      });
+      const stamp = validTimes.length ? dateLabel(rows[0].point.time) : `${Math.round(ratio * 100)}% through scenario`;
+      tooltip.innerHTML = `<div class="profit-tooltip-date">${stamp}</div>${rows.map(row => `<div><span style="background:${row.item.color}"></span><em>${esc(row.item.name)}</em><b class="${row.point.value >= 0 ? "up" : "dn"}">${axisPct(row.point.value)}</b></div>`).join("")}`;
+      tooltip.style.opacity = "1";
+      tooltip.style.left = `${Math.max(8, Math.min(rect.width - 248, event.clientX - rect.left + 16))}px`;
+      tooltip.style.top = `${Math.max(8, event.clientY - rect.top - 34)}px`;
+    });
+    stage.addEventListener("mouseleave", () => {
+      tooltip.style.opacity = "0";
+      cursor.style.opacity = "0";
+    });
   }
 
   function renderTable(entries) {

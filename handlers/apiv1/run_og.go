@@ -24,9 +24,71 @@ var staticOGTag = regexp.MustCompile(`(?m)^\s*<meta (?:property="og:|name="twitt
 // Unpublished or unknown runs get the untouched static page and 404 images,
 // so nothing about them leaks.
 func MountRunPages(app *fiber.App, baseURL string) {
+	app.Get("/social-card.png", siteOGImage)
 	app.Get("/run/:id", func(c *fiber.Ctx) error { return runPageWithMeta(c, baseURL) })
 	app.Get("/run/:id/og.png", runOGImage)
 	app.Get("/run/:id/badge.svg", runBadgeSVG)
+}
+
+func siteOGImage(c *fiber.Ctx) error {
+	img := image.NewRGBA(image.Rect(0, 0, 1200, 630))
+	fillRect(img, 0, 0, 1200, 630, ogBG)
+	fillRect(img, 0, 0, 18, 630, ogAmber)
+
+	// Brand and promise.
+	drawPixelText(img, "BOT-TRADE", 64, 54, 7, ogText)
+	drawPixelText(img, "AI AGENT BENCHMARK", 66, 133, 4, ogAmber)
+	drawPixelText(img, "SAME SCENARIO. SAME RULES.", 66, 192, 3, ogDim)
+	drawPixelText(img, "COMPARE PROFIT AND RISK.", 66, 232, 3, ogText)
+
+	// A compact comparative profit chart. These lines are illustrative, not
+	// benchmark claims; live results remain on the leaderboard.
+	curves := [][]float64{
+		{100, 101, 100, 103, 105, 108, 112, 110, 116, 122, 128},
+		{100, 99, 101, 100, 102, 106, 104, 109, 111, 114, 117},
+		{100, 102, 99, 95, 97, 92, 89, 91, 87, 84, 82},
+	}
+	colors := []color.RGBA{ogAmber, ogGreen, ogRed}
+	drawSocialCurves(img, curves, colors, 66, 320, 1128, 540)
+	drawPixelText(img, "PROFIT PATHS ACROSS ONE MARKET SCENARIO", 66, 582, 2, ogDim)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
+	c.Set(fiber.HeaderContentType, "image/png")
+	c.Set(fiber.HeaderCacheControl, "public, max-age=86400")
+	return c.Send(buf.Bytes())
+}
+
+func drawSocialCurves(img *image.RGBA, curves [][]float64, colors []color.RGBA, x0, y0, x1, y1 int) {
+	for _, gy := range []int{y0, (y0 + y1) / 2, y1} {
+		for x := x0; x < x1; x += 4 {
+			img.SetRGBA(x, gy, ogGrid)
+		}
+	}
+	const lo, hi = 78.0, 132.0
+	toXY := func(i, count int, value float64) (int, int) {
+		x := x0 + i*(x1-x0)/(count-1)
+		y := y1 - int(float64(y1-y0)*(value-lo)/(hi-lo))
+		return x, y
+	}
+	_, baseline := toXY(0, 2, 100)
+	for x := x0; x < x1; x += 8 {
+		img.SetRGBA(x, baseline, ogDim)
+	}
+	for curveIndex, curve := range curves {
+		if len(curve) < 2 {
+			continue
+		}
+		col := colors[curveIndex%len(colors)]
+		px, py := toXY(0, len(curve), curve[0])
+		for i := 1; i < len(curve); i++ {
+			x, y := toXY(i, len(curve), curve[i])
+			drawLine(img, px, py, x, y, col)
+			px, py = x, y
+		}
+	}
 }
 
 type ogRunMeta struct {
