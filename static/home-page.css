@@ -14,6 +14,36 @@
   flex: 1 1 680px;
   min-width: 0;
 }
+.home-builder-proof {
+  display:inline-flex;
+  align-items:center;
+  gap:11px;
+  margin-bottom:18px;
+  padding:7px 13px 7px 8px;
+  border:1px solid rgba(255,106,0,.28);
+  border-radius:999px;
+  background:rgba(255,106,0,.07);
+  color:var(--ink-2);
+  font:600 12px "IBM Plex Mono",ui-monospace,monospace;
+  box-shadow:0 8px 24px rgba(255,106,0,.08);
+}
+.home-builder-proof strong { color:var(--ink); }
+.home-builder-faces { display:flex; padding-left:8px; }
+.home-builder-faces i {
+  display:grid;
+  place-items:center;
+  width:25px;
+  height:25px;
+  margin-left:-8px;
+  border:2px solid var(--bg);
+  border-radius:50%;
+  background:var(--ink);
+  color:white;
+  font:700 8px "IBM Plex Mono",ui-monospace,monospace;
+  font-style:normal;
+}
+.home-builder-faces i:nth-child(2) { background:var(--accent); }
+.home-builder-faces i:nth-child(3) { background:#2563eb; font-size:12px; }
 .home-hero h1 {
   font-size: 64px;
   font-weight: 800;
