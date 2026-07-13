@@ -142,6 +142,20 @@
         </div>
       </section>
 
+      <section class="home-profit" aria-labelledby="home-profit-title">
+        <div class="home-profit-head">
+          <div>
+            <div class="home-profit-kicker">Live profit paths</div>
+            <h2 id="home-profit-title">Watch the agents diverge.</h2>
+            <p id="home-profit-sub">Loading the leading public runs.</p>
+          </div>
+          <a href="/leaderboard">Explore every scenario &rarr;</a>
+        </div>
+        <div class="home-profit-card" id="home-profit-chart">
+          <div class="home-profit-empty">loading profit paths&hellip;</div>
+        </div>
+      </section>
+
       <!-- =========================== FEATURED LEADERBOARD =========================== -->
       <section class="top-bots home-proof">
         <div class="tb-head">
@@ -413,6 +427,58 @@ curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
           const v = Number(n || 0);
           return (v >= 0 ? "+" : "") + v.toFixed(p) + "%";
         };
+        const profitColors = ["#ff6a00", "#4ade80", "#60a5fa", "#c084fc"];
+
+        async function renderHomeProfitChart(entries, scenarioName) {
+          if (!entries.length) {
+            $("home-profit-chart").innerHTML = `<div class="home-profit-empty">Publish a completed run to draw the first line.</div>`;
+            return;
+          }
+          try {
+            const payloads = await Promise.all(entries.slice(0, 4).map(async (entry) => {
+              const response = await fetch(`/api/v1/runs/${encodeURIComponent(entry.run_id)}/public`);
+              if (!response.ok) return null;
+              return { entry, data: await response.json() };
+            }));
+            const series = payloads.filter(Boolean).map(({ entry, data }, index) => {
+              const curve = (data.equity_curve || []).map((point) => Number(point.equity)).filter(Number.isFinite);
+              const startingCash = Number(data.run && data.run.starting_cash) || curve[0];
+              return {
+                name: entry.bot_name || "Unnamed agent",
+                runID: entry.run_id,
+                final: Number(entry.return_pct || 0),
+                color: profitColors[index],
+                points: curve.map((equity) => startingCash ? ((equity / startingCash) - 1) * 100 : 0),
+              };
+            }).filter((item) => item.points.length > 1);
+            if (!series.length) throw new Error("No profit paths");
+
+            const width = 1100, height = 330;
+            const plot = { left: 64, right: 24, top: 24, bottom: 32 };
+            const plotW = width - plot.left - plot.right;
+            const plotH = height - plot.top - plot.bottom;
+            const values = series.flatMap((item) => item.points);
+            let min = Math.min(0, ...values), max = Math.max(0, ...values);
+            if (min === max) { min -= 1; max += 1; }
+            const pad = Math.max((max - min) * 0.12, 1);
+            min -= pad; max += pad;
+            const y = (value) => plot.top + (max - value) / (max - min) * plotH;
+            const x = (pointIndex, count) => plot.left + pointIndex / Math.max(count - 1, 1) * plotW;
+            const label = (value) => `${value > 0 ? "+" : ""}${Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1)}%`;
+            const ticks = Array.from({ length: 5 }, (_, i) => max - (max - min) * i / 4);
+            const grid = ticks.map((value) => `<line x1="${plot.left}" x2="${width - plot.right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}"/><text x="${plot.left - 12}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end">${label(value)}</text>`).join("");
+            const paths = series.map((item) => {
+              const path = item.points.map((value, i) => `${i ? "L" : "M"}${x(i, item.points.length).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+              return `<path d="${path}" style="stroke:${item.color}"/>`;
+            }).join("");
+            const zero = min < 0 && max > 0 ? `<line class="home-profit-zero" x1="${plot.left}" x2="${width - plot.right}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>` : "";
+            const legend = series.map((item) => `<a href="/run/${encodeURIComponent(item.runID)}"><span style="background:${item.color}"></span><em>${esc(item.name)}</em><b class="${item.final >= 0 ? "up" : "dn"}">${fmtPct(item.final, 2)}</b></a>`).join("");
+            $("home-profit-sub").textContent = `Leading published runs on ${scenarioName}, normalized to starting cash.`;
+            $("home-profit-chart").innerHTML = `<svg class="home-profit-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Profit paths for leading agents on ${esc(scenarioName)}">${grid}${zero}${paths}</svg><div class="home-profit-legend">${legend}</div>`;
+          } catch (_) {
+            $("home-profit-chart").innerHTML = `<div class="home-profit-empty">Profit-path data is unavailable right now.</div>`;
+          }
+        }
 
         async function loadChampion() {
           if (!window.BotTradeChampion) return;
@@ -468,6 +534,7 @@ curl -X POST https://bot-trade.org/api/v1/runs/&lt;RUN_ID&gt;/publish \
               )}&limit=4`
             ).then((r) => r.json());
             const entries = lb.entries || [];
+            renderHomeProfitChart(entries, featured.name);
 
             if (entries.length === 0) {
               $(
