@@ -7,13 +7,18 @@ name and public API contract but have different release and deployment paths.
 
 | Repository | Local checkout | Responsibility | Release or deployment |
 |---|---|---|---|
-| `jyron/tradershub` | Workspace root | Go service, website, REST API, authentication, billing, historical-market benchmark engine, article publishing, agent index, database migrations, and hosted MCP source | Railway services `tradershub` and `bottrade-mcp` |
+| `jyron/tradershub` | Workspace root | Go service, website, REST API, authentication, billing, historical-market benchmark engine, article publishing, agent index, database migrations, and hosted MCP source | Repository pushes deploy Railway services `tradershub` and `bottrade-mcp` |
 | `jyron/bottrade` | `.bottrade-public-work/` | Public Python SDK and CLI, integration examples, fixtures, evidence badges, contributor documentation, and package-release automation | PyPI package `bottrade` and GitHub releases |
 
 The nested `.bottrade-public-work/` directory has its own `.git` directory and
 remote. Git operations must be run from the repository that owns the files.
 A root-repository commit must not include public-SDK changes, and a public-SDK
 commit must not include service/runtime code.
+
+Production service deployments must originate from committed code pushed to
+the appropriate GitHub repository. Do not initiate deployments from the
+Railway dashboard or with `railway up`; use Railway only to inspect deployment
+status, logs, domains, and configuration.
 
 ## Shared product contract
 

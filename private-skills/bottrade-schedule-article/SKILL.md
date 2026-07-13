@@ -28,10 +28,12 @@ Create one distinct article and add it to BotTrade's timestamp-gated publication
    ```
 
 9. Confirm the article URL is `/articles/<slug>`. Future articles must return 404 until their timestamp; the service adds published articles to `/articles`, `/articles/feed.xml`, and `/articles/sitemap.xml` automatically.
-10. Deploy the existing Railway service `tradershub` from the
-    `jyron/tradershub` repository only when the user asks to update the live
-    queue. The public `jyron/bottrade` SDK repository is not the article
-    deployment source. A separate service or cron job is unnecessary.
+10. When the user asks to update the live queue, commit the validated manifest
+    to `jyron/tradershub` and push the deployment branch. The connected Railway
+    service `tradershub` deploys from that repository push. Never deploy the
+    article queue with the Railway dashboard or `railway up`. The public
+    `jyron/bottrade` SDK repository is not the article deployment source. A
+    separate service or cron job is unnecessary.
 
 ## Editorial standard
 

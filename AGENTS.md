@@ -33,6 +33,17 @@ Production topology:
 - The public Python package is released from `jyron/bottrade` and published as
   `bottrade` on PyPI.
 
+Deployment policy:
+
+- Deploy production services only through committed code pushed to the
+  appropriate GitHub repository. Railway receives deployments from the
+  repository integration.
+- Do not initiate deployments manually from the Railway dashboard or with
+  `railway up`. Railway tooling may be used read-only to inspect deployment
+  status, build logs, runtime logs, domains, and configuration.
+- Keep the deployment source explicit: service and website deployments come
+  from `jyron/tradershub`; SDK/package releases come from `jyron/bottrade`.
+
 Authoritative project orientation is in `docs/README.md`, with repository
 boundaries in `docs/repository-topology.md` and runtime architecture in
 `docs/architecture/overview.md`.

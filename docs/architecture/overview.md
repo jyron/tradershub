@@ -192,9 +192,11 @@ agents can hold e.g. 0.25 BTC.
 
 The Railway service `tradershub` is GitHub-connected to this repository,
 `jyron/tradershub`. Migrations apply idempotently when the main application
-boots. Deployment state and triggers are owned by Railway configuration;
-confirm them there before relying on a branch or push workflow. The MCP service
-is deployed from `bottrade-mcp/` and has its own Railway service configuration.
+boots. Production deployments are initiated only by pushing committed code to
+the connected repository; do not deploy manually from the Railway dashboard or
+with `railway up`. Railway may be inspected for deployment status and logs. The
+MCP service is deployed from `bottrade-mcp/` through its repository-connected
+code-push workflow and has its own Railway service configuration.
 
 The public `jyron/bottrade` repository is not a Railway deployment source. It
 publishes the Python package and developer artifacts through its own GitHub
