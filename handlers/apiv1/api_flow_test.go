@@ -73,12 +73,23 @@ func TestAPIUserRunLifecycle(t *testing.T) {
 	status, runBody := env.request(http.MethodPost, "/api/v1/runs", key, map[string]any{
 		"scenario_slug": env.scenarioSlug,
 		"bot_name":      "flow-bot",
+		"agent_info": map[string]any{
+			"name":            "Flow momentum agent",
+			"framework":       "python",
+			"version":         "1.2.3",
+			"source_revision": "abc123",
+			"config":          map[string]any{"lookback": 24},
+		},
 	})
 	requireStatus(t, status, http.StatusCreated, runBody)
 	run := requireMap(t, runBody, "run")
 	runID := requireString(t, run, "id")
 	if got := requireString(t, run, "status"); got != "active" {
 		t.Fatalf("run status = %q, want active", got)
+	}
+	agentInfo := requireMap(t, run, "agent_info")
+	if got := requireString(t, agentInfo, "name"); got != "Flow momentum agent" {
+		t.Fatalf("agent name = %q", got)
 	}
 
 	secondKey := env.issueTestKey("other user", "").APIKey
@@ -168,6 +179,13 @@ func TestAPIUserRunLifecycle(t *testing.T) {
 
 	status, publicRun := env.request(http.MethodGet, "/api/v1/runs/"+runID+"/public", "", nil)
 	requireStatus(t, status, http.StatusOK, publicRun)
+	publicAgent := requireMap(t, requireMap(t, publicRun, "run"), "agent_info")
+	if got := requireString(t, publicAgent, "source_revision"); got != "abc123" {
+		t.Fatalf("public source revision = %q", got)
+	}
+	if _, exists := requireMap(t, publicRun, "run")["api_key_id"]; exists {
+		t.Fatal("public run exposed api_key_id")
+	}
 
 	status, stepAfterDone := env.request(http.MethodPost, "/api/v1/runs/"+runID+"/step", key, map[string]any{"count": 1})
 	requireStatus(t, status, http.StatusBadRequest, stepAfterDone)

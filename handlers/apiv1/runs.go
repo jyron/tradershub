@@ -6,6 +6,7 @@ import (
 	"bottrade/models"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -61,9 +62,10 @@ func planRunLimit(plan string) int {
 // Exactly one must be provided; if both are set, scenario_id wins.
 type RunCreateInput struct {
 	Body struct {
-		ScenarioID   string `json:"scenario_id,omitempty" doc:"Scenario UUID. Provide this OR scenario_slug."`
-		ScenarioSlug string `json:"scenario_slug,omitempty" doc:"Scenario slug. Used if scenario_id is omitted."`
-		BotName      string `json:"bot_name,omitempty" doc:"Optional display name for the bot, strategy, or experiment creating this run."`
+		ScenarioID   string            `json:"scenario_id,omitempty" doc:"Scenario UUID. Provide this OR scenario_slug."`
+		ScenarioSlug string            `json:"scenario_slug,omitempty" doc:"Scenario slug. Used if scenario_id is omitted."`
+		BotName      string            `json:"bot_name,omitempty" doc:"Optional display name for the bot, strategy, or experiment creating this run."`
+		AgentInfo    *models.AgentInfo `json:"agent_info,omitempty" doc:"Structured agent name, framework, model, version, source, and configuration."`
 	}
 }
 
@@ -132,7 +134,27 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 	if scenarioID == "" {
 		return nil, huma.Error400BadRequest("scenario_id or scenario_slug required")
 	}
-	run, err := h.Engine.StartRun(key.ID.String(), scenarioID, in.Body.BotName)
+	if in.Body.AgentInfo != nil && in.Body.AgentInfo.Name == "" {
+		return nil, huma.Error400BadRequest("agent_info.name is required")
+	}
+	if in.Body.AgentInfo != nil {
+		encoded, err := json.Marshal(in.Body.AgentInfo)
+		if err != nil || len(encoded) > 8192 {
+			return nil, huma.Error400BadRequest("agent_info must be valid JSON up to 8 KB")
+		}
+		if len(in.Body.AgentInfo.Name) > 120 || len(in.Body.AgentInfo.Framework) > 120 ||
+			len(in.Body.AgentInfo.Model) > 200 || len(in.Body.AgentInfo.Version) > 120 ||
+			len(in.Body.AgentInfo.SourceURL) > 500 || len(in.Body.AgentInfo.SourceRevision) > 200 {
+			return nil, huma.Error400BadRequest("agent_info contains a field that is too long")
+		}
+	}
+	agentFramework := ""
+	if in.Body.AgentInfo != nil {
+		agentFramework = in.Body.AgentInfo.Framework
+	}
+	run, err := h.Engine.StartRunWithAgentInfo(
+		key.ID.String(), scenarioID, in.Body.BotName, in.Body.AgentInfo,
+	)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
@@ -141,6 +163,7 @@ func (h *handlers) createRun(ctx context.Context, in *RunCreateInput) (*RunCreat
 		Set("scenario_id", scenarioID).
 		Set("scenario_slug", in.Body.ScenarioSlug).
 		Set("bot_name", in.Body.BotName).
+		Set("agent_framework", agentFramework).
 		Set("plan", key.Plan))
 
 	out := &RunCreateOutput{Status: http.StatusCreated}

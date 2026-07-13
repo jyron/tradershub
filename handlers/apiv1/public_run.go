@@ -34,6 +34,7 @@ func (h *handlers) getPublicRun(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "no such run"})
 	}
+	snap.Run.APIKeyID = ""
 
 	var (
 		finalEquity float64

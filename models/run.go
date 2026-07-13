@@ -2,11 +2,22 @@ package models
 
 import "time"
 
+// AgentInfo identifies the implementation that produced a run.
+type AgentInfo struct {
+	Name           string                 `json:"name"`
+	Framework      string                 `json:"framework,omitempty"`
+	Model          string                 `json:"model,omitempty"`
+	Version        string                 `json:"version,omitempty"`
+	SourceURL      string                 `json:"source_url,omitempty"`
+	SourceRevision string                 `json:"source_revision,omitempty"`
+	Config         map[string]interface{} `json:"config,omitempty"`
+}
+
 // Run is one traversal of one (scenario, scenario_version), billed and quotaed
 // against the API key that created it.
 type Run struct {
 	ID              string     `json:"id"`
-	APIKeyID        string     `json:"api_key_id"`
+	APIKeyID        string     `json:"api_key_id,omitempty"`
 	BotName         string     `json:"bot_name,omitempty"`
 	ScenarioID      string     `json:"scenario_id"`
 	ScenarioVersion int        `json:"scenario_version"`
@@ -18,6 +29,7 @@ type Run struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 	Published       bool       `json:"published"`
+	AgentInfo       *AgentInfo `json:"agent_info,omitempty"`
 }
 
 // RunPosition is a single symbol holding within a run. quantity is signed:

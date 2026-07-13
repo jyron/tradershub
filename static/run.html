@@ -60,6 +60,14 @@
   <section class="run-grid">
     <div class="run-card">
       <div class="card-head">
+        <span class="eyebrow">Agent</span>
+      </div>
+      <h2 id="agent-name">-</h2>
+      <div class="fact-grid" id="agent-facts"></div>
+    </div>
+
+    <div class="run-card">
+      <div class="card-head">
         <span class="eyebrow">Scenario</span>
         <a href="/scenarios">catalog &rarr;</a>
       </div>
@@ -155,6 +163,19 @@
     ].join("");
   }
 
+  function renderAgent(run) {
+    const agent = run.agent_info || {};
+    $("agent-name").textContent = agent.name || run.bot_name || "Agent";
+    const facts = [];
+    if (agent.framework) facts.push(fact("Framework", agent.framework));
+    if (agent.model) facts.push(fact("Model", agent.model));
+    if (agent.version) facts.push(fact("Version", agent.version));
+    if (agent.source_revision) facts.push(fact("Source revision", agent.source_revision));
+    $("agent-facts").innerHTML = facts.length
+      ? facts.join("")
+      : fact("Name", run.bot_name || "Agent");
+  }
+
   function renderRunFacts(data) {
     const run = data.run || {};
     const last = data.last_equity || {};
@@ -243,6 +264,7 @@
         : `run ${String(run.id || runId).slice(0, 12)}`;
       document.title = `${run.bot_name || "Published Run"} · bottrade`;
       renderScores(data);
+      renderAgent(run);
       renderScenario(run, scenario);
       renderRunFacts(data);
       renderPositions(data);

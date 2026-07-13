@@ -42,6 +42,14 @@ func tools() []tool {
 			InputSchema: objectSchema(map[string]any{
 				"scenario_slug": stringSchema("Scenario slug from list_scenarios."),
 				"bot_name":      stringSchema("Optional bot, strategy, or experiment name."),
+				"agent_info": objectSchema(map[string]any{
+					"name":            stringSchema("Agent name."),
+					"framework":       stringSchema("Agent framework."),
+					"model":           stringSchema("Model identifier."),
+					"version":         stringSchema("Agent version."),
+					"source_url":      stringSchema("Source repository URL."),
+					"source_revision": stringSchema("Commit or immutable source revision."),
+				}, []string{"name"}),
 			}, []string{"scenario_slug"}),
 			Annotations: mutatingToolAnnotations("Creates a new run in the user's BotTrade account."),
 		},

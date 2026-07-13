@@ -3,6 +3,7 @@ package services
 import (
 	"bottrade/models"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -95,6 +96,14 @@ func isTransientDBErr(err error) bool {
 // initial bar's data on its first /market call and may immediately queue
 // orders that fill on the second bar.
 func (e *ScenarioEngine) StartRun(apiKeyID, scenarioID, botName string) (*models.Run, error) {
+	return e.StartRunWithAgentInfo(apiKeyID, scenarioID, botName, nil)
+}
+
+// StartRunWithAgentInfo creates a run with structured implementation provenance.
+func (e *ScenarioEngine) StartRunWithAgentInfo(
+	apiKeyID, scenarioID, botName string,
+	agentInfo *models.AgentInfo,
+) (*models.Run, error) {
 	// Load scenario
 	scen, err := e.loadScenario(scenarioID)
 	if err != nil {
@@ -115,6 +124,14 @@ func (e *ScenarioEngine) StartRun(apiKeyID, scenarioID, botName string) (*models
 	runID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339)
 	startTime := timeline[0]
+	var agentInfoJSON interface{}
+	if agentInfo != nil {
+		encoded, err := json.Marshal(agentInfo)
+		if err != nil {
+			return nil, fmt.Errorf("encode agent info: %w", err)
+		}
+		agentInfoJSON = string(encoded)
+	}
 	if err := e.withWriteRetry(func() error {
 		tx, err := e.appDB.Begin()
 		if err != nil {
@@ -123,10 +140,10 @@ func (e *ScenarioEngine) StartRun(apiKeyID, scenarioID, botName string) (*models
 		defer tx.Rollback()
 		if _, err := tx.Exec(`
 			INSERT INTO runs (
-				id, api_key_id, bot_name, scenario_id, scenario_version, status,
+				id, api_key_id, bot_name, agent_info, scenario_id, scenario_version, status,
 				sim_time, cash, starting_cash, last_activity_at, created_at
-			) VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8, ?9, ?10)`,
-			runID, apiKeyID, botName, scen.ID, scen.CurrentVersion,
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8, ?9, ?10, ?11)`,
+			runID, apiKeyID, botName, agentInfoJSON, scen.ID, scen.CurrentVersion,
 			startTime.UTC().Format(time.RFC3339),
 			scen.StartingCash, scen.StartingCash, now, now,
 		); err != nil {
@@ -839,17 +856,19 @@ func nullableFloat(p *float64) interface{} {
 // LoadRun reads a run row.
 func (e *ScenarioEngine) LoadRun(runID string) (*models.Run, error) {
 	row := e.appDB.QueryRow(`
-		SELECT id, api_key_id, COALESCE(bot_name,''), scenario_id, scenario_version, status,
+		SELECT id, api_key_id, COALESCE(bot_name,''), COALESCE(agent_info,''),
+		       scenario_id, scenario_version, status,
 		       sim_time, cash, starting_cash, last_activity_at, created_at,
 		       completed_at, published
 		  FROM runs WHERE id = ?1
 	`, runID)
 	var r models.Run
-	var simStr, lastStr, createdStr string
+	var simStr, lastStr, createdStr, agentInfoJSON string
 	var completedStr sql.NullString
 	var published int
 	if err := row.Scan(
-		&r.ID, &r.APIKeyID, &r.BotName, &r.ScenarioID, &r.ScenarioVersion, &r.Status,
+		&r.ID, &r.APIKeyID, &r.BotName, &agentInfoJSON,
+		&r.ScenarioID, &r.ScenarioVersion, &r.Status,
 		&simStr, &r.Cash, &r.StartingCash, &lastStr, &createdStr,
 		&completedStr, &published,
 	); err != nil {
@@ -863,6 +882,12 @@ func (e *ScenarioEngine) LoadRun(runID string) (*models.Run, error) {
 		r.CompletedAt = &t
 	}
 	r.Published = published != 0
+	if agentInfoJSON != "" {
+		var info models.AgentInfo
+		if err := json.Unmarshal([]byte(agentInfoJSON), &info); err == nil {
+			r.AgentInfo = &info
+		}
+	}
 	return &r, nil
 }
 
