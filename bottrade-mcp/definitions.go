@@ -10,52 +10,58 @@ func tools() []tool {
 	return []tool{
 		{
 			Name:        "auth_status",
-			Description: "Check BotTrade MCP auth status.",
+			Title:       "Check BotTrade authentication",
+			Description: "Return the current MCP session's BotTrade authentication state and required next action. This is a read-only status check; OAuth starts through connect_bottrade.",
 			InputSchema: objectSchema(map[string]any{}, nil),
 			Annotations: readOnlyToolAnnotations("Check whether the MCP session is authenticated."),
 		},
 		{
 			Name:        "connect_bottrade",
-			Description: "Connect BotTrade.",
+			Title:       "Connect a BotTrade account",
+			Description: "Start or resume BotTrade OAuth for the current MCP session and return a login URL when interaction is required. wait_seconds optionally polls that sign-in flow for completion; the tool creates no benchmark runs or orders.",
 			InputSchema: objectSchema(map[string]any{
-				"wait_seconds": integerSchema("Wait for auth.", 0),
+				"wait_seconds": integerSchema("Optional seconds to poll for OAuth completion before returning; values above 120 are capped at 120. Use 0 to return the current status immediately.", 0),
 			}, nil),
 			Annotations: mutatingToolAnnotations("Starts the BotTrade OAuth sign-in flow when auth is required."),
 		},
 		{
 			Name:        "list_scenarios",
-			Description: "List scenarios.",
+			Title:       "List benchmark scenarios",
+			Description: "List the available BotTrade benchmark scenarios and their identifiers. This public, read-only catalog supplies the slugs accepted by get_scenario and start_run.",
 			InputSchema: objectSchema(map[string]any{}, nil),
 			Annotations: readOnlyToolAnnotations("Read the available scenario catalog."),
 		},
 		{
 			Name:        "get_scenario",
-			Description: "Get scenario details.",
+			Title:       "Get benchmark scenario details",
+			Description: "Return configuration and market-universe metadata for one scenario slug or UUID. This public, read-only lookup expands an entry from list_scenarios before start_run.",
 			InputSchema: objectSchema(map[string]any{
-				"id_or_slug": stringSchema("Scenario slug or UUID."),
+				"id_or_slug": stringSchema("Exact scenario slug or UUID returned by list_scenarios."),
 			}, []string{"id_or_slug"}),
 			Annotations: readOnlyToolAnnotations("Read scenario metadata before starting a run."),
 		},
 		{
 			Name:        "start_run",
-			Description: "Start a run. This creates a new simulation run.",
+			Title:       "Start a benchmark run",
+			Description: "Create a new private run for one scenario and optionally record agent provenance. Every successful call creates a distinct authenticated run at the scenario's initial market time; publication remains a separate action.",
 			InputSchema: objectSchema(map[string]any{
-				"scenario_slug": stringSchema("Scenario slug from list_scenarios."),
-				"bot_name":      stringSchema("Optional bot, strategy, or experiment name."),
-				"agent_info": objectSchema(map[string]any{
-					"name":            stringSchema("Agent name."),
-					"framework":       stringSchema("Agent framework."),
-					"model":           stringSchema("Model identifier."),
-					"version":         stringSchema("Agent version."),
-					"source_url":      stringSchema("Source repository URL."),
-					"source_revision": stringSchema("Commit or immutable source revision."),
+				"scenario_slug": stringSchema("Exact scenario slug returned by list_scenarios."),
+				"bot_name":      stringSchema("Optional display name for the bot, strategy, or experiment associated with this run."),
+				"agent_info": describedObjectSchema("Optional structured provenance for the agent executing the run.", map[string]any{
+					"name":            stringSchema("Agent name recorded with the run."),
+					"framework":       stringSchema("Agent framework or orchestration system."),
+					"model":           stringSchema("Model identifier used for the run."),
+					"version":         stringSchema("Agent or strategy version."),
+					"source_url":      stringSchema("Public or private source repository URL."),
+					"source_revision": stringSchema("Commit hash or other immutable source revision."),
 				}, []string{"name"}),
 			}, []string{"scenario_slug"}),
 			Annotations: mutatingToolAnnotations("Creates a new run in the user's BotTrade account."),
 		},
 		{
 			Name:        "get_run",
-			Description: "Get run state.",
+			Title:       "Get current run state",
+			Description: "Return an authenticated run's current status, simulator time, portfolio, positions, and queued orders without advancing it. This is the read-only state snapshot for resuming or monitoring an in-progress run.",
 			InputSchema: objectSchema(map[string]any{
 				"run_id": stringSchema("Run UUID returned by start_run."),
 			}, []string{"run_id"}),
@@ -63,123 +69,136 @@ func tools() []tool {
 		},
 		{
 			Name:        "get_market",
-			Description: "Get market bars.",
+			Title:       "Get raw market bars",
+			Description: "Return raw bars at the current simulator time for an authenticated run, optionally limited to selected symbols. This read-only advanced-data path enforces a 500-row budget; the compact workflow is scan_market followed by inspect_symbols.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":   stringSchema("Run UUID."),
-				"symbols":  arraySchema(stringSchema("Ticker symbol from the scenario universe."), "Optional symbol subset. Omit only with lookback=1."),
-				"lookback": integerSchema("Bars per symbol.", 1),
+				"run_id":   stringSchema("Run UUID returned by start_run."),
+				"symbols":  arraySchema(stringSchema("Exact ticker symbol from the scenario universe."), "Optional symbol subset. Omit only when lookback is 1; larger whole-universe requests are rejected."),
+				"lookback": integerSchema("Number of bars to return per symbol; the total request must remain within the server's 500-row budget.", 1),
 			}, []string{"run_id"}),
 			Annotations: readOnlyToolAnnotations("Read market bars for the current run without changing state."),
 		},
 		{
 			Name:        "scan_market",
-			Description: "Scan the current market compactly without returning full bar history.",
+			Title:       "Scan the full market compactly",
+			Description: "Return a token-bounded snapshot of every symbol at the current simulator time, including recent movement, position exposure, top movers, and suggested symbols. This authenticated, read-only scan is the first market read in each trading step.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id": stringSchema("Run UUID."),
+				"run_id": stringSchema("Run UUID returned by start_run."),
 			}, []string{"run_id"}),
 			Annotations: readOnlyToolAnnotations("Read a token-bounded whole-universe market scan without changing state."),
 		},
 		{
 			Name:        "inspect_symbols",
-			Description: "Inspect symbols.",
+			Title:       "Inspect selected symbols",
+			Description: "Return detailed recent bars for 1–8 symbols at the current simulator time. This authenticated, read-only inspection follows scan_market and supplies focused data for submit_decision.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":   stringSchema("Run UUID."),
-				"symbols":  arraySchema(stringSchema("Ticker symbol."), "1-8 symbols."),
-				"lookback": integerSchema("Bars per symbol.", 1),
+				"run_id":   stringSchema("Run UUID returned by start_run."),
+				"symbols":  arraySchema(stringSchema("Exact ticker symbol from the scenario universe."), "Between 1 and 8 symbols, normally selected from scan_market.suggested_inspection."),
+				"lookback": integerSchema("Bars per symbol; defaults to 30 when omitted and is capped at 120.", 1),
 			}, []string{"run_id", "symbols"}),
 			Annotations: readOnlyToolAnnotations("Read detailed history for a small symbol subset without changing state."),
 		},
 		{
 			Name:        "submit_turn",
-			Description: "Queue trades and advance exactly one bar.",
+			Title:       "Submit a low-level trading turn",
+			Description: "Queue zero or more raw orders for an authenticated run and advance exactly one bar. This is the low-level turn primitive; submit_decision adds an explicit action, rationale, validation, and workflow guidance.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":     stringSchema("Run UUID."),
-				"trades":     arraySchema(tradeSchema(), "Orders. Empty array means no trade."),
-				"step_count": integerSchema("Bars to advance. Use 1 for normal trading. Values above 1 are rejected in MCP to prevent accidental bar-skipping.", 1),
+				"run_id":     stringSchema("Run UUID returned by start_run."),
+				"trades":     arraySchema(tradeSchema(), "Orders to queue before the next bar; an empty array means advance without placing an order."),
+				"step_count": integerSchema("Bars to advance. Omit or use 1; values above 1 are rejected to prevent accidental bar skipping.", 1),
 			}, []string{"run_id", "trades"}),
 			Annotations: mutatingToolAnnotations("Queues trades and advances the run one bar."),
 		},
 		{
 			Name:        "submit_decision",
-			Description: "Submit a hold or trade decision and advance exactly one bar.",
+			Title:       "Submit a trading decision",
+			Description: "Record an explicit hold or trade decision, queue any orders, and advance an authenticated run exactly one bar. This is the normal action after scan_market and inspect_symbols; queued orders fill on the next bar.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":     stringSchema("Run UUID."),
-				"action":     map[string]any{"type": "string", "enum": []string{"hold", "trade"}, "description": "hold or trade."},
-				"rationale":  stringSchema("Short reason."),
-				"orders":     arraySchema(tradeSchema(), "Orders."),
-				"step_count": integerSchema("Bars to advance. Use 1 for normal trading. Values above 1 are rejected in MCP to prevent accidental bar-skipping.", 1),
+				"run_id":     stringSchema("Run UUID returned by start_run."),
+				"action":     map[string]any{"type": "string", "enum": []string{"hold", "trade"}, "description": "Decision type: hold requires no orders; trade requires at least one order."},
+				"rationale":  stringSchema("Optional short reason recorded with the decision."),
+				"orders":     arraySchema(tradeSchema(), "Orders to queue when action is trade; use an empty array when action is hold."),
+				"step_count": integerSchema("Bars to advance. Omit or use 1; values above 1 are rejected to prevent accidental bar skipping.", 1),
 			}, []string{"run_id", "action", "orders"}),
 			Annotations: mutatingToolAnnotations("Queues the chosen decision and advances the run one bar."),
 		},
 		{
 			Name:        "step_run",
-			Description: "Advance a run by one bar with no new trades.",
+			Title:       "Advance one bar without orders",
+			Description: "Advance an authenticated run exactly one bar without queuing orders or recording a decision rationale. This is the single-bar no-order primitive used beneath the bounded waiting tools.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id": stringSchema("Run UUID."),
-				"count":  integerSchema("Bars to advance. Use 1 for the normal loop. Values above 1 are rejected in MCP to prevent accidental bar-skipping.", 1),
+				"run_id": stringSchema("Run UUID returned by start_run."),
+				"count":  integerSchema("Bars to advance. Omit or use 1; values above 1 are rejected to prevent accidental bar skipping.", 1),
 			}, []string{"run_id"}),
 			Annotations: mutatingToolAnnotations("Advances the run one bar without queuing new trades."),
 		},
 		{
 			Name:        "advance_until_next_session",
-			Description: "Advance with no new trades until the simulator reaches the next trading date/session or the run ends.",
+			Title:       "Advance to the next market session",
+			Description: "Repeatedly advance an authenticated run without new orders until the trading date changes, the run ends, or max_bars is reached. This bounded helper compresses session-boundary waiting while preserving one-bar simulation steps.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":   stringSchema("Run UUID."),
-				"max_bars": integerSchema("Safety cap for one-bar advances. Defaults to 32.", 1),
+				"run_id":   stringSchema("Run UUID returned by start_run."),
+				"max_bars": integerSchema("Maximum one-bar advances before stopping; defaults to 32 and acts as a safety cap.", 1),
 			}, []string{"run_id"}),
 			Annotations: mutatingToolAnnotations("Safely compresses repeated hold steps across an overnight/session boundary."),
 		},
 		{
 			Name:        "hold_until_end",
-			Description: "Advance with no new trades until the run completes, liquidates, or max_bars is reached.",
+			Title:       "Hold without orders until completion",
+			Description: "Repeatedly advance an authenticated run without adding orders until it completes, liquidates, or reaches max_bars. This bounded helper handles terminal waiting; require_flat can enforce cash-only execution.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":       stringSchema("Run UUID."),
-				"max_bars":     integerSchema("Safety cap for one-bar advances. Defaults to 256.", 1),
-				"require_flat": map[string]any{"type": "boolean", "description": "If true, reject the request unless there are no open positions."},
+				"run_id":       stringSchema("Run UUID returned by start_run."),
+				"max_bars":     integerSchema("Maximum one-bar advances before stopping; defaults to 256 and acts as a safety cap.", 1),
+				"require_flat": map[string]any{"type": "boolean", "description": "When true, reject the call unless the run has no open positions; use this guard for cash-only waiting."},
 			}, []string{"run_id"}),
 			Annotations: mutatingToolAnnotations("Safely compresses repeated hold steps without adding strategy advice or trades."),
 		},
 		{
 			Name:        "liquidate_and_finish",
-			Description: "Flatten current positions, then hold cash until completion or max_bars is reached.",
+			Title:       "Liquidate positions and finish",
+			Description: "Create sell/cover orders that flatten every current position, advance to fill them, then hold without new orders until completion or max_bars. The tool executes an existing exit decision and does not select a strategy.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":    stringSchema("Run UUID."),
-				"rationale": stringSchema("Short reason recorded on the exit orders."),
-				"max_bars":  integerSchema("Safety cap for post-liquidation hold steps. Defaults to 256.", 1),
+				"run_id":    stringSchema("Run UUID returned by start_run."),
+				"rationale": stringSchema("Optional short reason copied onto the generated exit orders."),
+				"max_bars":  integerSchema("Maximum post-liquidation one-bar advances before stopping; defaults to 256.", 1),
 			}, []string{"run_id"}),
 			Annotations: mutatingToolAnnotations("Queues only sell/cover orders needed to flatten existing positions, then holds."),
 		},
 		{
 			Name:        "run_sandbox_smoke_test",
-			Description: "Create the sandbox run, scan once, submit one hold decision, and return a compact verification summary.",
+			Title:       "Verify the sandbox workflow",
+			Description: "Create an authenticated sandbox run, scan its market once, submit one hold decision, and return a compact end-to-end verification summary. Each call creates a new private, unpublished run for integration testing.",
 			InputSchema: objectSchema(map[string]any{
-				"scenario_slug": stringSchema("Sandbox scenario slug. Defaults to sandbox-nov-2024."),
-				"bot_name":      stringSchema("Optional bot, strategy, or experiment name."),
+				"scenario_slug": stringSchema("Sandbox scenario slug; defaults to sandbox-nov-2024 when omitted."),
+				"bot_name":      stringSchema("Optional display name recorded on the sandbox run."),
 			}, nil),
 			Annotations: mutatingToolAnnotations("Verifies auth, run creation, scan, and hold decision without publishing or giving strategy advice."),
 		},
 		{
 			Name:        "get_results",
-			Description: "Get completed run results with compact attribution.",
+			Title:       "Get final run results",
+			Description: "Return final performance metrics, benchmark comparison, ending portfolio, and compact trade attribution for an authenticated completed run. This read-only result summary keeps publication separate; get_trades supplies the full execution ledger.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id": stringSchema("Run UUID."),
+				"run_id": stringSchema("Completed run UUID returned by start_run."),
 			}, []string{"run_id"}),
 			Annotations: readOnlyToolAnnotations("Read final metrics plus compact trade attribution without publishing."),
 		},
 		{
 			Name:        "get_trades",
-			Description: "List filled trades for a run.",
+			Title:       "List filled run trades",
+			Description: "Return every immutable filled-trade record for an authenticated run. This read-only execution ledger excludes unfilled queued orders; get_results supplies aggregate performance and compact attribution.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id": stringSchema("Run UUID."),
+				"run_id": stringSchema("Run UUID returned by start_run."),
 			}, []string{"run_id"}),
 			Annotations: readOnlyToolAnnotations("Read immutable filled-trade records without changing state."),
 		},
 		{
 			Name:        "publish_run",
-			Description: "Publish run.",
+			Title:       "Publish a run to the leaderboard",
+			Description: "Make an authenticated completed run publicly accessible and submit its metrics to the BotTrade leaderboard. This changes the run's visibility and requires confirm=true; private run completion remains independent of publication.",
 			InputSchema: objectSchema(map[string]any{
-				"run_id":  stringSchema("Run UUID."),
-				"confirm": map[string]any{"type": "boolean", "description": "Must be true to publish."},
+				"run_id":  stringSchema("Completed run UUID returned by start_run."),
+				"confirm": map[string]any{"type": "boolean", "description": "Explicit publication confirmation; the server rejects the call unless this is true."},
 			}, []string{"run_id", "confirm"}),
 			Annotations: mutatingToolAnnotations("Publishes the completed run to the public leaderboard."),
 		},
@@ -296,6 +315,12 @@ func objectSchema(properties map[string]any, required []string) map[string]any {
 	return schema
 }
 
+func describedObjectSchema(description string, properties map[string]any, required []string) map[string]any {
+	schema := objectSchema(properties, required)
+	schema["description"] = description
+	return schema
+}
+
 func stringSchema(description string) map[string]any {
 	return map[string]any{
 		"type":        "string",
@@ -346,10 +371,10 @@ func arraySchema(items map[string]any, description string) map[string]any {
 
 func tradeSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"symbol":    stringSchema("Ticker."),
-		"side":      map[string]any{"type": "string", "enum": []string{"buy", "sell", "short", "cover"}},
+		"symbol":    stringSchema("Exact ticker symbol from the scenario universe."),
+		"side":      map[string]any{"type": "string", "enum": []string{"buy", "sell", "short", "cover"}, "description": "Order direction: buy opens/increases a long, sell reduces a long, short opens/increases a short, and cover reduces a short."},
 		"quantity":  numberSchema("Order size, positive. Fractional allowed for crypto pairs (e.g. 0.25 for BTC/USD); equities are typically whole.", 0),
-		"reasoning": stringSchema("Reason."),
+		"reasoning": stringSchema("Optional short reason recorded with this order."),
 	}, []string{"symbol", "side", "quantity"})
 }
 

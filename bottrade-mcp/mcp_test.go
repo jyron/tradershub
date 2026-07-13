@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -74,6 +75,67 @@ func TestMCPHandshakeAndToolList(t *testing.T) {
 	}
 	if scan.Annotations["readOnlyHint"] != true {
 		t.Fatalf("scan_market readOnlyHint = %#v, want true", scan.Annotations["readOnlyHint"])
+	}
+}
+
+func TestToolDefinitionsKeepStableNamesAndCompleteMetadata(t *testing.T) {
+	wantNames := []string{
+		"auth_status",
+		"connect_bottrade",
+		"list_scenarios",
+		"get_scenario",
+		"start_run",
+		"get_run",
+		"get_market",
+		"scan_market",
+		"inspect_symbols",
+		"submit_turn",
+		"submit_decision",
+		"step_run",
+		"advance_until_next_session",
+		"hold_until_end",
+		"liquidate_and_finish",
+		"run_sandbox_smoke_test",
+		"get_results",
+		"get_trades",
+		"publish_run",
+	}
+
+	got := tools()
+	if len(got) != len(wantNames) {
+		t.Fatalf("tool count = %d, want %d", len(got), len(wantNames))
+	}
+	for i, definition := range got {
+		if definition.Name != wantNames[i] {
+			t.Fatalf("tool %d name = %q, want %q", i, definition.Name, wantNames[i])
+		}
+		if strings.TrimSpace(definition.Title) == "" || definition.Title == definition.Name {
+			t.Errorf("%s title = %q, want a human-readable display title", definition.Name, definition.Title)
+		}
+		if len(strings.Fields(definition.Description)) < 12 {
+			t.Errorf("%s description is underspecified: %q", definition.Name, definition.Description)
+		}
+		assertSchemaPropertyDescriptions(t, definition.Name, definition.InputSchema)
+	}
+}
+
+func assertSchemaPropertyDescriptions(t *testing.T, path string, schema map[string]any) {
+	t.Helper()
+	properties, _ := schema["properties"].(map[string]any)
+	for name, raw := range properties {
+		property, ok := raw.(map[string]any)
+		if !ok {
+			t.Errorf("%s.%s schema = %T, want object", path, name, raw)
+			continue
+		}
+		propertyPath := fmt.Sprintf("%s.%s", path, name)
+		if description, _ := property["description"].(string); strings.TrimSpace(description) == "" {
+			t.Errorf("%s has no description", propertyPath)
+		}
+		assertSchemaPropertyDescriptions(t, propertyPath, property)
+		if items, ok := property["items"].(map[string]any); ok {
+			assertSchemaPropertyDescriptions(t, propertyPath+"[]", items)
+		}
 	}
 }
 
