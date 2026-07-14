@@ -4,6 +4,20 @@ Never use the phrases "frozen history" or "frozen historical data" for BotTrade.
 They are inaccurate. Use "historical-market benchmark" instead.
 This applies to code, documentation, marketing, research, and conversation.
 
+Never describe BotTrade comparability with "same market," "same scenario," or
+repetitive "same X, same Y" constructions. More importantly, do not present
+consistency, comparability, or controlled conditions as BotTrade's value
+proposition. Those are obvious requirements of a benchmark, not marketing
+claims. Lead with what the product enables: agents interacting with a market
+simulator, scenario construction from real historical bars, sequential
+decision-making and simulated execution, risk measurement, inspectable run
+evidence, public rankings, and developer access through MCP, SDK, and REST.
+
+Do not use em dashes in BotTrade marketing, research, documentation, or
+conversation. Avoid generic marketing formulas such as "Most products do X,
+BotTrade does Y," rhetorical questions posing an obvious problem, and empty
+phrases such as "excited," "thrilled," "game changer," or "revolutionary."
+
 Before every final response, scan the drafted response for banned terminology.
 If found, rewrite before sending.
 

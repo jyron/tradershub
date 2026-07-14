@@ -24,6 +24,7 @@ var staticOGTag = regexp.MustCompile(`(?m)^\s*<meta (?:property="og:|name="twitt
 // Unpublished or unknown runs get the untouched static page and 404 images,
 // so nothing about them leaks.
 func MountRunPages(app *fiber.App, baseURL string) {
+	app.Get("/social-card-20260714.png", siteOGImage)
 	app.Get("/social-card.png", siteOGImage)
 	app.Get("/run/:id", func(c *fiber.Ctx) error { return runPageWithMeta(c, baseURL) })
 	app.Get("/run/:id/og.png", runOGImage)
@@ -37,9 +38,9 @@ func siteOGImage(c *fiber.Ctx) error {
 
 	// Brand and promise.
 	drawPixelText(img, "BOT-TRADE", 64, 54, 7, ogText)
-	drawPixelText(img, "AI AGENT BENCHMARK", 66, 133, 4, ogAmber)
-	drawPixelText(img, "SAME SCENARIO. SAME RULES.", 66, 192, 3, ogDim)
-	drawPixelText(img, "COMPARE PROFIT AND RISK.", 66, 232, 3, ogText)
+	drawPixelText(img, "AI AGENT MARKET SIMULATOR", 66, 133, 4, ogAmber)
+	drawPixelText(img, "TRADE HISTORICAL MARKETS.", 66, 192, 3, ogDim)
+	drawPixelText(img, "PUBLISH RETURN AND RISK.", 66, 232, 3, ogText)
 
 	// A compact comparative profit chart. These lines are illustrative, not
 	// benchmark claims; live results remain on the leaderboard.
@@ -50,7 +51,7 @@ func siteOGImage(c *fiber.Ctx) error {
 	}
 	colors := []color.RGBA{ogAmber, ogGreen, ogRed}
 	drawSocialCurves(img, curves, colors, 66, 320, 1128, 540)
-	drawPixelText(img, "PROFIT PATHS ACROSS ONE MARKET SCENARIO", 66, 582, 2, ogDim)
+	drawPixelText(img, "MARKET SCENARIOS. SIMULATED EXECUTION. PUBLIC RESULTS.", 66, 582, 2, ogDim)
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -133,7 +134,7 @@ func runPageWithMeta(c *fiber.Ctx, baseURL string) error {
 		return c.Send(page)
 	}
 
-	title := fmt.Sprintf("%s — %+.2f%% on %s · BotTrade", m.BotName, m.ReturnPct, m.Scenario)
+	title := fmt.Sprintf("%s · %+.2f%% on %s · BotTrade", m.BotName, m.ReturnPct, m.Scenario)
 	desc := fmt.Sprintf("Return %+.2f%%", m.ReturnPct)
 	if m.Sharpe.Valid {
 		desc += fmt.Sprintf(" · Sharpe %.2f", m.Sharpe.Float64)

@@ -2,6 +2,7 @@ package apiv1
 
 import (
 	"bottrade/database"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,32 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 )
+
+func TestSiteOGImageUsesVersionedRoute(t *testing.T) {
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	MountRunPages(app, "https://bot-trade.org")
+
+	request := httptest.NewRequest(http.MethodGet, "/social-card-20260714.png", nil)
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatalf("GET social card: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if contentType := response.Header.Get("Content-Type"); contentType != "image/png" {
+		t.Fatalf("content type = %q, want image/png", contentType)
+	}
+	config, err := png.DecodeConfig(response.Body)
+	if err != nil {
+		t.Fatalf("decode social card: %v", err)
+	}
+	if config.Width != 1200 || config.Height != 630 {
+		t.Fatalf("dimensions = %dx%d, want 1200x630", config.Width, config.Height)
+	}
+}
 
 func TestRunBadgeSVG(t *testing.T) {
 	db := openTestDB(t, filepath.Join(t.TempDir(), "badge.db"))

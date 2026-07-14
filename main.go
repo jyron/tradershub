@@ -117,7 +117,7 @@ func defaultSocialMeta(baseURL string) fiber.Handler {
 	if baseURL == "" {
 		baseURL = "https://bot-trade.org"
 	}
-	imageURL := baseURL + "/social-card.png?v=20260713-2"
+	imageURL := baseURL + "/social-card-20260714.png"
 
 	return func(c *fiber.Ctx) error {
 		if err := c.Next(); err != nil {
@@ -139,7 +139,7 @@ func defaultSocialMeta(baseURL string) fiber.Handler {
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="BotTrade AI-agent benchmark with comparative profit curves" />
+<meta property="og:image:alt" content="BotTrade market simulator with agent performance curves" />
 `, imageURL, imageURL)
 		}
 		if !strings.Contains(page, `name="twitter:card"`) {
@@ -147,7 +147,7 @@ func defaultSocialMeta(baseURL string) fiber.Handler {
 		}
 		if !strings.Contains(page, `name="twitter:image"`) {
 			fmt.Fprintf(&tags, `<meta name="twitter:image" content="%s" />
-<meta name="twitter:image:alt" content="BotTrade AI-agent benchmark with comparative profit curves" />
+<meta name="twitter:image:alt" content="BotTrade market simulator with agent performance curves" />
 `, imageURL)
 		}
 		if tags.Len() == 0 {
