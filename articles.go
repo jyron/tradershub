@@ -27,6 +27,7 @@ type articleItem struct {
 
 type scheduledArticle struct {
 	Slug            string        `json:"slug"`
+	Ready           bool          `json:"ready,omitempty"`
 	Title           string        `json:"title"`
 	Description     string        `json:"description"`
 	Kicker          string        `json:"kicker"`
@@ -55,6 +56,16 @@ func loadArticleLibrary() (articleLibrary, error) {
 		if article.Slug == "" || article.Title == "" || article.PublishAt.IsZero() || len(article.Items) == 0 {
 			return articleLibrary{}, fmt.Errorf("article manifest contains an incomplete entry")
 		}
+		if article.Ready {
+			for _, item := range article.Items {
+				if len(strings.Fields(item.Body)) < 45 {
+					return articleLibrary{}, fmt.Errorf("ready article %q contains a short item %q", article.Slug, item.Name)
+				}
+				if item.URL == "" {
+					return articleLibrary{}, fmt.Errorf("ready article %q contains an unlinked item %q", article.Slug, item.Name)
+				}
+			}
+		}
 		if _, ok := seen[article.Slug]; ok {
 			return articleLibrary{}, fmt.Errorf("duplicate article slug %q", article.Slug)
 		}
@@ -73,7 +84,7 @@ func mountArticlePublishing(app *fiber.App, now func() time.Time) error {
 		cutoff := now().UTC()
 		out := make([]scheduledArticle, 0, len(library.Articles))
 		for _, article := range library.Articles {
-			if !article.PublishAt.After(cutoff) {
+			if article.Ready && !article.PublishAt.After(cutoff) {
 				out = append(out, article)
 			}
 		}
@@ -118,6 +129,9 @@ func mountArticlePublishing(app *fiber.App, now func() time.Time) error {
 
 var articleTemplate = template.Must(template.New("article").Funcs(template.FuncMap{
 	"inc": func(i int) int { return i + 1 },
+	"external": func(url string) bool {
+		return strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")
+	},
 	"date": func(t time.Time) string {
 		return t.In(time.FixedZone("America/Bogota", -5*60*60)).Format("January 2, 2006")
 	},
@@ -142,7 +156,7 @@ var articleTemplate = template.Must(template.New("article").Funcs(template.FuncM
     <section class="rank-hero"><p class="rank-kicker">{{.Kicker}}</p><h1>{{.Title}}</h1><p class="rank-deck">{{.Deck}}</p><div class="rank-meta"><span>BotTrade Research</span><span>Published {{date .PublishAt}}</span><span>{{len .Items}} ranked entries</span></div></section>
     <section class="abstract"><h2>Abstract</h2><p>{{.Abstract}}</p></section>
     <section class="rankings">{{range $i, $item := .Items}}
-      <article class="rank-card"><div class="rank-number">{{printf "%02d" (inc $i)}}</div><div><h2>{{$item.Name}}</h2><p>{{$item.Body}}</p></div><div class="score">{{if $item.Metric}}<strong>{{$item.Metric}}</strong>{{end}}{{if $item.URL}}<a href="{{$item.URL}}">Inspect source →</a>{{end}}</div></article>{{end}}
+      <article class="rank-card"><div class="rank-number">{{printf "%02d" (inc $i)}}</div><div><h2>{{if $item.URL}}<a class="rank-title-link" href="{{$item.URL}}"{{if external $item.URL}} target="_blank" rel="noopener noreferrer"{{end}}>{{$item.Name}}</a>{{else}}{{$item.Name}}{{end}}</h2><p>{{$item.Body}}</p></div><div class="score">{{if $item.Metric}}<strong>{{$item.Metric}}</strong>{{end}}{{if $item.URL}}<a href="{{$item.URL}}"{{if external $item.URL}} target="_blank" rel="noopener noreferrer"{{end}}>{{if external $item.URL}}Open resource{{else}}Inspect run{{end}} →</a>{{end}}</div></article>{{end}}
     </section>
     <section class="analysis-block"><h2>{{.ConclusionTitle}}</h2><p>{{.Conclusion}}</p></section>
     <nav class="related-ranks"><a href="/articles"><b>More BotTrade research</b><span>Browse every published ranking and field guide.</span></a><a href="/leaderboard"><b>Live agent leaderboard</b><span>Explore published historical-market benchmark results.</span></a><a href="/account"><b>Benchmark an agent</b><span>Connect through hosted MCP or REST.</span></a></nav>

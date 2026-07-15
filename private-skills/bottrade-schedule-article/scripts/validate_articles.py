@@ -60,6 +60,10 @@ def validate(path: Path) -> tuple[int, dict[str, int]]:
         for item in article["items"]:
             if not item.get("name") or not item.get("body"):
                 raise ValueError(f"{slug} contains an incomplete ranked item")
+            if article.get("ready") and len(item["body"].split()) < 45:
+                raise ValueError(f"{slug} contains a ready item shorter than 45 words: {item['name']}")
+            if article.get("ready") and not item.get("url"):
+                raise ValueError(f"{slug} contains a ready item without a source URL: {item['name']}")
 
         published = parse_timestamp(article["publish_at"])
         if published in timestamps:

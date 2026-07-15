@@ -23,9 +23,24 @@ func TestArticleInventoryAndCadence(t *testing.T) {
 
 	bogota := time.FixedZone("America/Bogota", -5*60*60)
 	byDay := map[string]int{}
+	ready := 0
 	for _, article := range library.Articles {
 		day := article.PublishAt.In(bogota).Format("2006-01-02")
 		byDay[day]++
+		if article.Ready {
+			ready++
+			for _, item := range article.Items {
+				if words := len(strings.Fields(item.Body)); words < 45 {
+					t.Errorf("ready article %s item %q has %d words, want at least 45", article.Slug, item.Name, words)
+				}
+				if item.URL == "" {
+					t.Errorf("ready article %s item %q has no URL", article.Slug, item.Name)
+				}
+			}
+		}
+	}
+	if ready != 9 {
+		t.Fatalf("ready article count = %d, want 9", ready)
 	}
 	if got, want := len(byDay), 12; got != want {
 		t.Fatalf("publication days = %d, want %d", got, want)
@@ -34,6 +49,23 @@ func TestArticleInventoryAndCadence(t *testing.T) {
 		if count != 3 {
 			t.Errorf("%s publishes %d articles, want 3", day, count)
 		}
+	}
+}
+
+func TestThinDraftDoesNotPublishAfterScheduledTime(t *testing.T) {
+	afterSchedule := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	app := fiber.New()
+	if err := mountArticlePublishing(app, func() time.Time { return afterSchedule }); err != nil {
+		t.Fatalf("mount articles: %v", err)
+	}
+
+	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/articles/best-prompts-ai-trading-agents", nil))
+	if err != nil {
+		t.Fatalf("GET thin draft: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("thin draft status = %d, want %d", response.StatusCode, http.StatusNotFound)
 	}
 }
 

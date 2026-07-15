@@ -12,6 +12,8 @@
 .rank-number { font-family: "IBM Plex Mono", monospace; font-size: 40px; font-weight: 700; line-height: 1; color: var(--accent); }
 .rank-date { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 700; line-height: 1.4; color: var(--accent); text-transform: uppercase; }
 .rank-card h2 { margin: 0; font-size: 30px; line-height: 1.08; letter-spacing: -.035em; }
+.rank-title-link { color: inherit; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.rank-title-link:hover { color: var(--accent); text-decoration-color: currentColor; }
 .rank-card p { margin: 10px 0 0; color: var(--ink-2); font-size: 16px; line-height: 1.7; }
 .score { text-align: right; }
 .score strong { display: block; font-family: "IBM Plex Mono", monospace; font-size: 27px; line-height: 1; }
