@@ -233,6 +233,11 @@ func (h *handlers) createCheckoutOrPortalURL(key models.APIKey, plan, offer stri
 			Metadata: metadata,
 		},
 	}
+	if plan == "pro" {
+		// Pro starts with a 3-day free trial; the card is collected at checkout
+		// and charged automatically when the trial ends.
+		csParams.SubscriptionData.TrialPeriodDays = stripe.Int64(3)
+	}
 	if offer == "founding" {
 		if h.StripeFoundingCouponID == "" {
 			return "", false, errors.New("founding offer is not configured")
@@ -336,7 +341,7 @@ func (h *handlers) getBillingSession(ctx context.Context, in *SessionInput) (*Se
 	if err != nil {
 		return nil, err
 	}
-	if cs.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
+	if !checkoutSessionSettled(cs) {
 		return nil, huma.Error404NotFound("session not paid")
 	}
 
@@ -365,6 +370,13 @@ func (h *handlers) getBillingSession(ctx context.Context, in *SessionInput) (*Se
 	out.Body.Plan = key.Plan
 	out.Body.SubscriptionStatus = key.SubscriptionStatus
 	return out, nil
+}
+
+// checkoutSessionSettled reports whether a Checkout Session completed without
+// owing money right now: paid, or no_payment_required (free-trial checkouts).
+func checkoutSessionSettled(cs *stripe.CheckoutSession) bool {
+	return cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid ||
+		cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusNoPaymentRequired
 }
 
 func (h *handlers) retrieveCheckoutSession(sessionID string) (*stripe.CheckoutSession, error) {
@@ -468,7 +480,7 @@ func (h *handlers) applyCheckoutSession(cs *stripe.CheckoutSession) error {
 	}
 
 	plan := h.planForSubscription(subStatus, priceID)
-	if plan == "free" && cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
+	if plan == "free" && checkoutSessionSettled(cs) {
 		plan = h.paidPlanForPrice(priceID)
 	}
 

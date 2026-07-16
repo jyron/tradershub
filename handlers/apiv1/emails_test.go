@@ -150,11 +150,11 @@ func TestQuotaTiersAndUpgradeEmails(t *testing.T) {
 	if !strings.Contains(upErr.UpgradeHint, "plan=pro") {
 		t.Fatalf("free hint = %q", upErr.UpgradeHint)
 	}
-	if !strings.Contains(upErr.UpgradeHint, "$29.99/mo") {
+	if !strings.Contains(upErr.UpgradeHint, "$19.99/mo") {
 		t.Fatalf("free hint missing Pro price: %q", upErr.UpgradeHint)
 	}
 	waitForSends(t, sends, 1)
-	if body := lastBody.Load().(string); !strings.Contains(body, "25 free runs") || !strings.Contains(body, "$29.99") {
+	if body := lastBody.Load().(string); !strings.Contains(body, "25 free runs") || !strings.Contains(body, "$19.99") {
 		t.Fatalf("quota_free email body missing pitch or price: %s", body)
 	}
 

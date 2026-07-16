@@ -215,12 +215,12 @@ func TestPublishedPricingCopy(t *testing.T) {
 			t.Fatalf("read %s: %v", page, err)
 		}
 		copy := string(body)
-		for _, price := range []string{"$29.99", "$69.99"} {
+		for _, price := range []string{"$19.99", "$69.99"} {
 			if !strings.Contains(copy, price) {
 				t.Errorf("%s is missing %s", page, price)
 			}
 		}
-		for _, stale := range []string{"$" + "19.99", "$" + "79.99"} {
+		for _, stale := range []string{"$" + "29.99", "$" + "79.99"} {
 			if strings.Contains(copy, stale) {
 				t.Errorf("%s still contains stale price %s", page, stale)
 			}

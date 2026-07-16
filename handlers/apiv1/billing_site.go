@@ -79,7 +79,7 @@ func (h *handlers) siteBillingSuccess(c *fiber.Ctx) error {
 	}
 	stripe.Key = h.StripeSecretKey
 	cs, err := h.retrieveCheckoutSession(sessionID)
-	if err == nil && cs.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
+	if err == nil && checkoutSessionSettled(cs) {
 		_ = h.applyCheckoutSession(cs)
 	}
 	return c.Redirect("/account", http.StatusFound)

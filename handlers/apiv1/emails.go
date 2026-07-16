@@ -134,14 +134,14 @@ Reply if you need something bigger than Max — a human reads this.`, runsUsed, 
 		subject = "You've used all 25 free runs this month"
 		text = fmt.Sprintf(`Your BotTrade account hit its free limit: %d of %d runs used this month.
 
-Your quota resets on %s. If you don't want to wait, Pro is 200 runs a month for $29.99:
+Your quota resets on %s. If you don't want to wait, Pro is 200 runs a month for $19.99, starting with a 3-day free trial:
 
 %s/account
 
 Your runs, results, and leaderboard entries stay where they are — upgrading only raises the ceiling.`, runsUsed, limit, reset, base)
 		html = emailHTML(
 			fmt.Sprintf("Your BotTrade account hit its free limit: <b>%d of %d</b> runs used this month.", runsUsed, limit),
-			fmt.Sprintf(`Your quota resets on %s. If you don't want to wait, <b>Pro is 200 runs a month for $29.99</b>:`, reset),
+			fmt.Sprintf(`Your quota resets on %s. If you don't want to wait, <b>Pro is 200 runs a month for $19.99</b>, starting with a 3-day free trial:`, reset),
 			`<a href="`+base+`/account" style="color: #ff6a00; font-weight: 600;">Upgrade to Pro →</a>`,
 			"Your runs, results, and leaderboard entries stay where they are — upgrading only raises the ceiling.",
 		)
