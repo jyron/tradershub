@@ -83,7 +83,9 @@ func Load() *Config {
 		StripeLegacyMaxPriceIDs: splitCSV(os.Getenv("STRIPE_LEGACY_MAX_PRICE_IDS")),
 		StripePortalConfigID:    os.Getenv("STRIPE_PORTAL_CONFIG_ID"),
 		ResendAPIKey:            os.Getenv("RESEND_API_KEY"),
-		MailFrom:                "BotTrade <jyron@bot-trade.org>",
+		// Resend only has mail.bot-trade.org verified; sends from the bare
+		// domain are rejected with 403.
+		MailFrom:                "BotTrade <jyron@mail.bot-trade.org>",
 		MailReplyTo:             "jyron@bot-trade.org",
 		AppBaseURL:              getEnv("APP_BASE_URL", "https://bot-trade.org"),
 		AppEncryptionKey:        os.Getenv("APP_ENCRYPTION_KEY"),

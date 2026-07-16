@@ -10,7 +10,7 @@ func TestContactEmailIsFixedForUserFacingMail(t *testing.T) {
 	t.Setenv("MAIL_REPLY_TO", "support@example.test")
 
 	cfg := Load()
-	if cfg.MailFrom != "BotTrade <jyron@bot-trade.org>" {
+	if cfg.MailFrom != "BotTrade <jyron@mail.bot-trade.org>" {
 		t.Fatalf("MailFrom = %q", cfg.MailFrom)
 	}
 	if cfg.MailReplyTo != "jyron@bot-trade.org" {

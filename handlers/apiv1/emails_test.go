@@ -29,7 +29,7 @@ func testMailer(t *testing.T) (*services.Mailer, *atomic.Int64, *atomic.Value) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	m := services.NewMailer("test-key", "BotTrade <jyron@bot-trade.org>", "jyron@bot-trade.org")
+	m := services.NewMailer("test-key", "BotTrade <jyron@mail.bot-trade.org>", "jyron@bot-trade.org")
 	m.Endpoint = srv.URL
 	return m, &sends, &lastBody
 }
@@ -57,7 +57,7 @@ func TestMailerSendPayload(t *testing.T) {
 	if err := json.Unmarshal([]byte(lastBody.Load().(string)), &payload); err != nil {
 		t.Fatalf("payload: %v", err)
 	}
-	if payload["from"] != "BotTrade <jyron@bot-trade.org>" {
+	if payload["from"] != "BotTrade <jyron@mail.bot-trade.org>" {
 		t.Fatalf("from = %v", payload["from"])
 	}
 	if payload["subject"] != "subject line" {
