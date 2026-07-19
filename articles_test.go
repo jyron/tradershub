@@ -39,8 +39,8 @@ func TestArticleInventoryAndCadence(t *testing.T) {
 			}
 		}
 	}
-	if ready != 9 {
-		t.Fatalf("ready article count = %d, want 9", ready)
+	if ready != 36 {
+		t.Fatalf("ready article count = %d, want 36", ready)
 	}
 	if got, want := len(byDay), 12; got != want {
 		t.Fatalf("publication days = %d, want %d", got, want)
@@ -52,7 +52,7 @@ func TestArticleInventoryAndCadence(t *testing.T) {
 	}
 }
 
-func TestThinDraftDoesNotPublishAfterScheduledTime(t *testing.T) {
+func TestScheduledArticlePublishesAfterScheduledTime(t *testing.T) {
 	afterSchedule := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
 	app := fiber.New()
 	if err := mountArticlePublishing(app, func() time.Time { return afterSchedule }); err != nil {
@@ -61,11 +61,11 @@ func TestThinDraftDoesNotPublishAfterScheduledTime(t *testing.T) {
 
 	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/articles/best-prompts-ai-trading-agents", nil))
 	if err != nil {
-		t.Fatalf("GET thin draft: %v", err)
+		t.Fatalf("GET scheduled article: %v", err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusNotFound {
-		t.Fatalf("thin draft status = %d, want %d", response.StatusCode, http.StatusNotFound)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("scheduled article status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
 }
 
