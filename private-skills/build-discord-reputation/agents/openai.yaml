@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build Discord Reputation"
+  short_description: "Operate trusted Discord community presence"
+  default_prompt: "Use $build-discord-reputation to review trading communities, draft valuable interactions, and update the outreach ledger."
