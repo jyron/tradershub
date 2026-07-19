@@ -115,7 +115,8 @@
       "Read(//Users/jyron/**)",
       "Bash(stripe *)",
       "Bash(jobs -p)",
-      "WebFetch(domain:bot-trade.org)"
+      "WebFetch(domain:bot-trade.org)",
+      "mcp__posthog__exec"
     ]
   }
 }

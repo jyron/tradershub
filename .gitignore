@@ -8,6 +8,7 @@ bottrade-market.db*
 
 # Binary
 bottrade
+bottrade-mcp/bottrade-mcp
 
 # Go build artifacts
 *.exe
